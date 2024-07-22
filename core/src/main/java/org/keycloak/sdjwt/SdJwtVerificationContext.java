@@ -89,7 +89,7 @@ public class SdJwtVerificationContext {
      * - all Disclosures are valid and correspond to a respective digest value in the Issuer-signed JWT
      * (directly in the payload or recursively included in the contents of other Disclosures).
      *
-     * @param issuerSignedJwtVerificationOpts Options to parametize the Issuer-Signed JWT verification. A verifier
+     * @param issuerSignedJwtVerificationOpts Options to parameterize the Issuer-Signed JWT verification. A verifier
      *                                        must be specified for validating the Issuer-signed JWT. The caller
      *                                        is responsible for establishing trust in that associated public keys
      *                                        belong to the intended issuer.
@@ -119,12 +119,12 @@ public class SdJwtVerificationContext {
      * to ensure that if Key Binding is required, the Key Binding JWT is signed by the Holder and valid.
      * </p>
      *
-     * @param issuerSignedJwtVerificationOpts Options to parametize the Issuer-Signed JWT verification. A verifier
+     * @param issuerSignedJwtVerificationOpts Options to parameterize the Issuer-Signed JWT verification. A verifier
      *                                        must be specified for validating the Issuer-signed JWT. The caller
      *                                        is responsible for establishing trust in that associated public keys
      *                                        belong to the intended issuer.
-     * @param keyBindingJwtVerificationOpts   Options to parametize the Key Binding JWT verification.
-     *                                        Must, among others, specify the Verify's policy whether
+     * @param keyBindingJwtVerificationOpts   Options to parameterize the Key Binding JWT verification.
+     *                                        Must, among others, specify the Verifier's policy whether
      *                                        to check Key Binding.
      * @throws VerificationException if verification failed
      */
@@ -513,7 +513,7 @@ public class SdJwtVerificationContext {
             throws VerificationException {
         if (!visitedDigests.add(digest)) {
             // If add returns false, then it is a duplicate
-            throw new VerificationException("A digest was encounted more than once: " + digest);
+            throw new VerificationException("A digest was encountered more than once: " + digest);
         }
     }
 

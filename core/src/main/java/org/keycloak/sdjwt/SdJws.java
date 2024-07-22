@@ -140,7 +140,7 @@ public abstract class SdJws {
     }
 
     /**
-     * Verifies that SD-JWT was issued by one of the provided issuers. Verification is case-insensitive
+     * Verifies that SD-JWT was issued by one of the provided issuers.
      * @param issuers List of trusted issuers
      */
     public void verifyIssClaim(List<String> issuers) throws VerificationException {
@@ -148,7 +148,7 @@ public abstract class SdJws {
     }
 
     /**
-     * Verifies that SD-JWT vct claim matches the expected one. Verification is case-insensitive
+     * Verifies that SD-JWT vct claim matches the expected one.
      * @param vcts list of supported verifiable credential types
      */
     public void verifyVctClaim(List<String> vcts) throws VerificationException  {
@@ -159,12 +159,7 @@ public abstract class SdJws {
             throws VerificationException {
         String claimValue = SdJwtUtils.readClaim(payload, claimName);
 
-        List<String> normalizedValues = new ArrayList<>();
-        for (String value : trustedValues) {
-            normalizedValues.add(value.toLowerCase());
-        }
-
-        if (!normalizedValues.contains(claimValue.toLowerCase())) {
+        if (!trustedValues.contains(claimValue)) {
             throw new VerificationException(String.format("Unknown '%s' claim value: %s", claimName, claimValue));
         }
     }

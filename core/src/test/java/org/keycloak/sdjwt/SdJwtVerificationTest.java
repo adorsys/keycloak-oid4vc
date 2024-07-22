@@ -201,7 +201,7 @@ public abstract class SdJwtVerificationTest {
     }
 
     @Test
-    public void sdJwtVerificationShouldFail__IfNbfInvalid() {
+    public void sdJwtVerificationShouldFail_IfNbfInvalid() {
         long now = Instant.now().getEpochSecond();
 
         ObjectNode claimSet = mapper.createObjectNode();
@@ -281,7 +281,7 @@ public abstract class SdJwtVerificationTest {
                 () -> sdJwt.verify(defaultIssuerSignedJwtVerificationOpts().build())
         );
 
-        assertTrue(exception.getMessage().startsWith("A digest was encounted more than once:"));
+        assertTrue(exception.getMessage().startsWith("A digest was encountered more than once:"));
     }
 
     private IssuerSignedJwtVerificationOpts.Builder defaultIssuerSignedJwtVerificationOpts() {
@@ -319,7 +319,7 @@ public abstract class SdJwtVerificationTest {
                 .withSigner(testSettings.issuerSigContext);
     }
 
-    private SdJwt.Builder exampleSdJwtWithUndisclosedNestedFieldsV1() {
+    private SdJwt exampleAddrSdJwt() {
         ObjectNode addressClaimSet = mapper.createObjectNode();
         addressClaimSet.put("street_address", "Rue des Oliviers");
         addressClaimSet.put("city", "Paris");
@@ -331,10 +331,14 @@ public abstract class SdJwtVerificationTest {
                 .withDecoyClaim("G02NSrQfjFXQ7Io09syajA")
                 .build();
 
-        SdJwt addrSdJWT = SdJwt.builder()
+        return SdJwt.builder()
                 .withDisclosureSpec(addrDisclosureSpec)
                 .withClaimSet(addressClaimSet)
                 .build();
+    }
+
+    private SdJwt.Builder exampleSdJwtWithUndisclosedNestedFieldsV1() {
+        SdJwt addrSdJWT = exampleAddrSdJwt();
 
         ObjectNode claimSet = mapper.createObjectNode();
         claimSet.put("sub", "6c5c0a49-b589-431d-bae7-219122a9ec2c");
@@ -379,21 +383,7 @@ public abstract class SdJwtVerificationTest {
     }
 
     private SdJwt.Builder exampleRecursiveSdJwtV1() {
-        ObjectNode addressClaimSet = mapper.createObjectNode();
-        addressClaimSet.put("street_address", "Rue des Oliviers");
-        addressClaimSet.put("city", "Paris");
-        addressClaimSet.put("country", "France");
-
-        DisclosureSpec addrDisclosureSpec = DisclosureSpec.builder()
-                .withUndisclosedClaim("street_address", "AJx-095VPrpTtN4QMOqROA")
-                .withUndisclosedClaim("city", "G02NSrQfjFXQ7Io09syajA")
-                .withDecoyClaim("G02NSrQfjFXQ7Io09syajA")
-                .build();
-
-        SdJwt addrSdJWT = SdJwt.builder()
-                .withDisclosureSpec(addrDisclosureSpec)
-                .withClaimSet(addressClaimSet)
-                .build();
+        SdJwt addrSdJWT = exampleAddrSdJwt();
 
         ObjectNode claimSet = mapper.createObjectNode();
         claimSet.put("sub", "6c5c0a49-b589-431d-bae7-219122a9ec2c");
@@ -406,6 +396,7 @@ public abstract class SdJwtVerificationTest {
                 .withUndisclosedClaim("given_name", "eluV5Og3gSNII8EYnsxA_A")
                 .withUndisclosedClaim("family_name", "6Ij7tM-a5iVPGboS5tmvVA")
                 .withUndisclosedClaim("email", "eI8ZWm9QnKPpNPeNenHdhQ")
+                // Making the whole address object selectively disclosable makes the process recursive
                 .withUndisclosedClaim("address", "BZFzhQsdPfZY1WSL-1GXKg")
                 .build();
 
