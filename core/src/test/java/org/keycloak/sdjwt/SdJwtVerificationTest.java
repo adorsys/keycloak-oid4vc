@@ -302,7 +302,7 @@ public abstract class SdJwtVerificationTest {
                 () -> sdJwt.verify(defaultIssuerSignedJwtVerificationOpts().build())
         );
 
-        assertEquals(exception.getMessage(), "A salt value was reused: " + salt);
+        assertEquals("A salt value was reused: " + salt, exception.getMessage());
     }
 
     private IssuerSignedJwtVerificationOpts.Builder defaultIssuerSignedJwtVerificationOpts() {

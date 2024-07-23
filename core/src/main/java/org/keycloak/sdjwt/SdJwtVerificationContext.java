@@ -21,6 +21,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.keycloak.common.VerificationException;
+import org.keycloak.crypto.AsymmetricSignatureVerifierContext;
 import org.keycloak.crypto.ECDSASignatureVerifierContext;
 import org.keycloak.crypto.KeyType;
 import org.keycloak.crypto.KeyWrapper;
@@ -32,7 +33,6 @@ import org.keycloak.util.JWKSUtils;
 
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -250,10 +250,13 @@ public class SdJwtVerificationContext {
         }
 
         // Build verifier
+
+        // KeyType.EC
         if (keyWrapper.getType().equals(KeyType.EC)) {
             if (keyWrapper.getAlgorithm() == null) {
-                String alg = null;
+                Objects.requireNonNull(keyWrapper.getCurve());
 
+                String alg = null;
                 switch (keyWrapper.getCurve()) {
                     case "P-256":
                         alg = "ES256";
@@ -270,9 +273,17 @@ public class SdJwtVerificationContext {
             }
 
             return new ECDSASignatureVerifierContext(keyWrapper);
-        } else {
-            throw new VerificationException("cnf/jwk alg is unsupported or deemed not secure");
         }
+
+        // KeyType.RSA
+        if (keyWrapper.getType().equals(KeyType.RSA)) {
+            return new AsymmetricSignatureVerifierContext(keyWrapper);
+        }
+
+        // KeyType is not supported
+        // This is unreachable as of now given that `JWKSUtils.getKeyWrapper` will fail
+        // on JWKs with key type not equal to EC or RSA.
+        throw new VerificationException("cnf/jwk alg is unsupported or deemed not secure");
     }
 
     /**
@@ -691,7 +702,7 @@ public class SdJwtVerificationContext {
     }
 
     /**
-     * Disclosure Data
+     * Plain record for disclosure data.
      */
     private record DisclosureData(String saltValue, String claimName, JsonNode claimValue) {
     }
