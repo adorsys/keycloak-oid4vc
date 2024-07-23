@@ -32,6 +32,7 @@ import org.keycloak.util.JWKSUtils;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -370,15 +371,21 @@ public class SdJwtVerificationContext {
      * (directly in the payload or recursively included in the contents of other Disclosures)
      * </p>
      *
+     * <p>
+     * We additionally check that salt values are not reused:
+     * The salt value MUST be unique for each claim that is to be selectively disclosed.
+     * </p>
+     *
      * @return the fully disclosed SdJwt payload
      * @throws VerificationException if verification failed
      */
     private JsonNode validateDisclosuresDigests() throws VerificationException {
         // Validate SdJwt digests by attempting full recursive disclosing.
+        Set<String> visitedSalts = new HashSet<>();
         Set<String> visitedDigests = new HashSet<>();
         Set<String> visitedDisclosureStrings = new HashSet<>();
         var disclosedPayload = validateViaRecursiveDisclosing(
-                issuerSignedJwt.getPayload(), visitedDigests, visitedDisclosureStrings);
+                issuerSignedJwt.getPayload(), visitedSalts, visitedDigests, visitedDisclosureStrings);
 
         // Validate all disclosures where visited
         validateDisclosuresVisits(visitedDisclosureStrings);
@@ -399,6 +406,7 @@ public class SdJwtVerificationContext {
      */
     private JsonNode validateViaRecursiveDisclosing(
             JsonNode currentNode,
+            Set<String> visitedSalts,
             Set<String> visitedDigests,
             Set<String> visitedDisclosureStrings
     ) throws VerificationException {
@@ -431,13 +439,16 @@ public class SdJwtVerificationContext {
                         visitedDisclosureStrings.add(disclosure);
 
                         // Validate disclosure format
-                        var claim = validateSdArrayDigestDisclosureFormat(disclosure);
+                        var decodedDisclosure = validateSdArrayDigestDisclosureFormat(disclosure);
+
+                        // Mark salt as visited
+                        markSaltAsVisited(decodedDisclosure.saltValue(), visitedSalts);
 
                         // Insert, at the level of the _sd key, a new claim using the claim name
                         // and claim value from the Disclosure
                         currentObjectNode.set(
-                                claim.getClaimNameAsString(),
-                                claim.getVisibleClaimValue(null)
+                                decodedDisclosure.claimName(),
+                                decodedDisclosure.claimValue()
                         );
                     }
                 }
@@ -475,11 +486,14 @@ public class SdJwtVerificationContext {
                             visitedDisclosureStrings.add(disclosure);
 
                             // Validate disclosure format
-                            var claimValue = validateArrayElementDigestDisclosureFormat(disclosure);
+                            var decodedDisclosure = validateArrayElementDigestDisclosureFormat(disclosure);
+
+                            // Mark salt as visited
+                            markSaltAsVisited(decodedDisclosure.saltValue(), visitedSalts);
 
                             // Replace the array element with the value from the Disclosure.
                             // Removal is done below.
-                            currentArrayNode.set(i, claimValue);
+                            currentArrayNode.set(i, decodedDisclosure.claimValue());
                         } else {
                             // Remove all array elements for which the digest was not found in the previous step.
                             indexesToRemove.add(i);
@@ -493,7 +507,7 @@ public class SdJwtVerificationContext {
         }
 
         for (JsonNode childNode : currentNode) {
-            validateViaRecursiveDisclosing(childNode, visitedDigests, visitedDisclosureStrings);
+            validateViaRecursiveDisclosing(childNode, visitedSalts, visitedDigests, visitedDisclosureStrings);
         }
 
         return currentNode;
@@ -518,6 +532,23 @@ public class SdJwtVerificationContext {
     }
 
     /**
+     * Mark salt as visited.
+     *
+     * <p>
+     * The salt value MUST be unique for each claim that is to be selectively disclosed.
+     * </p>
+     *
+     * @throws VerificationException if not first visit
+     */
+    private void markSaltAsVisited(String salt, Set<String> visitedSalts)
+            throws VerificationException {
+        if (!visitedSalts.add(salt)) {
+            // If add returns false, then it is a duplicate
+            throw new VerificationException("A salt value was reused: " + salt);
+        }
+    }
+
+    /**
      * Validate disclosure assuming digest was found in an object's _sd key.
      *
      * <p>
@@ -529,9 +560,9 @@ public class SdJwtVerificationContext {
      * If the claim name is _sd or ..., the SD-JWT MUST be rejected.
      * </p>
      *
-     * @return decoded disclosure as visible claim
+     * @return decoded disclosure (salt, claim name, claim value)
      */
-    private VisibleSdJwtClaim validateSdArrayDigestDisclosureFormat(String disclosure)
+    private DisclosureData validateSdArrayDigestDisclosureFormat(String disclosure)
             throws VerificationException {
         ArrayNode arrayNode = SdJwtUtils.decodeDisclosureString(disclosure);
 
@@ -552,11 +583,12 @@ public class SdJwtVerificationContext {
             throw new VerificationException("Disclosure claim name must not be '_sd' or '...'");
         }
 
-        // Build claim
-        return VisibleSdJwtClaim.builder()
-                .withClaimName(arrayNode.get(1).asText())
-                .withClaimValue(arrayNode.get(2))
-                .build();
+        // Return decoded disclosure
+        return new DisclosureData(
+                arrayNode.get(0).asText(),
+                claimName,
+                arrayNode.get(2)
+        );
     }
 
     /**
@@ -567,9 +599,9 @@ public class SdJwtVerificationContext {
      * two elements (salt, value), the SD-JWT MUST be rejected.
      * </p>
      *
-     * @return decoded disclosure as visible claim (value only)
+     * @return decoded disclosure (salt, value)
      */
-    private JsonNode validateArrayElementDigestDisclosureFormat(String disclosure)
+    private DisclosureData validateArrayElementDigestDisclosureFormat(String disclosure)
             throws VerificationException {
         ArrayNode arrayNode = SdJwtUtils.decodeDisclosureString(disclosure);
 
@@ -578,8 +610,12 @@ public class SdJwtVerificationContext {
             throw new VerificationException("An array element disclosure must contain exactly two elements");
         }
 
-        // Return value
-        return arrayNode.get(1);
+        // Return decoded disclosure
+        return new DisclosureData(
+                arrayNode.get(0).asText(),
+                null,
+                arrayNode.get(1)
+        );
     }
 
     /**
@@ -652,5 +688,11 @@ public class SdJwtVerificationContext {
         if (!digest.equals(sdHash.asText())) {
             throw new VerificationException("Key binding JWT: Invalid `sd_hash` digest");
         }
+    }
+
+    /**
+     * Disclosure Data
+     */
+    private record DisclosureData(String saltValue, String claimName, JsonNode claimValue) {
     }
 }

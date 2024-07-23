@@ -284,6 +284,27 @@ public abstract class SdJwtVerificationTest {
         assertTrue(exception.getMessage().startsWith("A digest was encountered more than once:"));
     }
 
+    @Test
+    public void sdJwtVerificationShouldFail_IfDuplicateSaltValue() {
+        ObjectNode claimSet = mapper.createObjectNode();
+        claimSet.put("given_name", "John");
+        claimSet.put("family_name", "Doe");
+
+        var salt = "eluV5Og3gSNII8EYnsxA_A";
+        var sdJwt = exampleFlatSdJwtV2(claimSet, DisclosureSpec.builder()
+                .withUndisclosedClaim("given_name", salt)
+                // We are reusing the same salt value, and that is the problem
+                .withUndisclosedClaim("family_name", salt)
+                .build()).build();
+
+        var exception = assertThrows(
+                VerificationException.class,
+                () -> sdJwt.verify(defaultIssuerSignedJwtVerificationOpts().build())
+        );
+
+        assertEquals(exception.getMessage(), "A salt value was reused: " + salt);
+    }
+
     private IssuerSignedJwtVerificationOpts.Builder defaultIssuerSignedJwtVerificationOpts() {
         return IssuerSignedJwtVerificationOpts.builder()
                 .withVerifier(testSettings.issuerVerifierContext)
