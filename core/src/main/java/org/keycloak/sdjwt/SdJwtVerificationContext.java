@@ -94,9 +94,10 @@ public class SdJwtVerificationContext {
      *                                        must be specified for validating the Issuer-signed JWT. The caller
      *                                        is responsible for establishing trust in that associated public keys
      *                                        belong to the intended issuer.
+     * @return the fully disclosed SdJwt payload
      * @throws VerificationException if verification failed
      */
-    public void verifyIssuance(
+    public JsonNode verifyIssuance(
             IssuerSignedJwtVerificationOpts issuerSignedJwtVerificationOpts
     ) throws VerificationException {
         // Validate the Issuer-signed JWT.
@@ -110,6 +111,9 @@ public class SdJwtVerificationContext {
         // SD-JWT payload, but there is no guarantee they would do so. Therefore, Verifiers cannot reliably
         // depend on that and need to operate as though security-critical claims might be selectively disclosable.
         validateIssuerSignedJwtTimeClaims(disclosedPayload, issuerSignedJwtVerificationOpts);
+
+        // Return fully-disclosed payload
+        return disclosedPayload;
     }
 
     /**
