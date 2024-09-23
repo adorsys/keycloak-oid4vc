@@ -90,18 +90,18 @@ public class SdJwtVerificationContext {
      * - all Disclosures are valid and correspond to a respective digest value in the Issuer-signed JWT
      * (directly in the payload or recursively included in the contents of other Disclosures).
      *
-     * @param issuerSignedJwtVerificationOpts Options to parameterize the Issuer-Signed JWT verification. A verifier
-     *                                        must be specified for validating the Issuer-signed JWT. The caller
-     *                                        is responsible for establishing trust in that associated public keys
-     *                                        belong to the intended issuer.
-     * @return the fully disclosed SdJwt payload
+     * @param issuerVerifyingKey              A verifying key for validating the Issuer-signed JWT. The caller
+     *                                        is responsible for establishing trust in that the key belongs
+     *                                        to the intended issuer.
+     * @param issuerSignedJwtVerificationOpts Options to parameterize the Issuer-Signed JWT verification.
      * @throws VerificationException if verification failed
      */
-    public JsonNode verifyIssuance(
+    public void verifyIssuance(
+            SignatureVerifierContext issuerVerifyingKey,
             IssuerSignedJwtVerificationOpts issuerSignedJwtVerificationOpts
     ) throws VerificationException {
         // Validate the Issuer-signed JWT.
-        validateIssuerSignedJwt(issuerSignedJwtVerificationOpts.getVerifier());
+        validateIssuerSignedJwt(issuerVerifyingKey);
 
         // Validate disclosures.
         var disclosedPayload = validateDisclosuresDigests();
@@ -111,9 +111,6 @@ public class SdJwtVerificationContext {
         // SD-JWT payload, but there is no guarantee they would do so. Therefore, Verifiers cannot reliably
         // depend on that and need to operate as though security-critical claims might be selectively disclosable.
         validateIssuerSignedJwtTimeClaims(disclosedPayload, issuerSignedJwtVerificationOpts);
-
-        // Return fully-disclosed payload
-        return disclosedPayload;
     }
 
     /**
@@ -124,16 +121,17 @@ public class SdJwtVerificationContext {
      * to ensure that if Key Binding is required, the Key Binding JWT is signed by the Holder and valid.
      * </p>
      *
-     * @param issuerSignedJwtVerificationOpts Options to parameterize the Issuer-Signed JWT verification. A verifier
-     *                                        must be specified for validating the Issuer-signed JWT. The caller
-     *                                        is responsible for establishing trust in that associated public keys
-     *                                        belong to the intended issuer.
+     * @param issuerVerifyingKey              A verifying key for validating the Issuer-signed JWT. The caller
+     *                                        is responsible for establishing trust in that the key belongs
+     *                                        to the intended issuer.
+     * @param issuerSignedJwtVerificationOpts Options to parameterize the Issuer-Signed JWT verification.
      * @param keyBindingJwtVerificationOpts   Options to parameterize the Key Binding JWT verification.
      *                                        Must, among others, specify the Verifier's policy whether
      *                                        to check Key Binding.
      * @throws VerificationException if verification failed
      */
     public void verifyPresentation(
+            SignatureVerifierContext issuerVerifyingKey,
             IssuerSignedJwtVerificationOpts issuerSignedJwtVerificationOpts,
             KeyBindingJwtVerificationOpts keyBindingJwtVerificationOpts
     ) throws VerificationException {
@@ -144,7 +142,7 @@ public class SdJwtVerificationContext {
         }
 
         // Upon receiving a Presentation, in addition to the checks in {@link #verifyIssuance}...
-        verifyIssuance(issuerSignedJwtVerificationOpts);
+        verifyIssuance(issuerVerifyingKey, issuerSignedJwtVerificationOpts);
 
         // Validate Key Binding JWT if required
         if (keyBindingJwtVerificationOpts.isKeyBindingRequired()) {

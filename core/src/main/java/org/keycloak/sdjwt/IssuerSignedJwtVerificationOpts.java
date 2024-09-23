@@ -17,66 +17,63 @@
 
 package org.keycloak.sdjwt;
 
-import org.keycloak.crypto.SignatureVerifierContext;
-import org.keycloak.sdjwt.consumer.SdJwtVerifierPolicy;
-
 /**
  * Options for Issuer-signed JWT verification.
  *
  * @author <a href="mailto:Ingrid.Kamga@adorsys.com">Ingrid Kamga</a>
  */
-public class IssuerSignedJwtVerificationOpts extends SdJwtVerifierPolicy.IssuerSignedJwtVerificationPolicy {
-
-    private final SignatureVerifierContext verifier;
+public class IssuerSignedJwtVerificationOpts {
+    private final boolean validateIssuedAtClaim;
+    private final boolean validateExpirationClaim;
+    private final boolean validateNotBeforeClaim;
 
     public IssuerSignedJwtVerificationOpts(
-            SignatureVerifierContext verifier,
             boolean validateIssuedAtClaim,
             boolean validateExpirationClaim,
             boolean validateNotBeforeClaim) {
-        super(validateIssuedAtClaim, validateExpirationClaim, validateNotBeforeClaim);
-        this.verifier = verifier;
+        this.validateIssuedAtClaim = validateIssuedAtClaim;
+        this.validateExpirationClaim = validateExpirationClaim;
+        this.validateNotBeforeClaim = validateNotBeforeClaim;
     }
 
-    public SignatureVerifierContext getVerifier() {
-        return verifier;
+    public boolean mustValidateIssuedAtClaim() {
+        return validateIssuedAtClaim;
     }
 
-    public static Builder builder() {
-        return new Builder();
+    public boolean mustValidateExpirationClaim() {
+        return validateExpirationClaim;
     }
 
-    public static class Builder extends SdJwtVerifierPolicy.IssuerSignedJwtVerificationPolicy.Builder {
+    public boolean mustValidateNotBeforeClaim() {
+        return validateNotBeforeClaim;
+    }
 
-        private SignatureVerifierContext verifier;
+    public static IssuerSignedJwtVerificationOpts.Builder builder() {
+        return new IssuerSignedJwtVerificationOpts.Builder();
+    }
 
-        public Builder withVerifier(SignatureVerifierContext verifier) {
-            this.verifier = verifier;
-            return this;
-        }
+    public static class Builder {
+        private boolean validateIssuedAtClaim;
+        private boolean validateExpirationClaim = true;
+        private boolean validateNotBeforeClaim = true;
 
-        @Override
         public Builder withValidateIssuedAtClaim(boolean validateIssuedAtClaim) {
-            super.withValidateIssuedAtClaim(validateIssuedAtClaim);
+            this.validateIssuedAtClaim = validateIssuedAtClaim;
             return this;
         }
 
-        @Override
         public Builder withValidateExpirationClaim(boolean validateExpirationClaim) {
-            super.withValidateExpirationClaim(validateExpirationClaim);
+            this.validateExpirationClaim = validateExpirationClaim;
             return this;
         }
 
-        @Override
         public Builder withValidateNotBeforeClaim(boolean validateNotBeforeClaim) {
-            super.withValidateNotBeforeClaim(validateNotBeforeClaim);
+            this.validateNotBeforeClaim = validateNotBeforeClaim;
             return this;
         }
 
-        @Override
         public IssuerSignedJwtVerificationOpts build() {
             return new IssuerSignedJwtVerificationOpts(
-                    verifier,
                     validateIssuedAtClaim,
                     validateExpirationClaim,
                     validateNotBeforeClaim

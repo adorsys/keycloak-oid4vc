@@ -62,6 +62,7 @@ public abstract class SdJwtVPVerificationTest {
         SdJwtVP sdJwtVP = SdJwtVP.of(sdJwtVPString);
 
         sdJwtVP.verify(
+                testSettings.issuerVerifierContext,
                 defaultIssuerSignedJwtVerificationOpts().build(),
                 defaultKeyBindingJwtVerificationOpts().build()
         );
@@ -76,6 +77,7 @@ public abstract class SdJwtVPVerificationTest {
             SdJwtVP sdJwtVP = SdJwtVP.of(sdJwtVPString);
 
             sdJwtVP.verify(
+                    testSettings.issuerVerifierContext,
                     defaultIssuerSignedJwtVerificationOpts().build(),
                     defaultKeyBindingJwtVerificationOpts().build()
             );
@@ -96,6 +98,7 @@ public abstract class SdJwtVPVerificationTest {
             SdJwtVP sdJwtVP = SdJwtVP.of(sdJwtVPString);
 
             sdJwtVP.verify(
+                    testSettings.issuerVerifierContext,
                     defaultIssuerSignedJwtVerificationOpts().build(),
                     defaultKeyBindingJwtVerificationOpts().build()
             );
@@ -108,6 +111,7 @@ public abstract class SdJwtVPVerificationTest {
         SdJwtVP sdJwtVP = SdJwtVP.of(sdJwtVPString);
 
         sdJwtVP.verify(
+                testSettings.issuerVerifierContext,
                 defaultIssuerSignedJwtVerificationOpts().build(),
                 defaultKeyBindingJwtVerificationOpts()
                         .withKeyBindingRequired(false)
@@ -324,6 +328,7 @@ public abstract class SdJwtVPVerificationTest {
         var exception = assertThrows(
                 UnsupportedOperationException.class,
                 () -> sdJwtVP.verify(
+                        testSettings.issuerVerifierContext,
                         defaultIssuerSignedJwtVerificationOpts().build(),
                         defaultKeyBindingJwtVerificationOpts().build()
                 )
@@ -366,6 +371,7 @@ public abstract class SdJwtVPVerificationTest {
         var exception = assertThrows(
                 VerificationException.class,
                 () -> sdJwtVP.verify(
+                        testSettings.issuerVerifierContext,
                         defaultIssuerSignedJwtVerificationOpts().build(),
                         keyBindingJwtVerificationOpts
                 )
@@ -402,6 +408,7 @@ public abstract class SdJwtVPVerificationTest {
         var exception = assertThrows(
                 VerificationException.class,
                 () -> sdJwtVP.verify(
+                        testSettings.issuerVerifierContext,
                         defaultIssuerSignedJwtVerificationOpts().build(),
                         keyBindingJwtVerificationOpts
                 )
@@ -415,7 +422,6 @@ public abstract class SdJwtVPVerificationTest {
 
     private IssuerSignedJwtVerificationOpts.Builder defaultIssuerSignedJwtVerificationOpts() {
         return IssuerSignedJwtVerificationOpts.builder()
-                .withVerifier(testSettings.issuerVerifierContext)
                 .withValidateIssuedAtClaim(false)
                 .withValidateNotBeforeClaim(false);
     }

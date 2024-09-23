@@ -18,7 +18,7 @@
 package org.keycloak.sdjwt.consumer;
 
 /**
- * A simple presentation definition to the kind of credential expected.
+ * A simple presentation definition of the kind of credential expected.
  *
  * @author <a href="mailto:Ingrid.Kamga@adorsys.com">Ingrid Kamga</a>
  */
