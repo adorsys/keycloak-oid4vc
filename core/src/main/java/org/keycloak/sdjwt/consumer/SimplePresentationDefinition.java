@@ -17,11 +17,85 @@
 
 package org.keycloak.sdjwt.consumer;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import org.keycloak.common.VerificationException;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.regex.Pattern;
+
 /**
  * A simple presentation definition of the kind of credential expected.
+ * <p>
+ * The credential's type and required claims are configured using regex patterns.
+ * The values of these fields are JSON-ified prior to matching the regex pattern.
+ * </p>
  *
  * @author <a href="mailto:Ingrid.Kamga@adorsys.com">Ingrid Kamga</a>
  */
-public class SimplePresentationDefinition {
+public class SimplePresentationDefinition implements PresentationRequirements {
 
+    private final Map<String, Pattern> requirements;
+
+    public SimplePresentationDefinition(Map<String, Pattern> requirements) {
+        this.requirements = requirements;
+    }
+
+    /**
+     * Checks if the provided JSON payload satisfies all required field patterns.
+     * <p>
+     * For each required field, the corresponding JSON field value in the disclosed Issuer-signed JWT's payload
+     * is matched against the associated regex pattern. If any required field is missing or does not match the
+     * pattern, a {@link VerificationException} is thrown.
+     * </p>
+     *
+     * @param disclosedPayload The fully disclosed Issuer-signed JWT of the presented token.
+     * @throws VerificationException If any required field is missing or fails the pattern check.
+     */
+    @Override
+    public void checkIfSatisfiedBy(JsonNode disclosedPayload) throws VerificationException {
+        for (var requirement : requirements.entrySet()) {
+            String field = requirement.getKey();
+            Pattern pattern = requirement.getValue();
+
+            // Retrieve the value of the required field from the payload
+            var presented = disclosedPayload.get(field);
+
+            // Check if the required field is present in the payload
+            if (presented == null || presented.isNull()) {
+                throw new VerificationException(
+                        String.format("A required field was not presented: `%s`", field)
+                );
+            }
+
+            // Extract the JSON representation of the field's value
+            var json = presented.toString();
+
+            // Match the field value against the configured regex pattern
+            var matcher = pattern.matcher(json);
+            if (!matcher.matches()) {
+                throw new VerificationException(String.format(
+                        "Pattern matching failed for required field: `%s`. Expected pattern: /%s/, but got: %s",
+                        field, pattern.pattern(), json
+                ));
+            }
+        }
+    }
+
+    public static Builder builder() {
+        return new Builder();
+    }
+
+    public static class Builder {
+        private final Map<String, Pattern> requirements = new HashMap<>();
+
+        public Builder addClaimRequirement(String field, String regexPattern) {
+            this.requirements.put(field, Pattern.compile(regexPattern));
+            return this;
+        }
+
+        public SimplePresentationDefinition build() {
+            return new SimplePresentationDefinition(requirements);
+        }
+    }
 }
