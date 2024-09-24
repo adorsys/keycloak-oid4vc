@@ -22,10 +22,12 @@ import org.keycloak.common.VerificationException;
 
 /**
  * Presentation requirements to constrain the kind of credential expected.
- * <p></p>
+ *
+ * <p>
  * This mirrors the idea of the expressive
  * <a href="https://identity.foundation/presentation-exchange/#presentation-definition">DIF Presentation Definition</a>,
  * while enabling simpler alternatives.
+ * </p>
  *
  * @author <a href="mailto:Ingrid.Kamga@adorsys.com">Ingrid Kamga</a>
  */

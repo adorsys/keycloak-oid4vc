@@ -17,14 +17,55 @@
 
 package org.keycloak.sdjwt.consumer;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import org.keycloak.common.VerificationException;
+import org.keycloak.crypto.SignatureVerifierContext;
+import org.keycloak.sdjwt.IssuerSignedJwtVerificationOpts;
+import org.keycloak.sdjwt.vp.KeyBindingJwtVerificationOpts;
+import org.keycloak.sdjwt.vp.SdJwtVP;
+
 /**
  * A component for consuming (verifying) SD-JWT presentations.
- * <p></p>
+ *
+ * <p>
  * The purpose is to streamline SD-JWT VP verification beyond signature
  * and disclosure checks of {@link org.keycloak.sdjwt.SdJwtVerificationContext}
+ * </p>
  *
  * @author <a href="mailto:Ingrid.Kamga@adorsys.com">Ingrid Kamga</a>
  */
 public class SdJwtPresentationConsumer {
 
+    /**
+     * Verify SD-JWT presentation against specific requirements.
+     *
+     * @param sdJwtVP                         the presentation to verify
+     * @param presentationRequirements        the requirements on presented claims
+     * @param trustedSdJwtIssuer              a trusted issuer for the verification
+     * @param issuerSignedJwtVerificationOpts policy for Issuer-signed JWT verification
+     * @param keyBindingJwtVerificationOpts   policy for Key-binding JWT verification
+     * @throws VerificationException if the verification fails for some reason
+     */
+    public void verifySdJwtPresentation(
+            SdJwtVP sdJwtVP,
+            PresentationRequirements presentationRequirements,
+            TrustedSdJwtIssuer trustedSdJwtIssuer,
+            IssuerSignedJwtVerificationOpts issuerSignedJwtVerificationOpts,
+            KeyBindingJwtVerificationOpts keyBindingJwtVerificationOpts
+    ) throws VerificationException {
+        // Retrieve verifying key for Issuer-signed JWT
+        SignatureVerifierContext issuerVerifyingKey = trustedSdJwtIssuer
+                .resolveIssuerVerifyingKey(sdJwtVP.getIssuerSignedJWT());
+
+        // Verify the SD-JWT token cryptographically
+        // Capture returned Issuer-signed JWT's payload with presented claims disclosed
+        JsonNode disclosedPayload = sdJwtVP.verify(
+                issuerVerifyingKey,
+                issuerSignedJwtVerificationOpts,
+                keyBindingJwtVerificationOpts
+        );
+
+        // Check if presented token meets requirements
+        presentationRequirements.checkIfSatisfiedBy(disclosedPayload);
+    }
 }

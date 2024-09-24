@@ -217,19 +217,21 @@ public class SdJwtVP {
      * @param keyBindingJwtVerificationOpts   Options to parameterize the Key Binding JWT verification.
      *                                        Must, among others, specify the Verifier's policy whether
      *                                        to check Key Binding.
+     * @return the fully disclosed Issuer-signed JWT's payload
      * @throws VerificationException if verification failed
      */
-    public void verify(
+    public JsonNode verify(
             SignatureVerifierContext issuerVerifyingKey,
             IssuerSignedJwtVerificationOpts issuerSignedJwtVerificationOpts,
             KeyBindingJwtVerificationOpts keyBindingJwtVerificationOpts
     ) throws VerificationException {
-        new SdJwtVerificationContext(sdJwtVpString, issuerSignedJWT, disclosures, keyBindingJWT.orElse(null))
-                .verifyPresentation(
-                        issuerVerifyingKey,
-                        issuerSignedJwtVerificationOpts,
-                        keyBindingJwtVerificationOpts
-                );
+        var sdJwtVerificationContext = new SdJwtVerificationContext(
+                sdJwtVpString, issuerSignedJWT, disclosures, keyBindingJWT.orElse(null)
+        );
+
+        return sdJwtVerificationContext.verifyPresentation(
+                issuerVerifyingKey, issuerSignedJwtVerificationOpts, keyBindingJwtVerificationOpts
+        );
     }
 
     // Recursively searches the node with the given value.

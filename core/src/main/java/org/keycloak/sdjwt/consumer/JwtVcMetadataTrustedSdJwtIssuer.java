@@ -21,21 +21,35 @@ import org.keycloak.common.VerificationException;
 import org.keycloak.crypto.SignatureVerifierContext;
 import org.keycloak.sdjwt.IssuerSignedJWT;
 
+import java.util.regex.Pattern;
+
 /**
  * A trusted Issuer for running SD-JWT VP verification.
  *
+ * <p>
+ * This implementation targets issuers exposing verifying keys on a normalized JWT VC Issuer metadata endpoint.
+ * </p>
+ *
  * @author <a href="mailto:Ingrid.Kamga@adorsys.com">Ingrid Kamga</a>
+ * @see <a href="https://datatracker.ietf.org/doc/html/draft-ietf-oauth-sd-jwt-vc-05#name-issuer-signed-jwt-verificat">
+ * JWT VC Issuer Metadata
+ * </a>
  */
-public interface TrustedSdJwtIssuer {
+public class JwtVcMetadataTrustedSdJwtIssuer implements TrustedSdJwtIssuer {
+
+    private final Pattern issuerUriPattern;
 
     /**
-     * Resolves a verifying key to validate the Issuer-signed JWT.
-     * The method ensures that the resolved public key can be trusted.
-     *
-     * @param issuerSignedJWT The Issuer-signed JWT to validate.
-     * @return a trusted verifying key
-     * @throws VerificationException if no trustworthy verifying key could be resolved
+     * Constructor
+     * @param issuerUriPattern a regex pattern for trusted issuers
      */
-    SignatureVerifierContext resolveIssuerVerifyingKey(IssuerSignedJWT issuerSignedJWT)
-            throws VerificationException;
+    public JwtVcMetadataTrustedSdJwtIssuer(String issuerUriPattern) {
+        this.issuerUriPattern = Pattern.compile(issuerUriPattern);
+    }
+
+    @Override
+    public SignatureVerifierContext resolveIssuerVerifyingKey(IssuerSignedJWT issuerSignedJWT)
+            throws VerificationException {
+        throw new UnsupportedOperationException();
+    }
 }

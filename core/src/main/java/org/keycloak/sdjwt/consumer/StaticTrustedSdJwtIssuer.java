@@ -26,16 +26,16 @@ import org.keycloak.sdjwt.IssuerSignedJWT;
  *
  * @author <a href="mailto:Ingrid.Kamga@adorsys.com">Ingrid Kamga</a>
  */
-public interface TrustedSdJwtIssuer {
+public class StaticTrustedSdJwtIssuer implements TrustedSdJwtIssuer {
 
-    /**
-     * Resolves a verifying key to validate the Issuer-signed JWT.
-     * The method ensures that the resolved public key can be trusted.
-     *
-     * @param issuerSignedJWT The Issuer-signed JWT to validate.
-     * @return a trusted verifying key
-     * @throws VerificationException if no trustworthy verifying key could be resolved
-     */
-    SignatureVerifierContext resolveIssuerVerifyingKey(IssuerSignedJWT issuerSignedJWT)
-            throws VerificationException;
+    private final SignatureVerifierContext signatureVerifierContext;
+
+    public StaticTrustedSdJwtIssuer(SignatureVerifierContext signatureVerifierContext) {
+        this.signatureVerifierContext = signatureVerifierContext;
+    }
+
+    @Override
+    public SignatureVerifierContext resolveIssuerVerifyingKey(IssuerSignedJWT issuerSignedJWT) {
+        return signatureVerifierContext;
+    }
 }

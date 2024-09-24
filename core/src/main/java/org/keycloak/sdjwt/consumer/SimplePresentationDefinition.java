@@ -26,6 +26,7 @@ import java.util.regex.Pattern;
 
 /**
  * A simple presentation definition of the kind of credential expected.
+ *
  * <p>
  * The credential's type and required claims are configured using regex patterns.
  * The values of these fields are JSON-ified prior to matching the regex pattern.
@@ -43,6 +44,7 @@ public class SimplePresentationDefinition implements PresentationRequirements {
 
     /**
      * Checks if the provided JSON payload satisfies all required field patterns.
+     *
      * <p>
      * For each required field, the corresponding JSON field value in the disclosed Issuer-signed JWT's payload
      * is matched against the associated regex pattern. If any required field is missing or does not match the

@@ -94,9 +94,10 @@ public class SdJwtVerificationContext {
      *                                        is responsible for establishing trust in that the key belongs
      *                                        to the intended issuer.
      * @param issuerSignedJwtVerificationOpts Options to parameterize the Issuer-Signed JWT verification.
+     * @return the fully disclosed Issuer-signed JWT's payload
      * @throws VerificationException if verification failed
      */
-    public void verifyIssuance(
+    public JsonNode verifyIssuance(
             SignatureVerifierContext issuerVerifyingKey,
             IssuerSignedJwtVerificationOpts issuerSignedJwtVerificationOpts
     ) throws VerificationException {
@@ -111,6 +112,9 @@ public class SdJwtVerificationContext {
         // SD-JWT payload, but there is no guarantee they would do so. Therefore, Verifiers cannot reliably
         // depend on that and need to operate as though security-critical claims might be selectively disclosable.
         validateIssuerSignedJwtTimeClaims(disclosedPayload, issuerSignedJwtVerificationOpts);
+
+        // Return disclosed payload
+        return disclosedPayload;
     }
 
     /**
@@ -128,9 +132,10 @@ public class SdJwtVerificationContext {
      * @param keyBindingJwtVerificationOpts   Options to parameterize the Key Binding JWT verification.
      *                                        Must, among others, specify the Verifier's policy whether
      *                                        to check Key Binding.
+     * @return the fully disclosed Issuer-signed JWT's payload
      * @throws VerificationException if verification failed
      */
-    public void verifyPresentation(
+    public JsonNode verifyPresentation(
             SignatureVerifierContext issuerVerifyingKey,
             IssuerSignedJwtVerificationOpts issuerSignedJwtVerificationOpts,
             KeyBindingJwtVerificationOpts keyBindingJwtVerificationOpts
@@ -142,12 +147,15 @@ public class SdJwtVerificationContext {
         }
 
         // Upon receiving a Presentation, in addition to the checks in {@link #verifyIssuance}...
-        verifyIssuance(issuerVerifyingKey, issuerSignedJwtVerificationOpts);
+        var disclosedPayload = verifyIssuance(issuerVerifyingKey, issuerSignedJwtVerificationOpts);
 
         // Validate Key Binding JWT if required
         if (keyBindingJwtVerificationOpts.isKeyBindingRequired()) {
             validateKeyBindingJwt(keyBindingJwtVerificationOpts);
         }
+
+        // Return Issuer-signed JWT's disclosed payload
+        return disclosedPayload;
     }
 
     /**
