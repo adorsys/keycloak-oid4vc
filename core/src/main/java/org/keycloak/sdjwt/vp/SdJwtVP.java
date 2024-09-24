@@ -210,8 +210,8 @@ public class SdJwtVP {
     /**
      * Verifies SD-JWT presentation.
      *
-     * @param issuerVerifyingKey              A verifying key for validating the Issuer-signed JWT. The caller
-     *                                        is responsible for establishing trust in that the key belongs
+     * @param issuerVerifyingKeys             Verifying keys for validating the Issuer-signed JWT. The caller
+     *                                        is responsible for establishing trust in that the keys belong
      *                                        to the intended issuer.
      * @param issuerSignedJwtVerificationOpts Options to parameterize the Issuer-Signed JWT verification.
      * @param keyBindingJwtVerificationOpts   Options to parameterize the Key Binding JWT verification.
@@ -221,7 +221,7 @@ public class SdJwtVP {
      * @throws VerificationException if verification failed
      */
     public JsonNode verify(
-            SignatureVerifierContext issuerVerifyingKey,
+            List<SignatureVerifierContext> issuerVerifyingKeys,
             IssuerSignedJwtVerificationOpts issuerSignedJwtVerificationOpts,
             KeyBindingJwtVerificationOpts keyBindingJwtVerificationOpts
     ) throws VerificationException {
@@ -230,7 +230,7 @@ public class SdJwtVP {
         );
 
         return sdJwtVerificationContext.verifyPresentation(
-                issuerVerifyingKey, issuerSignedJwtVerificationOpts, keyBindingJwtVerificationOpts
+                issuerVerifyingKeys, issuerSignedJwtVerificationOpts, keyBindingJwtVerificationOpts
         );
     }
 

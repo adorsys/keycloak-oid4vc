@@ -15,28 +15,12 @@
  * limitations under the License.
  */
 
-package org.keycloak.sdjwt.consumer;
+package org.keycloak.crypto.elytron.test.sdjwt;
 
-import org.keycloak.crypto.SignatureVerifierContext;
-import org.keycloak.sdjwt.IssuerSignedJWT;
-
-import java.util.List;
+import org.keycloak.sdjwt.consumer.JwtVcMetadataTrustedSdJwtIssuerTest;
 
 /**
- * A trusted Issuer for running SD-JWT VP verification.
- *
  * @author <a href="mailto:Ingrid.Kamga@adorsys.com">Ingrid Kamga</a>
  */
-public class StaticTrustedSdJwtIssuer implements TrustedSdJwtIssuer {
-
-    private final List<SignatureVerifierContext> signatureVerifierContexts;
-
-    public StaticTrustedSdJwtIssuer(List<SignatureVerifierContext> signatureVerifierContexts) {
-        this.signatureVerifierContexts = signatureVerifierContexts;
-    }
-
-    @Override
-    public List<SignatureVerifierContext> resolveIssuerVerifyingKeys(IssuerSignedJWT issuerSignedJWT) {
-        return signatureVerifierContexts;
-    }
+public class ElytronCryptoJwtVcMetadataTrustedSdJwtIssuerTest extends JwtVcMetadataTrustedSdJwtIssuerTest {
 }

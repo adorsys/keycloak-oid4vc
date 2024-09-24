@@ -19,7 +19,6 @@ package org.keycloak.sdjwt.consumer;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import org.keycloak.common.VerificationException;
-import org.keycloak.crypto.SignatureVerifierContext;
 import org.keycloak.sdjwt.IssuerSignedJwtVerificationOpts;
 import org.keycloak.sdjwt.vp.KeyBindingJwtVerificationOpts;
 import org.keycloak.sdjwt.vp.SdJwtVP;
@@ -54,13 +53,14 @@ public class SdJwtPresentationConsumer {
             KeyBindingJwtVerificationOpts keyBindingJwtVerificationOpts
     ) throws VerificationException {
         // Retrieve verifying key for Issuer-signed JWT
-        SignatureVerifierContext issuerVerifyingKey = trustedSdJwtIssuer
-                .resolveIssuerVerifyingKey(sdJwtVP.getIssuerSignedJWT());
+        // TODO: Combine keys from multiple trusted issuers
+        var issuerVerifyingKeys = trustedSdJwtIssuer
+                .resolveIssuerVerifyingKeys(sdJwtVP.getIssuerSignedJWT());
 
         // Verify the SD-JWT token cryptographically
         // Capture returned Issuer-signed JWT's payload with presented claims disclosed
         JsonNode disclosedPayload = sdJwtVP.verify(
-                issuerVerifyingKey,
+                issuerVerifyingKeys,
                 issuerSignedJwtVerificationOpts,
                 keyBindingJwtVerificationOpts
         );

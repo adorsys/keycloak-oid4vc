@@ -23,6 +23,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.ClassRule;
 import org.junit.Test;
 import org.keycloak.common.VerificationException;
+import org.keycloak.crypto.SignatureVerifierContext;
 import org.keycloak.rule.CryptoInitRule;
 import org.keycloak.sdjwt.IssuerSignedJwtVerificationOpts;
 import org.keycloak.sdjwt.SdJwt;
@@ -62,7 +63,7 @@ public abstract class SdJwtVPVerificationTest {
         SdJwtVP sdJwtVP = SdJwtVP.of(sdJwtVPString);
 
         sdJwtVP.verify(
-                testSettings.issuerVerifierContext,
+                defaultIssuerVerifyingKeys(),
                 defaultIssuerSignedJwtVerificationOpts().build(),
                 defaultKeyBindingJwtVerificationOpts().build()
         );
@@ -77,7 +78,7 @@ public abstract class SdJwtVPVerificationTest {
             SdJwtVP sdJwtVP = SdJwtVP.of(sdJwtVPString);
 
             sdJwtVP.verify(
-                    testSettings.issuerVerifierContext,
+                    defaultIssuerVerifyingKeys(),
                     defaultIssuerSignedJwtVerificationOpts().build(),
                     defaultKeyBindingJwtVerificationOpts().build()
             );
@@ -98,7 +99,7 @@ public abstract class SdJwtVPVerificationTest {
             SdJwtVP sdJwtVP = SdJwtVP.of(sdJwtVPString);
 
             sdJwtVP.verify(
-                    testSettings.issuerVerifierContext,
+                    defaultIssuerVerifyingKeys(),
                     defaultIssuerSignedJwtVerificationOpts().build(),
                     defaultKeyBindingJwtVerificationOpts().build()
             );
@@ -111,7 +112,7 @@ public abstract class SdJwtVPVerificationTest {
         SdJwtVP sdJwtVP = SdJwtVP.of(sdJwtVPString);
 
         sdJwtVP.verify(
-                testSettings.issuerVerifierContext,
+                defaultIssuerVerifyingKeys(),
                 defaultIssuerSignedJwtVerificationOpts().build(),
                 defaultKeyBindingJwtVerificationOpts()
                         .withKeyBindingRequired(false)
@@ -328,7 +329,7 @@ public abstract class SdJwtVPVerificationTest {
         var exception = assertThrows(
                 UnsupportedOperationException.class,
                 () -> sdJwtVP.verify(
-                        testSettings.issuerVerifierContext,
+                        defaultIssuerVerifyingKeys(),
                         defaultIssuerSignedJwtVerificationOpts().build(),
                         defaultKeyBindingJwtVerificationOpts().build()
                 )
@@ -343,8 +344,8 @@ public abstract class SdJwtVPVerificationTest {
                 // The cnf/jwk object has an unrecognized key type
                 "sdjwt/s20.8-sdjwt+kb--cnf-jwk-is-malformed.txt",
                 defaultKeyBindingJwtVerificationOpts().build(),
-                "Malformed or unsupported cnf/jwk claim",
-                null
+                "Could not process cnf/jwk",
+                "Malformed or unsupported JWK"
         );
     }
 
@@ -354,8 +355,8 @@ public abstract class SdJwtVPVerificationTest {
                 // HMAC cnf/jwk parsing is not supported
                 "sdjwt/s20.8-sdjwt+kb--cnf-hmac.txt",
                 defaultKeyBindingJwtVerificationOpts().build(),
-                "Malformed or unsupported cnf/jwk claim",
-                null
+                "Could not process cnf/jwk",
+                "Malformed or unsupported JWK"
         );
     }
 
@@ -371,7 +372,7 @@ public abstract class SdJwtVPVerificationTest {
         var exception = assertThrows(
                 VerificationException.class,
                 () -> sdJwtVP.verify(
-                        testSettings.issuerVerifierContext,
+                        defaultIssuerVerifyingKeys(),
                         defaultIssuerSignedJwtVerificationOpts().build(),
                         keyBindingJwtVerificationOpts
                 )
@@ -408,7 +409,7 @@ public abstract class SdJwtVPVerificationTest {
         var exception = assertThrows(
                 VerificationException.class,
                 () -> sdJwtVP.verify(
-                        testSettings.issuerVerifierContext,
+                        defaultIssuerVerifyingKeys(),
                         defaultIssuerSignedJwtVerificationOpts().build(),
                         keyBindingJwtVerificationOpts
                 )
@@ -418,6 +419,10 @@ public abstract class SdJwtVPVerificationTest {
         if (exceptionCauseMessage != null) {
             assertEquals(exceptionCauseMessage, exception.getCause().getMessage());
         }
+    }
+
+    private List<SignatureVerifierContext> defaultIssuerVerifyingKeys() {
+        return List.of(testSettings.issuerVerifierContext);
     }
 
     private IssuerSignedJwtVerificationOpts.Builder defaultIssuerSignedJwtVerificationOpts() {

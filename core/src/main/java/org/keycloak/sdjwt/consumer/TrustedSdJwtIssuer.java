@@ -21,6 +21,8 @@ import org.keycloak.common.VerificationException;
 import org.keycloak.crypto.SignatureVerifierContext;
 import org.keycloak.sdjwt.IssuerSignedJWT;
 
+import java.util.List;
+
 /**
  * A trusted Issuer for running SD-JWT VP verification.
  *
@@ -29,13 +31,13 @@ import org.keycloak.sdjwt.IssuerSignedJWT;
 public interface TrustedSdJwtIssuer {
 
     /**
-     * Resolves a verifying key to validate the Issuer-signed JWT.
-     * The method ensures that the resolved public key can be trusted.
+     * Resolves potential verifying keys to validate the Issuer-signed JWT.
+     * The method ensures that the resolved public keys can be trusted.
      *
      * @param issuerSignedJWT The Issuer-signed JWT to validate.
-     * @return a trusted verifying key
+     * @return trusted verifying keys
      * @throws VerificationException if no trustworthy verifying key could be resolved
      */
-    SignatureVerifierContext resolveIssuerVerifyingKey(IssuerSignedJWT issuerSignedJWT)
+    List<SignatureVerifierContext> resolveIssuerVerifyingKeys(IssuerSignedJWT issuerSignedJWT)
             throws VerificationException;
 }

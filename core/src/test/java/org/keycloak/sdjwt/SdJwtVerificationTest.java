@@ -23,13 +23,13 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.ClassRule;
 import org.junit.Test;
 import org.keycloak.common.VerificationException;
+import org.keycloak.crypto.SignatureVerifierContext;
 import org.keycloak.rule.CryptoInitRule;
 
 import java.time.Instant;
 import java.util.List;
 import java.util.Set;
 
-import static org.hamcrest.CoreMatchers.endsWith;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
@@ -62,7 +62,7 @@ public abstract class SdJwtVerificationTest {
                     .build();
 
             sdJwt.verify(
-                    testSettings.issuerVerifierContext,
+                    defaultIssuerVerifyingKeys(),
                     defaultIssuerSignedJwtVerificationOpts().build()
             );
         }
@@ -73,12 +73,12 @@ public abstract class SdJwtVerificationTest {
         var sdJwt = exampleFlatSdJwtV1().build();
 
         sdJwt.verify(
-                testSettings.issuerVerifierContext,
+                defaultIssuerVerifyingKeys(),
                 defaultIssuerSignedJwtVerificationOpts().build()
         );
 
         sdJwt.verify(
-                testSettings.issuerVerifierContext,
+                defaultIssuerVerifyingKeys(),
                 defaultIssuerSignedJwtVerificationOpts().build()
         );
     }
@@ -88,7 +88,7 @@ public abstract class SdJwtVerificationTest {
         var sdJwt = exampleSdJwtWithUndisclosedNestedFieldsV1().build();
 
         sdJwt.verify(
-                testSettings.issuerVerifierContext,
+                defaultIssuerVerifyingKeys(),
                 defaultIssuerSignedJwtVerificationOpts().build()
         );
     }
@@ -98,7 +98,7 @@ public abstract class SdJwtVerificationTest {
         var sdJwt = exampleSdJwtWithUndisclosedArrayElementsV1().build();
 
         sdJwt.verify(
-                testSettings.issuerVerifierContext,
+                defaultIssuerVerifyingKeys(),
                 defaultIssuerSignedJwtVerificationOpts().build()
         );
     }
@@ -108,7 +108,7 @@ public abstract class SdJwtVerificationTest {
         var sdJwt = exampleRecursiveSdJwtV1().build();
 
         sdJwt.verify(
-                testSettings.issuerVerifierContext,
+                defaultIssuerVerifyingKeys(),
                 defaultIssuerSignedJwtVerificationOpts().build()
         );
     }
@@ -122,7 +122,7 @@ public abstract class SdJwtVerificationTest {
         var exception = assertThrows(
                 VerificationException.class,
                 () -> sdJwt.verify(
-                        testSettings.issuerVerifierContext,
+                        defaultIssuerVerifyingKeys(),
                         defaultIssuerSignedJwtVerificationOpts().build()
                 )
         );
@@ -136,13 +136,12 @@ public abstract class SdJwtVerificationTest {
         var exception = assertThrows(
                 VerificationException.class,
                 () -> sdJwt.verify(
-                        testSettings.holderVerifierContext, // wrong verifier
+                        List.of(testSettings.holderVerifierContext), // wrong verifier
                         defaultIssuerSignedJwtVerificationOpts().build()
                 )
         );
 
-        assertThat(exception.getMessage(), is("Invalid Issuer-Signed JWT"));
-        assertThat(exception.getCause().getMessage(), endsWith("Invalid jws signature"));
+        assertThat(exception.getMessage(), is("Invalid Issuer-Signed JWT: Signature could not be verified"));
     }
 
     @Test
@@ -165,7 +164,7 @@ public abstract class SdJwtVerificationTest {
             var exception = assertThrows(
                     VerificationException.class,
                     () -> sdJwt.verify(
-                            testSettings.issuerVerifierContext,
+                            defaultIssuerVerifyingKeys(),
                             defaultIssuerSignedJwtVerificationOpts()
                                     .withValidateExpirationClaim(true)
                                     .build()
@@ -199,7 +198,7 @@ public abstract class SdJwtVerificationTest {
             var exception = assertThrows(
                     VerificationException.class,
                     () -> sdJwt.verify(
-                            testSettings.issuerVerifierContext,
+                            defaultIssuerVerifyingKeys(),
                             defaultIssuerSignedJwtVerificationOpts()
                                     .withValidateExpirationClaim(true)
                                     .build()
@@ -231,7 +230,7 @@ public abstract class SdJwtVerificationTest {
             var exception = assertThrows(
                     VerificationException.class,
                     () -> sdJwt.verify(
-                            testSettings.issuerVerifierContext,
+                            defaultIssuerVerifyingKeys(),
                             defaultIssuerSignedJwtVerificationOpts()
                                     .withValidateIssuedAtClaim(true)
                                     .build()
@@ -263,7 +262,7 @@ public abstract class SdJwtVerificationTest {
             var exception = assertThrows(
                     VerificationException.class,
                     () -> sdJwt.verify(
-                            testSettings.issuerVerifierContext,
+                            defaultIssuerVerifyingKeys(),
                             defaultIssuerSignedJwtVerificationOpts()
                                     .withValidateNotBeforeClaim(true)
                                     .build()
@@ -286,7 +285,7 @@ public abstract class SdJwtVerificationTest {
         var exception = assertThrows(
                 VerificationException.class,
                 () -> sdJwt.verify(
-                        testSettings.issuerVerifierContext,
+                        defaultIssuerVerifyingKeys(),
                         defaultIssuerSignedJwtVerificationOpts().build()
                 )
         );
@@ -307,7 +306,7 @@ public abstract class SdJwtVerificationTest {
             var exception = assertThrows(
                     VerificationException.class,
                     () -> sdJwt.verify(
-                            testSettings.issuerVerifierContext,
+                            defaultIssuerVerifyingKeys(),
                             defaultIssuerSignedJwtVerificationOpts().build()
                     )
             );
@@ -330,7 +329,7 @@ public abstract class SdJwtVerificationTest {
         var exception = assertThrows(
                 VerificationException.class,
                 () -> sdJwt.verify(
-                        testSettings.issuerVerifierContext,
+                        defaultIssuerVerifyingKeys(),
                         defaultIssuerSignedJwtVerificationOpts().build()
                 )
         );
@@ -354,12 +353,16 @@ public abstract class SdJwtVerificationTest {
         var exception = assertThrows(
                 VerificationException.class,
                 () -> sdJwt.verify(
-                        testSettings.issuerVerifierContext,
+                        defaultIssuerVerifyingKeys(),
                         defaultIssuerSignedJwtVerificationOpts().build()
                 )
         );
 
         assertEquals("A salt value was reused: " + salt, exception.getMessage());
+    }
+
+    private List<SignatureVerifierContext> defaultIssuerVerifyingKeys() {
+        return List.of(testSettings.issuerVerifierContext);
     }
 
     private IssuerSignedJwtVerificationOpts.Builder defaultIssuerSignedJwtVerificationOpts() {

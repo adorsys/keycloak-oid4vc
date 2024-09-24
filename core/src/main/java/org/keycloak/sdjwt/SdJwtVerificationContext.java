@@ -21,15 +21,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.keycloak.common.VerificationException;
-import org.keycloak.crypto.AsymmetricSignatureVerifierContext;
-import org.keycloak.crypto.ECDSASignatureVerifierContext;
-import org.keycloak.crypto.KeyType;
-import org.keycloak.crypto.KeyWrapper;
 import org.keycloak.crypto.SignatureVerifierContext;
-import org.keycloak.jose.jwk.JWK;
 import org.keycloak.sdjwt.vp.KeyBindingJWT;
 import org.keycloak.sdjwt.vp.KeyBindingJwtVerificationOpts;
-import org.keycloak.util.JWKSUtils;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -90,19 +84,19 @@ public class SdJwtVerificationContext {
      * - all Disclosures are valid and correspond to a respective digest value in the Issuer-signed JWT
      * (directly in the payload or recursively included in the contents of other Disclosures).
      *
-     * @param issuerVerifyingKey              A verifying key for validating the Issuer-signed JWT. The caller
-     *                                        is responsible for establishing trust in that the key belongs
+     * @param issuerVerifyingKeys             Verifying keys for validating the Issuer-signed JWT. The caller
+     *                                        is responsible for establishing trust in that the keys belong
      *                                        to the intended issuer.
      * @param issuerSignedJwtVerificationOpts Options to parameterize the Issuer-Signed JWT verification.
      * @return the fully disclosed Issuer-signed JWT's payload
      * @throws VerificationException if verification failed
      */
     public JsonNode verifyIssuance(
-            SignatureVerifierContext issuerVerifyingKey,
+            List<SignatureVerifierContext> issuerVerifyingKeys,
             IssuerSignedJwtVerificationOpts issuerSignedJwtVerificationOpts
     ) throws VerificationException {
         // Validate the Issuer-signed JWT.
-        validateIssuerSignedJwt(issuerVerifyingKey);
+        validateIssuerSignedJwt(issuerVerifyingKeys);
 
         // Validate disclosures.
         var disclosedPayload = validateDisclosuresDigests();
@@ -125,8 +119,8 @@ public class SdJwtVerificationContext {
      * to ensure that if Key Binding is required, the Key Binding JWT is signed by the Holder and valid.
      * </p>
      *
-     * @param issuerVerifyingKey              A verifying key for validating the Issuer-signed JWT. The caller
-     *                                        is responsible for establishing trust in that the key belongs
+     * @param issuerVerifyingKeys             Verifying keys for validating the Issuer-signed JWT. The caller
+     *                                        is responsible for establishing trust in that the keys belong
      *                                        to the intended issuer.
      * @param issuerSignedJwtVerificationOpts Options to parameterize the Issuer-Signed JWT verification.
      * @param keyBindingJwtVerificationOpts   Options to parameterize the Key Binding JWT verification.
@@ -136,7 +130,7 @@ public class SdJwtVerificationContext {
      * @throws VerificationException if verification failed
      */
     public JsonNode verifyPresentation(
-            SignatureVerifierContext issuerVerifyingKey,
+            List<SignatureVerifierContext> issuerVerifyingKeys,
             IssuerSignedJwtVerificationOpts issuerSignedJwtVerificationOpts,
             KeyBindingJwtVerificationOpts keyBindingJwtVerificationOpts
     ) throws VerificationException {
@@ -147,7 +141,7 @@ public class SdJwtVerificationContext {
         }
 
         // Upon receiving a Presentation, in addition to the checks in {@link #verifyIssuance}...
-        var disclosedPayload = verifyIssuance(issuerVerifyingKey, issuerSignedJwtVerificationOpts);
+        var disclosedPayload = verifyIssuance(issuerVerifyingKeys, issuerSignedJwtVerificationOpts);
 
         // Validate Key Binding JWT if required
         if (keyBindingJwtVerificationOpts.isKeyBindingRequired()) {
@@ -168,16 +162,23 @@ public class SdJwtVerificationContext {
      *
      * @throws VerificationException if verification failed
      */
-    private void validateIssuerSignedJwt(SignatureVerifierContext verifier) throws VerificationException {
+    private void validateIssuerSignedJwt(
+            List<SignatureVerifierContext> verifiers
+    ) throws VerificationException {
         // Check that the _sd_alg claim value is understood and the hash algorithm is deemed secure
         issuerSignedJwt.verifySdHashAlgorithm();
 
         // Validate the signature over the Issuer-signed JWT
-        try {
-            issuerSignedJwt.verifySignature(verifier);
-        } catch (VerificationException e) {
-            throw new VerificationException("Invalid Issuer-Signed JWT", e);
+        for (var verifier : verifiers) {
+            try {
+                issuerSignedJwt.verifySignature(verifier);
+                return;
+            } catch (VerificationException ignored) {
+            }
         }
+
+        // No potential verifier could verify the JWT's signature
+        throw new VerificationException("Invalid Issuer-Signed JWT: Signature could not be verified");
     }
 
     /**
@@ -249,51 +250,12 @@ public class SdJwtVerificationContext {
             throw new UnsupportedOperationException("Only cnf/jwk claim supported");
         }
 
-        // Parse JWK
-        KeyWrapper keyWrapper;
+        // Convert JWK
         try {
-            JWK jwk = SdJwtUtils.mapper.convertValue(cnfJwk, JWK.class);
-            keyWrapper = JWKSUtils.getKeyWrapper(jwk);
-            Objects.requireNonNull(keyWrapper);
+            return JwkParsingUtils.convertJwkToVerifierContext(cnfJwk);
         } catch (Exception e) {
-            throw new VerificationException("Malformed or unsupported cnf/jwk claim");
+            throw new VerificationException("Could not process cnf/jwk", e);
         }
-
-        // Build verifier
-
-        // KeyType.EC
-        if (keyWrapper.getType().equals(KeyType.EC)) {
-            if (keyWrapper.getAlgorithm() == null) {
-                Objects.requireNonNull(keyWrapper.getCurve());
-
-                String alg = null;
-                switch (keyWrapper.getCurve()) {
-                    case "P-256":
-                        alg = "ES256";
-                        break;
-                    case "P-384":
-                        alg = "ES384";
-                        break;
-                    case "P-521":
-                        alg = "ES512";
-                        break;
-                }
-
-                keyWrapper.setAlgorithm(alg);
-            }
-
-            return new ECDSASignatureVerifierContext(keyWrapper);
-        }
-
-        // KeyType.RSA
-        if (keyWrapper.getType().equals(KeyType.RSA)) {
-            return new AsymmetricSignatureVerifierContext(keyWrapper);
-        }
-
-        // KeyType is not supported
-        // This is unreachable as of now given that `JWKSUtils.getKeyWrapper` will fail
-        // on JWKs with key type not equal to EC or RSA.
-        throw new VerificationException("cnf/jwk alg is unsupported or deemed not secure");
     }
 
     /**

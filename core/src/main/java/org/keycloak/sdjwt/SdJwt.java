@@ -199,18 +199,18 @@ public class SdJwt {
     /**
      * Verifies SD-JWT as to whether the Issuer-signed JWT's signature and disclosures are valid.
      *
-     * @param issuerVerifyingKey A verifying key for validating the Issuer-signed JWT. The caller
-     *                           is responsible for establishing trust in that the key belongs
-     *                           to the intended issuer.
-     * @param verificationOpts   Options to parameterize the Issuer-Signed JWT verification.
+     * @param issuerVerifyingKeys Verifying keys for validating the Issuer-signed JWT. The caller
+     *                            is responsible for establishing trust in that the keys belong
+     *                            to the intended issuer.
+     * @param verificationOpts    Options to parameterize the Issuer-Signed JWT verification.
      * @throws VerificationException if verification failed
      */
     public void verify(
-            SignatureVerifierContext issuerVerifyingKey,
+            List<SignatureVerifierContext> issuerVerifyingKeys,
             IssuerSignedJwtVerificationOpts verificationOpts
     ) throws VerificationException {
         new SdJwtVerificationContext(issuerSignedJWT, disclosures)
-                .verifyIssuance(issuerVerifyingKey, verificationOpts);
+                .verifyIssuance(issuerVerifyingKeys, verificationOpts);
     }
 
     // builder for SdJwt
