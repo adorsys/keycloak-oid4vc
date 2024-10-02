@@ -45,6 +45,10 @@ public class DisplayObject {
     @JsonIgnore
     private static final String LOGO_KEY = "logo";
     @JsonIgnore
+    private static final String BACKGROUND_IMAGE_KEY = "background_image";
+    @JsonIgnore
+    private static final String BACKGROUND_IMAGE_SVG_KEY = "background_image_svg";
+    @JsonIgnore
     private static final String DESCRIPTION_KEY = "description";
     @JsonIgnore
     private static final String BG_COLOR_KEY = "background_color";
@@ -58,7 +62,13 @@ public class DisplayObject {
     private String locale;
 
     @JsonProperty(DisplayObject.LOGO_KEY)
-    private String logo;
+    private DisplayImageObject logo;
+
+    @JsonProperty(DisplayObject.BACKGROUND_IMAGE_KEY)
+    private DisplayImageObject backgroundImage;
+
+    @JsonProperty(DisplayObject.BACKGROUND_IMAGE_SVG_KEY)
+    private DisplayImageObject backgroundImageSvg;
 
     @JsonProperty(DisplayObject.DESCRIPTION_KEY)
     private String description;
@@ -88,12 +98,30 @@ public class DisplayObject {
         return this;
     }
 
-    public String getLogo() {
+    public DisplayImageObject getLogo() {
         return logo;
     }
 
-    public DisplayObject setLogo(String logo) {
+    public DisplayObject setLogo(DisplayImageObject logo) {
         this.logo = logo;
+        return this;
+    }
+
+    public DisplayImageObject getBackgroundImage() {
+        return backgroundImage;
+    }
+
+    public DisplayObject setBackgroundImage(DisplayImageObject backgroundImage) {
+        this.backgroundImage = backgroundImage;
+        return this;
+    }
+
+    public DisplayImageObject getBackgroundImageSvg() {
+        return backgroundImageSvg;
+    }
+
+    public DisplayObject setBackgroundImageSvg(DisplayImageObject backgroundImageSvg) {
+        this.backgroundImageSvg = backgroundImageSvg;
         return this;
     }
 
@@ -148,6 +176,10 @@ public class DisplayObject {
         if (getName() != null ? !getName().equals(that.getName()) : that.getName() != null) return false;
         if (getLocale() != null ? !getLocale().equals(that.getLocale()) : that.getLocale() != null) return false;
         if (getLogo() != null ? !getLogo().equals(that.getLogo()) : that.getLogo() != null) return false;
+        if (getBackgroundImage() != null ? !getBackgroundImage().equals(that.getBackgroundImage()) : that.getBackgroundImage() != null)
+            return false;
+        if (getBackgroundImageSvg() != null ? !getBackgroundImageSvg().equals(that.getBackgroundImageSvg()) : that.getBackgroundImageSvg() != null)
+            return false;
         if (getDescription() != null ? !getDescription().equals(that.getDescription()) : that.getDescription() != null)
             return false;
         if (getBackgroundColor() != null ? !getBackgroundColor().equals(that.getBackgroundColor()) : that.getBackgroundColor() != null)
@@ -160,6 +192,8 @@ public class DisplayObject {
         int result = getName() != null ? getName().hashCode() : 0;
         result = 31 * result + (getLocale() != null ? getLocale().hashCode() : 0);
         result = 31 * result + (getLogo() != null ? getLogo().hashCode() : 0);
+        result = 31 * result + (getBackgroundImage() != null ? getBackgroundImage().hashCode() : 0);
+        result = 31 * result + (getBackgroundImageSvg() != null ? getBackgroundImageSvg().hashCode() : 0);
         result = 31 * result + (getDescription() != null ? getDescription().hashCode() : 0);
         result = 31 * result + (getBackgroundColor() != null ? getBackgroundColor().hashCode() : 0);
         result = 31 * result + (getTextColor() != null ? getTextColor().hashCode() : 0);
