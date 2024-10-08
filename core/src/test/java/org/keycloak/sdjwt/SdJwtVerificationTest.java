@@ -29,6 +29,8 @@ import org.keycloak.rule.CryptoInitRule;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
+
 import org.keycloak.crypto.SignatureSignerContext;
 
 import static org.hamcrest.CoreMatchers.is;
@@ -57,7 +59,7 @@ public abstract class SdJwtVerificationTest {
 
     @Test
     public void testSdJwtVerification_FlatSdJwt() throws VerificationException {
-        for (String hashAlg : Arrays.asList(new String[]{"sha-256", "sha-384", "sha-512"})) {
+        for (String hashAlg : Arrays.asList("sha-256", "sha-384", "sha-512")) {
             SdJwt sdJwt = exampleFlatSdJwtV1()
                     .withHashAlgorithm(hashAlg)
                     .build();
@@ -137,7 +139,7 @@ public abstract class SdJwtVerificationTest {
         VerificationException exception = assertThrows(
                 VerificationException.class,
                 () -> sdJwt.verify(
-                        List.of(testSettings.holderVerifierContext), // wrong verifier
+                        Collections.singletonList(testSettings.holderVerifierContext), // wrong verifier
                         defaultIssuerSignedJwtVerificationOpts().build()
                 )
         );
@@ -161,7 +163,7 @@ public abstract class SdJwtVerificationTest {
                 .withUndisclosedClaim("exp", "eluV5Og3gSNII8EYnsxA_A")
                 .build()).build();
 
-        for (SdJwt sdJwt : Arrays.asList(new SdJwt[]{sdJwtV1, sdJwtV2})) {
+        for (SdJwt sdJwt : Arrays.asList(sdJwtV1, sdJwtV2)) {
             VerificationException exception = assertThrows(
                     VerificationException.class,
                     () -> sdJwt.verify(
@@ -195,7 +197,7 @@ public abstract class SdJwtVerificationTest {
         SdJwt sdJwtV1 = exampleFlatSdJwtV2(claimSet1, disclosureSpec).build();
         SdJwt sdJwtV2 = exampleFlatSdJwtV2(claimSet2, disclosureSpec).build();
 
-        for (SdJwt sdJwt : Arrays.asList(new SdJwt[]{sdJwtV1, sdJwtV2})) {
+        for (SdJwt sdJwt : Arrays.asList(sdJwtV1, sdJwtV2)) {
             VerificationException exception = assertThrows(
                     VerificationException.class,
                     () -> sdJwt.verify(
@@ -227,7 +229,7 @@ public abstract class SdJwtVerificationTest {
                 .withUndisclosedClaim("iat", "eluV5Og3gSNII8EYnsxA_A")
                 .build()).build();
 
-        for (SdJwt sdJwt : Arrays.asList(new SdJwt[]{sdJwtV1, sdJwtV2})) {
+        for (SdJwt sdJwt : Arrays.asList(sdJwtV1, sdJwtV2)) {
             VerificationException exception = assertThrows(
                     VerificationException.class,
                     () -> sdJwt.verify(
@@ -259,7 +261,7 @@ public abstract class SdJwtVerificationTest {
                 .withUndisclosedClaim("iat", "eluV5Og3gSNII8EYnsxA_A")
                 .build()).build();
 
-        for (SdJwt sdJwt : Arrays.asList(new SdJwt[]{sdJwtV1, sdJwtV2})) {
+        for (SdJwt sdJwt : Arrays.asList(sdJwtV1, sdJwtV2)) {
             VerificationException exception = assertThrows(
                     VerificationException.class,
                     () -> sdJwt.verify(
@@ -296,7 +298,7 @@ public abstract class SdJwtVerificationTest {
 
     @Test
     public void sdJwtVerificationShouldFail_IfForbiddenClaimNames() {
-        for (String forbiddenClaimName : Arrays.asList(new String[]{"_sd", "..."})) {
+        for (String forbiddenClaimName : Arrays.asList("_sd", "...")) {
             ObjectNode claimSet = mapper.createObjectNode();
             claimSet.put(forbiddenClaimName, "Value");
 
@@ -363,7 +365,7 @@ public abstract class SdJwtVerificationTest {
     }
 
     private List<SignatureVerifierContext> defaultIssuerVerifyingKeys() {
-        return List.of(testSettings.issuerVerifierContext);
+        return Collections.singletonList(testSettings.issuerVerifierContext);
     }
 
     private IssuerSignedJwtVerificationOpts.Builder defaultIssuerSignedJwtVerificationOpts() {

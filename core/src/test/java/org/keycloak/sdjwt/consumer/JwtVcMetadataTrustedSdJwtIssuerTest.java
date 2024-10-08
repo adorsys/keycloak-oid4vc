@@ -20,8 +20,8 @@ public abstract class JwtVcMetadataTrustedSdJwtIssuerTest {
     @Test
     public void shouldResolveIssuerVerifyingKeys() throws VerificationException {
         String issuerUri = "https://trial.authlete.net/";
-        var trustedIssuer = new JwtVcMetadataTrustedSdJwtIssuer(issuerUri);
-        var issuerSignedJWT = exampleIssuerSignedJWT(issuerUri);
+        TrustedSdJwtIssuer trustedIssuer = new JwtVcMetadataTrustedSdJwtIssuer(issuerUri);
+        IssuerSignedJWT issuerSignedJWT = exampleIssuerSignedJWT(issuerUri);
         trustedIssuer.resolveIssuerVerifyingKeys(issuerSignedJWT);
     }
 

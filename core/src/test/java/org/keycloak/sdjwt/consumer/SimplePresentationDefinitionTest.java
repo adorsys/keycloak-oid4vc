@@ -23,6 +23,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.Test;
 import org.keycloak.common.VerificationException;
 import org.keycloak.sdjwt.SdJwtUtils;
+import org.keycloak.sdjwt.TestUtils;
 
 import static org.hamcrest.CoreMatchers.startsWith;
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -38,7 +39,7 @@ public class SimplePresentationDefinitionTest {
 
     @Test
     public void testCheckIfSatisfiedBy() throws VerificationException, JsonProcessingException {
-        var definition = SimplePresentationDefinition.builder()
+        SimplePresentationDefinition definition = SimplePresentationDefinition.builder()
                 .addClaimRequirement("vct", ".*identity_credential.*")
                 .addClaimRequirement("given_name", "\"John\"")
                 .addClaimRequirement("cat", "123")
@@ -51,11 +52,11 @@ public class SimplePresentationDefinitionTest {
 
     @Test
     public void testCheckIfSatisfiedBy_shouldFailOnRequiredFieldMissing() {
-        var definition = SimplePresentationDefinition.builder()
+        SimplePresentationDefinition definition = SimplePresentationDefinition.builder()
                 .addClaimRequirement("family_name", ".*")
                 .build();
 
-        var exception = assertThrows(VerificationException.class,
+        VerificationException exception = assertThrows(VerificationException.class,
                 () -> definition.checkIfSatisfiedBy(exampleDisclosedPayload()));
 
         assertEquals("A required field was not presented: `family_name`", exception.getMessage());
@@ -63,25 +64,19 @@ public class SimplePresentationDefinitionTest {
 
     @Test
     public void testCheckIfSatisfiedBy_shouldFailOnNonMatchingPattern() {
-        var definition = SimplePresentationDefinition.builder()
+        SimplePresentationDefinition definition = SimplePresentationDefinition.builder()
                 .addClaimRequirement("vct", ".*diploma.*")
                 .build();
 
-        var exception = assertThrows(VerificationException.class,
+        VerificationException exception = assertThrows(VerificationException.class,
                 () -> definition.checkIfSatisfiedBy(exampleDisclosedPayload()));
 
         assertThat(exception.getMessage(), startsWith("Pattern matching failed for required field"));
     }
 
     private JsonNode exampleDisclosedPayload() throws JsonProcessingException {
-        return mapper.readTree("""
-                {
-                    "vct": "https://credentials.example.com/identity_credential",
-                    "given_name": "John",
-                    "cat": 123,
-                    "addr": {"city": "Douala", "country": "CM"},
-                    "colors": ["red", "green"]
-                }
-                """);
+        String content = TestUtils.readFileAsString(getClass(),
+                "sdjwt/s7.4-sample-disclosed-issuer-payload.json");
+        return mapper.readTree(content);
     }
 }

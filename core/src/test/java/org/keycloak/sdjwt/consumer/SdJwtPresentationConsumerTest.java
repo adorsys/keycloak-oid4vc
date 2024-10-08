@@ -10,7 +10,7 @@ import org.keycloak.sdjwt.TestUtils;
 import org.keycloak.sdjwt.vp.KeyBindingJwtVerificationOpts;
 import org.keycloak.sdjwt.vp.SdJwtVP;
 
-import java.util.List;
+import java.util.Collections;
 
 public abstract class SdJwtPresentationConsumerTest {
 
@@ -44,7 +44,9 @@ public abstract class SdJwtPresentationConsumerTest {
     }
 
     private TrustedSdJwtIssuer exampleTrustedSdJwtIssuer() {
-        return new StaticTrustedSdJwtIssuer(List.of(testSettings.issuerVerifierContext));
+        return new StaticTrustedSdJwtIssuer(
+                Collections.singletonList(testSettings.issuerVerifierContext)
+        );
     }
 
     private IssuerSignedJwtVerificationOpts defaultIssuerSignedJwtVerificationOpts() {
