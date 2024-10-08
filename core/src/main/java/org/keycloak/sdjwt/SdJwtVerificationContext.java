@@ -73,7 +73,7 @@ public class SdJwtVerificationContext {
                 .map(disclosureString -> {
                     String digest = SdJwtUtils.hashAndBase64EncodeNoPad(
                             disclosureString.getBytes(), issuerSignedJwt.getSdHashAlg());
-                    return new AbstractMap.SimpleEntry<String,String>(digest, disclosureString);
+                    return new AbstractMap.SimpleEntry<>(digest, disclosureString);
                 })
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
     }
@@ -143,7 +143,7 @@ public class SdJwtVerificationContext {
         }
 
         // Upon receiving a Presentation, in addition to the checks in {@link #verifyIssuance}...
-        var disclosedPayload = verifyIssuance(issuerVerifyingKeys, issuerSignedJwtVerificationOpts);
+        JsonNode disclosedPayload = verifyIssuance(issuerVerifyingKeys, issuerSignedJwtVerificationOpts);
 
         // Validate Key Binding JWT if required
         if (keyBindingJwtVerificationOpts.isKeyBindingRequired()) {
@@ -171,7 +171,7 @@ public class SdJwtVerificationContext {
         issuerSignedJwt.verifySdHashAlgorithm();
 
         // Validate the signature over the Issuer-signed JWT
-        for (var verifier : verifiers) {
+        for (SignatureVerifierContext verifier : verifiers) {
             try {
                 issuerSignedJwt.verifySignature(verifier);
                 return;
@@ -558,10 +558,10 @@ public class SdJwtVerificationContext {
 
         // If the claim name is _sd or ..., the SD-JWT MUST be rejected.
 
-        List<String> denylist = Arrays.asList(new String[]{
+        List<String> denylist = Arrays.asList(
                 IssuerSignedJWT.CLAIM_NAME_SELECTIVE_DISCLOSURE,
                 UndisclosedArrayElement.SD_CLAIM_NAME
-        });
+        );
 
         String claimName = arrayNode.get(1).asText();
         if (denylist.contains(claimName)) {

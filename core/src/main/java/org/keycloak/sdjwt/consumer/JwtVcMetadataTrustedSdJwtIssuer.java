@@ -23,19 +23,13 @@ import org.keycloak.common.VerificationException;
 import org.keycloak.crypto.SignatureVerifierContext;
 import org.keycloak.sdjwt.IssuerSignedJWT;
 import org.keycloak.sdjwt.JwkParsingUtils;
-import org.keycloak.sdjwt.SdJwtUtils;
 
-import java.io.IOException;
-import java.net.URI;
-import java.net.URISyntaxException;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
  * A trusted Issuer for running SD-JWT VP verification.
@@ -52,7 +46,6 @@ import java.util.regex.Pattern;
 public class JwtVcMetadataTrustedSdJwtIssuer implements TrustedSdJwtIssuer {
 
     private static final String JWT_VC_ISSUER_END_POINT = "/.well-known/jwt-vc-issuer";
-    private static final HttpClient httpClient = HttpClient.newBuilder().build();
 
     private final Pattern issuerUriPattern;
 
@@ -100,16 +93,16 @@ public class JwtVcMetadataTrustedSdJwtIssuer implements TrustedSdJwtIssuer {
 
         // Fetch and collect exposed JWKs
         List<JsonNode> jwks = new ArrayList<>();
-        for (var jwk : fetchIssuerMetadata(iss)) {
+        for (JsonNode jwk : fetchIssuerMetadata(iss)) {
             jwks.add(jwk);
         }
 
         // If kid specified, only consider matching keys
         if (kid != null) {
             jwks = jwks.stream().filter(jwk -> {
-                var jwkKid = jwk.get("kid");
+                JsonNode jwkKid = jwk.get("kid");
                 return jwkKid != null && jwkKid.asText().equals(kid);
-            }).toList();
+            }).collect(Collectors.toList());
 
             if (jwks.isEmpty()) {
                 throw new VerificationException("No matching JWK found for kid: " + kid);
@@ -117,8 +110,8 @@ public class JwtVcMetadataTrustedSdJwtIssuer implements TrustedSdJwtIssuer {
         }
 
         // Build JWSVerifier's
-        var verifiers = new ArrayList<SignatureVerifierContext>();
-        for (var jwk : jwks) {
+        List<SignatureVerifierContext> verifiers = new ArrayList<>();
+        for (JsonNode jwk : jwks) {
             try {
                 verifiers.add(JwkParsingUtils.convertJwkToVerifierContext(jwk));
             } catch (Exception e) {
@@ -164,28 +157,29 @@ public class JwtVcMetadataTrustedSdJwtIssuer implements TrustedSdJwtIssuer {
 
     // Helper method to fetch data using HttpClient and parse JSON
     private JsonNode fetchData(String uri) throws VerificationException {
-        try {
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(new URI(uri))
-                    .GET()
-                    .build();
-
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-
-            if (response.statusCode() == 200) {
-                return SdJwtUtils.mapper.readTree(response.body());
-            } else {
-                throw new VerificationException(String.format(
-                        "Failed to fetch data from URI %s with status code %s",
-                        uri, response.statusCode()
-                ));
-            }
-        } catch (URISyntaxException | InterruptedException e) {
-            throw new VerificationException(
-                    "Error occurred while fetching data from URI: " + uri, e
-            );
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+        throw new UnsupportedOperationException();
+//        try {
+//            HttpRequest request = HttpRequest.newBuilder()
+//                    .uri(new URI(uri))
+//                    .GET()
+//                    .build();
+//
+//            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+//
+//            if (response.statusCode() == 200) {
+//                return SdJwtUtils.mapper.readTree(response.body());
+//            } else {
+//                throw new VerificationException(String.format(
+//                        "Failed to fetch data from URI %s with status code %s",
+//                        uri, response.statusCode()
+//                ));
+//            }
+//        } catch (URISyntaxException | InterruptedException e) {
+//            throw new VerificationException(
+//                    "Error occurred while fetching data from URI: " + uri, e
+//            );
+//        } catch (IOException e) {
+//            throw new RuntimeException(e);
+//        }
     }
 }

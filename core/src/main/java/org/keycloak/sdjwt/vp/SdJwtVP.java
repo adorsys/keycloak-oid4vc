@@ -225,7 +225,7 @@ public class SdJwtVP {
             IssuerSignedJwtVerificationOpts issuerSignedJwtVerificationOpts,
             KeyBindingJwtVerificationOpts keyBindingJwtVerificationOpts
     ) throws VerificationException {
-        var sdJwtVerificationContext = new SdJwtVerificationContext(
+        SdJwtVerificationContext sdJwtVerificationContext = new SdJwtVerificationContext(
                 sdJwtVpString, issuerSignedJWT, disclosures, keyBindingJWT.orElse(null)
         );
 

@@ -22,6 +22,7 @@ import org.keycloak.common.VerificationException;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
@@ -56,12 +57,12 @@ public class SimplePresentationDefinition implements PresentationRequirements {
      */
     @Override
     public void checkIfSatisfiedBy(JsonNode disclosedPayload) throws VerificationException {
-        for (var requirement : requirements.entrySet()) {
+        for (Map.Entry<String, Pattern> requirement : requirements.entrySet()) {
             String field = requirement.getKey();
             Pattern pattern = requirement.getValue();
 
             // Retrieve the value of the required field from the payload
-            var presented = disclosedPayload.get(field);
+            JsonNode presented = disclosedPayload.get(field);
 
             // Check if the required field is present in the payload
             if (presented == null || presented.isNull()) {
@@ -71,10 +72,10 @@ public class SimplePresentationDefinition implements PresentationRequirements {
             }
 
             // Extract the JSON representation of the field's value
-            var json = presented.toString();
+            String json = presented.toString();
 
             // Match the field value against the configured regex pattern
-            var matcher = pattern.matcher(json);
+            Matcher matcher = pattern.matcher(json);
             if (!matcher.matches()) {
                 throw new VerificationException(String.format(
                         "Pattern matching failed for required field: `%s`. Expected pattern: /%s/, but got: %s",
