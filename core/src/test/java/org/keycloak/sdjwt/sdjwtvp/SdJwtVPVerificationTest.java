@@ -34,6 +34,7 @@ import org.keycloak.sdjwt.vp.KeyBindingJwtVerificationOpts;
 import org.keycloak.sdjwt.vp.SdJwtVP;
 
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.List;
 
 import static org.hamcrest.CoreMatchers.containsString;
@@ -71,9 +72,11 @@ public abstract class SdJwtVPVerificationTest {
 
     @Test
     public void testVerif_s20_8_sdjwt_with_kb__AltCnfCurves() throws VerificationException {
-        var entries = List.of("sdjwt/s20.8-sdjwt+kb--es384.txt", "sdjwt/s20.8-sdjwt+kb--es512.txt");
+        List<String> entries = Arrays.asList(new String[]{
+            "sdjwt/s20.8-sdjwt+kb--es384.txt", "sdjwt/s20.8-sdjwt+kb--es512.txt"
+        });
 
-        for (var entry : entries) {
+        for (String entry : entries) {
             String sdJwtVPString = TestUtils.readFileAsString(getClass(), entry);
             SdJwtVP sdJwtVP = SdJwtVP.of(sdJwtVPString);
 
@@ -87,14 +90,14 @@ public abstract class SdJwtVPVerificationTest {
 
     @Test
     public void testVerif_s20_8_sdjwt_with_kb__CnfRSA() throws VerificationException {
-        var entries = List.of(
+        List<String> entries = Arrays.asList(new String[]{
                 "sdjwt/s20.8-sdjwt+kb--cnf-rsa-rs256.txt",
                 "sdjwt/s20.8-sdjwt+kb--cnf-rsa-ps256.txt",
                 "sdjwt/s20.8-sdjwt+kb--cnf-rsa-ps384.txt",
                 "sdjwt/s20.8-sdjwt+kb--cnf-rsa-ps512.txt"
-        );
+        });
 
-        for (var entry : entries) {
+        for (String entry : entries) {
             String sdJwtVPString = TestUtils.readFileAsString(getClass(), entry);
             SdJwtVP sdJwtVP = SdJwtVP.of(sdJwtVPString);
 
@@ -225,7 +228,7 @@ public abstract class SdJwtVPVerificationTest {
 
     @Test
     public void testShouldFail_IfKbSdHashWrongFormat() {
-        var kbPayload = exampleKbPayload();
+        ObjectNode kbPayload = exampleKbPayload();
 
         // This hash is not a string
         kbPayload.set("sd_hash", mapper.valueToTree(1234));
@@ -240,7 +243,7 @@ public abstract class SdJwtVPVerificationTest {
 
     @Test
     public void testShouldFail_IfKbSdHashInvalid() {
-        var kbPayload = exampleKbPayload();
+        ObjectNode kbPayload = exampleKbPayload();
 
         // This hash makes no sense
         kbPayload.put("sd_hash", "c3FmZHFmZGZlZXNkZmZi");
@@ -257,7 +260,7 @@ public abstract class SdJwtVPVerificationTest {
     public void testShouldFail_IfKbIssuedInFuture() {
         long now = Instant.now().getEpochSecond();
 
-        var kbPayload = exampleKbPayload();
+        ObjectNode kbPayload = exampleKbPayload();
         kbPayload.set("iat", mapper.valueToTree(now + 1000));
 
         testShouldFailGeneric2(
@@ -272,7 +275,7 @@ public abstract class SdJwtVPVerificationTest {
     public void testShouldFail_IfKbTooOld() {
         long issuerSignedJwtIat = 1683000000; // same value in test vector
 
-        var kbPayload = exampleKbPayload();
+        ObjectNode kbPayload = exampleKbPayload();
         // This KB-JWT is then issued more than 60s ago
         kbPayload.set("iat", mapper.valueToTree(issuerSignedJwtIat - 120));
 
@@ -290,7 +293,7 @@ public abstract class SdJwtVPVerificationTest {
     public void testShouldFail_IfKbExpired() {
         long now = Instant.now().getEpochSecond();
 
-        var kbPayload = exampleKbPayload();
+        ObjectNode kbPayload = exampleKbPayload();
         kbPayload.set("exp", mapper.valueToTree(now - 1000));
 
         testShouldFailGeneric2(
@@ -307,7 +310,7 @@ public abstract class SdJwtVPVerificationTest {
     public void testShouldFail_IfKbNotBeforeTimeYet() {
         long now = Instant.now().getEpochSecond();
 
-        var kbPayload = exampleKbPayload();
+        ObjectNode kbPayload = exampleKbPayload();
         kbPayload.set("nbf", mapper.valueToTree(now + 1000));
 
         testShouldFailGeneric2(
@@ -326,7 +329,7 @@ public abstract class SdJwtVPVerificationTest {
         String sdJwtVPString = TestUtils.readFileAsString(getClass(), "sdjwt/s20.8-sdjwt+kb--cnf-is-not-jwk.txt");
         SdJwtVP sdJwtVP = SdJwtVP.of(sdJwtVPString);
 
-        var exception = assertThrows(
+        UnsupportedOperationException exception = assertThrows(
                 UnsupportedOperationException.class,
                 () -> sdJwtVP.verify(
                         defaultIssuerVerifyingKeys(),
@@ -369,7 +372,7 @@ public abstract class SdJwtVPVerificationTest {
         String sdJwtVPString = TestUtils.readFileAsString(getClass(), testFilePath);
         SdJwtVP sdJwtVP = SdJwtVP.of(sdJwtVPString);
 
-        var exception = assertThrows(
+        VerificationException exception = assertThrows(
                 VerificationException.class,
                 () -> sdJwtVP.verify(
                         defaultIssuerVerifyingKeys(),
@@ -406,7 +409,7 @@ public abstract class SdJwtVPVerificationTest {
                         + keyBindingJWT.toJws()
         );
 
-        var exception = assertThrows(
+        VerificationException exception = assertThrows(
                 VerificationException.class,
                 () -> sdJwtVP.verify(
                         defaultIssuerVerifyingKeys(),
@@ -442,7 +445,7 @@ public abstract class SdJwtVPVerificationTest {
     }
 
     private ObjectNode exampleKbPayload() {
-        var payload = mapper.createObjectNode();
+        ObjectNode payload = mapper.createObjectNode();
         payload.put("nonce", "1234567890");
         payload.put("aud", "https://verifier.example.org");
         payload.put("sd_hash", "X9RrrfWt_70gHzOcovGSIt4Fms9Tf2g2hjlWVI_cxZg");

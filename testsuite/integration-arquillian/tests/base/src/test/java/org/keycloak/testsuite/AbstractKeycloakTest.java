@@ -55,11 +55,13 @@ import org.keycloak.testsuite.auth.page.login.OIDCLogin;
 import org.keycloak.testsuite.auth.page.login.UpdatePassword;
 import org.keycloak.testsuite.client.KeycloakTestingClient;
 import org.keycloak.testsuite.pages.LoginPasswordUpdatePage;
+import org.keycloak.testsuite.util.BrowserTabUtil;
 import org.keycloak.testsuite.util.CryptoInitRule;
 import org.keycloak.testsuite.util.DroneUtils;
 import org.keycloak.testsuite.util.OAuthClient;
 import org.keycloak.testsuite.util.TestCleanup;
 import org.keycloak.testsuite.util.TestEventsLogger;
+import org.keycloak.testsuite.util.WaitUtils;
 import org.openqa.selenium.WebDriver;
 
 import jakarta.ws.rs.NotFoundException;
@@ -258,6 +260,7 @@ public abstract class AbstractKeycloakTest {
 
         // Remove all browsers from queue
         DroneUtils.resetQueue();
+        BrowserTabUtil.cleanup();
     }
 
     protected TestCleanup getCleanup(String realmName) {
@@ -277,6 +280,7 @@ public abstract class AbstractKeycloakTest {
             log.debug("updating admin password");
 
             welcomePage.navigateTo();
+            WaitUtils.waitForPageToLoad();
             if (!welcomePage.isPasswordSet()) {
                 welcomePage.setPassword("admin", "admin");
             }

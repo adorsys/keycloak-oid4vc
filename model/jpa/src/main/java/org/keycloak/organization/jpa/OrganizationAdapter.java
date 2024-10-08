@@ -53,15 +53,6 @@ public final class OrganizationAdapter implements OrganizationModel, JpaModel<Or
     private GroupModel group;
     private Map<String, List<String>> attributes;
 
-    public OrganizationAdapter(KeycloakSession session, RealmModel realm, OrganizationProvider provider) {
-        this.session = session;
-        entity = new OrganizationEntity();
-        entity.setId(KeycloakModelUtils.generateId());
-        entity.setRealmId(realm.getId());
-        this.realm = realm;
-        this.provider = provider;
-    }
-
     public OrganizationAdapter(KeycloakSession session, RealmModel realm, OrganizationEntity entity, OrganizationProvider provider) {
         this.session = session;
         this.realm = realm;
@@ -133,6 +124,16 @@ public final class OrganizationAdapter implements OrganizationModel, JpaModel<Or
     @Override
     public void setDescription(String description) {
         entity.setDescription(description);
+    }
+
+    @Override
+    public String getRedirectUrl() {
+        return entity.getRedirectUrl();
+    }
+
+    @Override
+    public void setRedirectUrl(String redirectUrl) {
+        entity.setRedirectUrl(redirectUrl);
     }
 
     @Override

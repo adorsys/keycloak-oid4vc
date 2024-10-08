@@ -27,8 +27,9 @@ import org.keycloak.crypto.SignatureVerifierContext;
 import org.keycloak.rule.CryptoInitRule;
 
 import java.time.Instant;
-import java.util.List;
-import java.util.Set;
+import java.util.Arrays;
+import java.util.Collections;
+import org.keycloak.crypto.SignatureSignerContext;
 
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -50,14 +51,14 @@ public abstract class SdJwtVerificationTest {
 
     @Test
     public void settingsTest() {
-        var issuerSignerContext = testSettings.issuerSigContext;
+        SignatureSignerContext issuerSignerContext = testSettings.issuerSigContext;
         assertNotNull(issuerSignerContext);
     }
 
     @Test
     public void testSdJwtVerification_FlatSdJwt() throws VerificationException {
-        for (String hashAlg : List.of("sha-256", "sha-384", "sha-512")) {
-            var sdJwt = exampleFlatSdJwtV1()
+        for (String hashAlg : Arrays.asList(new String[]{"sha-256", "sha-384", "sha-512"})) {
+            SdJwt sdJwt = exampleFlatSdJwtV1()
                     .withHashAlgorithm(hashAlg)
                     .build();
 
@@ -70,7 +71,7 @@ public abstract class SdJwtVerificationTest {
 
     @Test
     public void testSdJwtVerification_EnforceIdempotence() throws VerificationException {
-        var sdJwt = exampleFlatSdJwtV1().build();
+        SdJwt sdJwt = exampleFlatSdJwtV1().build();
 
         sdJwt.verify(
                 defaultIssuerVerifyingKeys(),
@@ -85,7 +86,7 @@ public abstract class SdJwtVerificationTest {
 
     @Test
     public void testSdJwtVerification_SdJwtWithUndisclosedNestedFields() throws VerificationException {
-        var sdJwt = exampleSdJwtWithUndisclosedNestedFieldsV1().build();
+        SdJwt sdJwt = exampleSdJwtWithUndisclosedNestedFieldsV1().build();
 
         sdJwt.verify(
                 defaultIssuerVerifyingKeys(),
@@ -95,7 +96,7 @@ public abstract class SdJwtVerificationTest {
 
     @Test
     public void testSdJwtVerification_SdJwtWithUndisclosedArrayElements() throws Exception {
-        var sdJwt = exampleSdJwtWithUndisclosedArrayElementsV1().build();
+        SdJwt sdJwt = exampleSdJwtWithUndisclosedArrayElementsV1().build();
 
         sdJwt.verify(
                 defaultIssuerVerifyingKeys(),
@@ -105,7 +106,7 @@ public abstract class SdJwtVerificationTest {
 
     @Test
     public void testSdJwtVerification_RecursiveSdJwt() throws Exception {
-        var sdJwt = exampleRecursiveSdJwtV1().build();
+        SdJwt sdJwt = exampleRecursiveSdJwtV1().build();
 
         sdJwt.verify(
                 defaultIssuerVerifyingKeys(),
@@ -115,11 +116,11 @@ public abstract class SdJwtVerificationTest {
 
     @Test
     public void sdJwtVerificationShouldFail_OnInsecureHashAlg() {
-        var sdJwt = exampleFlatSdJwtV1()
+        SdJwt sdJwt = exampleFlatSdJwtV1()
                 .withHashAlgorithm("sha-224") // not deemed secure
                 .build();
 
-        var exception = assertThrows(
+        VerificationException exception = assertThrows(
                 VerificationException.class,
                 () -> sdJwt.verify(
                         defaultIssuerVerifyingKeys(),
@@ -132,8 +133,8 @@ public abstract class SdJwtVerificationTest {
 
     @Test
     public void sdJwtVerificationShouldFail_WithWrongVerifier() {
-        var sdJwt = exampleFlatSdJwtV1().build();
-        var exception = assertThrows(
+        SdJwt sdJwt = exampleFlatSdJwtV1().build();
+        VerificationException exception = assertThrows(
                 VerificationException.class,
                 () -> sdJwt.verify(
                         List.of(testSettings.holderVerifierContext), // wrong verifier
@@ -153,15 +154,15 @@ public abstract class SdJwtVerificationTest {
         claimSet.put("exp", now - 1000); // expired 1000 seconds ago
 
         // Exp claim is plain
-        var sdJwtV1 = exampleFlatSdJwtV2(claimSet, DisclosureSpec.builder().build()).build();
+        SdJwt sdJwtV1 = exampleFlatSdJwtV2(claimSet, DisclosureSpec.builder().build()).build();
         // Exp claim is undisclosed
-        var sdJwtV2 = exampleFlatSdJwtV2(claimSet, DisclosureSpec.builder()
-                .withRedListedClaimNames(DisclosureRedList.of(Set.of()))
+        SdJwt sdJwtV2 = exampleFlatSdJwtV2(claimSet, DisclosureSpec.builder()
+                .withRedListedClaimNames(DisclosureRedList.of(Collections.emptySet()))
                 .withUndisclosedClaim("exp", "eluV5Og3gSNII8EYnsxA_A")
                 .build()).build();
 
-        for (SdJwt sdJwt : List.of(sdJwtV1, sdJwtV2)) {
-            var exception = assertThrows(
+        for (SdJwt sdJwt : Arrays.asList(new SdJwt[]{sdJwtV1, sdJwtV2})) {
+            VerificationException exception = assertThrows(
                     VerificationException.class,
                     () -> sdJwt.verify(
                             defaultIssuerVerifyingKeys(),
@@ -191,11 +192,11 @@ public abstract class SdJwtVerificationTest {
                 .withUndisclosedClaim("given_name", "eluV5Og3gSNII8EYnsxA_A")
                 .build();
 
-        var sdJwtV1 = exampleFlatSdJwtV2(claimSet1, disclosureSpec).build();
-        var sdJwtV2 = exampleFlatSdJwtV2(claimSet2, disclosureSpec).build();
+        SdJwt sdJwtV1 = exampleFlatSdJwtV2(claimSet1, disclosureSpec).build();
+        SdJwt sdJwtV2 = exampleFlatSdJwtV2(claimSet2, disclosureSpec).build();
 
-        for (SdJwt sdJwt : List.of(sdJwtV1, sdJwtV2)) {
-            var exception = assertThrows(
+        for (SdJwt sdJwt : Arrays.asList(new SdJwt[]{sdJwtV1, sdJwtV2})) {
+            VerificationException exception = assertThrows(
                     VerificationException.class,
                     () -> sdJwt.verify(
                             defaultIssuerVerifyingKeys(),
@@ -219,15 +220,15 @@ public abstract class SdJwtVerificationTest {
         claimSet.put("iat", now + 1000); // issued in the future
 
         // Exp claim is plain
-        var sdJwtV1 = exampleFlatSdJwtV2(claimSet, DisclosureSpec.builder().build()).build();
+        SdJwt sdJwtV1 = exampleFlatSdJwtV2(claimSet, DisclosureSpec.builder().build()).build();
         // Exp claim is undisclosed
-        var sdJwtV2 = exampleFlatSdJwtV2(claimSet, DisclosureSpec.builder()
-                .withRedListedClaimNames(DisclosureRedList.of(Set.of()))
+        SdJwt sdJwtV2 = exampleFlatSdJwtV2(claimSet, DisclosureSpec.builder()
+                .withRedListedClaimNames(DisclosureRedList.of(Collections.emptySet()))
                 .withUndisclosedClaim("iat", "eluV5Og3gSNII8EYnsxA_A")
                 .build()).build();
 
-        for (SdJwt sdJwt : List.of(sdJwtV1, sdJwtV2)) {
-            var exception = assertThrows(
+        for (SdJwt sdJwt : Arrays.asList(new SdJwt[]{sdJwtV1, sdJwtV2})) {
+            VerificationException exception = assertThrows(
                     VerificationException.class,
                     () -> sdJwt.verify(
                             defaultIssuerVerifyingKeys(),
@@ -251,15 +252,15 @@ public abstract class SdJwtVerificationTest {
         claimSet.put("nbf", now + 1000); // now will be too soon to accept the jwt
 
         // Exp claim is plain
-        var sdJwtV1 = exampleFlatSdJwtV2(claimSet, DisclosureSpec.builder().build()).build();
+        SdJwt sdJwtV1 = exampleFlatSdJwtV2(claimSet, DisclosureSpec.builder().build()).build();
         // Exp claim is undisclosed
-        var sdJwtV2 = exampleFlatSdJwtV2(claimSet, DisclosureSpec.builder()
-                .withRedListedClaimNames(DisclosureRedList.of(Set.of()))
+        SdJwt sdJwtV2 = exampleFlatSdJwtV2(claimSet, DisclosureSpec.builder()
+                .withRedListedClaimNames(DisclosureRedList.of(Collections.emptySet()))
                 .withUndisclosedClaim("iat", "eluV5Og3gSNII8EYnsxA_A")
                 .build()).build();
 
-        for (SdJwt sdJwt : List.of(sdJwtV1, sdJwtV2)) {
-            var exception = assertThrows(
+        for (SdJwt sdJwt : Arrays.asList(new SdJwt[]{sdJwtV1, sdJwtV2})) {
+            VerificationException exception = assertThrows(
                     VerificationException.class,
                     () -> sdJwt.verify(
                             defaultIssuerVerifyingKeys(),
@@ -280,9 +281,9 @@ public abstract class SdJwtVerificationTest {
         claimSet.put("given_name", "John");
         claimSet.set("_sd", mapper.readTree("[123]"));
 
-        var sdJwt = exampleFlatSdJwtV2(claimSet, DisclosureSpec.builder().build()).build();
+        SdJwt sdJwt = exampleFlatSdJwtV2(claimSet, DisclosureSpec.builder().build()).build();
 
-        var exception = assertThrows(
+        VerificationException exception = assertThrows(
                 VerificationException.class,
                 () -> sdJwt.verify(
                         defaultIssuerVerifyingKeys(),
@@ -295,15 +296,15 @@ public abstract class SdJwtVerificationTest {
 
     @Test
     public void sdJwtVerificationShouldFail_IfForbiddenClaimNames() {
-        for (String forbiddenClaimName : List.of("_sd", "...")) {
+        for (String forbiddenClaimName : Arrays.asList(new String[]{"_sd", "..."})) {
             ObjectNode claimSet = mapper.createObjectNode();
             claimSet.put(forbiddenClaimName, "Value");
 
-            var sdJwt = exampleFlatSdJwtV2(claimSet, DisclosureSpec.builder()
+            SdJwt sdJwt = exampleFlatSdJwtV2(claimSet, DisclosureSpec.builder()
                     .withUndisclosedClaim(forbiddenClaimName, "eluV5Og3gSNII8EYnsxA_A")
                     .build()).build();
 
-            var exception = assertThrows(
+            VerificationException exception = assertThrows(
                     VerificationException.class,
                     () -> sdJwt.verify(
                             defaultIssuerVerifyingKeys(),
@@ -320,13 +321,13 @@ public abstract class SdJwtVerificationTest {
         ObjectNode claimSet = mapper.createObjectNode();
         claimSet.put("given_name", "John"); // this same field will also be nested
 
-        var sdJwt = exampleFlatSdJwtV2(claimSet, DisclosureSpec.builder()
+        SdJwt sdJwt = exampleFlatSdJwtV2(claimSet, DisclosureSpec.builder()
                 .withUndisclosedClaim("given_name", "eluV5Og3gSNII8EYnsxA_A")
                 .withDecoyClaim("G02NSrQfjFXQ7Io09syajA")
                 .withDecoyClaim("G02NSrQfjFXQ7Io09syajA")
                 .build()).build();
 
-        var exception = assertThrows(
+        VerificationException exception = assertThrows(
                 VerificationException.class,
                 () -> sdJwt.verify(
                         defaultIssuerVerifyingKeys(),
@@ -343,14 +344,14 @@ public abstract class SdJwtVerificationTest {
         claimSet.put("given_name", "John");
         claimSet.put("family_name", "Doe");
 
-        var salt = "eluV5Og3gSNII8EYnsxA_A";
-        var sdJwt = exampleFlatSdJwtV2(claimSet, DisclosureSpec.builder()
+        String salt = "eluV5Og3gSNII8EYnsxA_A";
+        SdJwt sdJwt = exampleFlatSdJwtV2(claimSet, DisclosureSpec.builder()
                 .withUndisclosedClaim("given_name", salt)
                 // We are reusing the same salt value, and that is the problem
                 .withUndisclosedClaim("family_name", salt)
                 .build()).build();
 
-        var exception = assertThrows(
+        VerificationException exception = assertThrows(
                 VerificationException.class,
                 () -> sdJwt.verify(
                         defaultIssuerVerifyingKeys(),
