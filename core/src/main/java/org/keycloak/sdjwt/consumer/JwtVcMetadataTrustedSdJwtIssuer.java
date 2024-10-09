@@ -23,15 +23,14 @@ import org.keycloak.common.VerificationException;
 import org.keycloak.crypto.SignatureVerifierContext;
 import org.keycloak.sdjwt.IssuerSignedJWT;
 import org.keycloak.sdjwt.JwkParsingUtils;
-import org.keycloak.util.HttpClient;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
 /**
  * A trusted Issuer for running SD-JWT VP verification.
@@ -48,14 +47,14 @@ import java.util.stream.Collectors;
 public class JwtVcMetadataTrustedSdJwtIssuer implements TrustedSdJwtIssuer {
 
     private static final String JWT_VC_ISSUER_END_POINT = "/.well-known/jwt-vc-issuer";
-    private static final HttpClient httpClient = new HttpClient();
 
     private final Pattern issuerUriPattern;
+    private final HttpDataFetcher httpDataFetcher;
 
     /**
      * @param issuerUri a trusted issuer URI
      */
-    public JwtVcMetadataTrustedSdJwtIssuer(String issuerUri) {
+    public JwtVcMetadataTrustedSdJwtIssuer(String issuerUri, HttpDataFetcher httpDataFetcher) {
         try {
             validateHttpsIssuerUri(issuerUri);
         } catch (VerificationException e) {
@@ -64,13 +63,17 @@ public class JwtVcMetadataTrustedSdJwtIssuer implements TrustedSdJwtIssuer {
 
         // Build a Regex pattern to only match the argument URI
         this.issuerUriPattern = Pattern.compile(Pattern.quote(issuerUri));
+
+        // Assign HttpDataFetcher implementation
+        this.httpDataFetcher = httpDataFetcher;
     }
 
     /**
      * @param issuerUriPattern a regex pattern for trusted issuer URIs
      */
-    public JwtVcMetadataTrustedSdJwtIssuer(Pattern issuerUriPattern) {
+    public JwtVcMetadataTrustedSdJwtIssuer(Pattern issuerUriPattern, HttpDataFetcher httpDataFetcher) {
         this.issuerUriPattern = issuerUriPattern;
+        this.httpDataFetcher = httpDataFetcher;
     }
 
     @Override
@@ -100,16 +103,16 @@ public class JwtVcMetadataTrustedSdJwtIssuer implements TrustedSdJwtIssuer {
             jwks.add(jwk);
         }
 
-        // If kid specified, only consider matching keys
+        // If kid specified, only consider the first matching key
         if (kid != null) {
-            jwks = jwks.stream().filter(jwk -> {
-                JsonNode jwkKid = jwk.get("kid");
-                return jwkKid != null && jwkKid.asText().equals(kid);
-            }).collect(Collectors.toList());
-
-            if (jwks.isEmpty()) {
-                throw new VerificationException("No matching JWK found for kid: " + kid);
-            }
+            jwks = jwks.stream()
+                    .filter(jwk -> {
+                        JsonNode jwkKid = jwk.get("kid");
+                        return jwkKid != null && jwkKid.asText().equals(kid);
+                    })
+                    .findFirst()
+                    .map(Collections::singletonList)
+                    .orElse(Collections.emptyList());
         }
 
         // Build JWSVerifier's
@@ -171,7 +174,7 @@ public class JwtVcMetadataTrustedSdJwtIssuer implements TrustedSdJwtIssuer {
 
     private JsonNode fetchData(String uri) throws VerificationException {
         try {
-            return Objects.requireNonNull(httpClient.fetchJsonData(uri));
+            return Objects.requireNonNull(httpDataFetcher.fetchJsonData(uri));
         } catch (Exception exception) {
             throw new VerificationException(
                     String.format("Could not fetch data from URI: %s", uri),
