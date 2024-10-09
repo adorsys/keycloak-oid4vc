@@ -23,10 +23,11 @@ import org.keycloak.common.VerificationException;
 import org.keycloak.crypto.SignatureVerifierContext;
 import org.keycloak.sdjwt.IssuerSignedJWT;
 import org.keycloak.sdjwt.JwkParsingUtils;
+import org.keycloak.util.HttpClient;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -133,20 +134,31 @@ public class JwtVcMetadataTrustedSdJwtIssuer implements TrustedSdJwtIssuer {
     }
 
     private ArrayNode fetchIssuerMetadata(String issuerUri) throws VerificationException {
+        // Build full URL to JWT VC metadata endpoint
+
+        issuerUri = normalizeUri(issuerUri);
         String jwtVcIssuerUri = issuerUri
-                .replaceAll("/$", "") // Remove any trailing slash
                 .concat(JWT_VC_ISSUER_END_POINT); // Append well-known path
 
+        // Fetch and validate metadata
+
         JsonNode issuerMetadata = fetchData(jwtVcIssuerUri);
-        JsonNode jwksUri, jwks = null;
+        String exposedIssuerUri = normalizeUri(issuerMetadata.get("issuer").asText());
 
-        if (issuerMetadata != null) {
-            jwksUri = issuerMetadata.get("jwks_uri");
-            jwks = issuerMetadata.get("jwks");
+        if (!issuerUri.equals(exposedIssuerUri)) {
+            throw new VerificationException(String.format(
+                    "Unexpected metadata's issuer. Expected=%s, Got=%s",
+                    issuerUri, exposedIssuerUri
+            ));
+        }
 
-            if (jwksUri != null) {
-                jwks = fetchData(jwksUri.textValue());
-            }
+        // Parse metadata
+
+        JsonNode jwksUri = issuerMetadata.get("jwks_uri");
+        JsonNode jwks = issuerMetadata.get("jwks");
+
+        if (jwks == null && jwksUri != null) {
+            jwks = fetchData(jwksUri.textValue());
         }
 
         if (jwks == null || jwks.get("keys") == null || !jwks.get("keys").isArray()) {
@@ -159,12 +171,17 @@ public class JwtVcMetadataTrustedSdJwtIssuer implements TrustedSdJwtIssuer {
 
     private JsonNode fetchData(String uri) throws VerificationException {
         try {
-            return httpClient.fetchJsonData(uri);
-        } catch (IOException exception) {
+            return Objects.requireNonNull(httpClient.fetchJsonData(uri));
+        } catch (Exception exception) {
             throw new VerificationException(
                     String.format("Could not fetch data from URI: %s", uri),
                     exception
             );
         }
+    }
+
+    private String normalizeUri(String uri) {
+        // Remove any trailing slash
+        return uri.replaceAll("/$", "");
     }
 }

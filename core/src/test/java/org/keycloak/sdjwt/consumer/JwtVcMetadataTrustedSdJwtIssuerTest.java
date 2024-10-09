@@ -19,7 +19,7 @@ public abstract class JwtVcMetadataTrustedSdJwtIssuerTest {
 
     @Test
     public void shouldResolveIssuerVerifyingKeys() throws VerificationException {
-        String issuerUri = "https://trial.authlete.net/";
+        String issuerUri = "https://trial.authlete.net";
         TrustedSdJwtIssuer trustedIssuer = new JwtVcMetadataTrustedSdJwtIssuer(issuerUri);
         IssuerSignedJWT issuerSignedJWT = exampleIssuerSignedJWT(issuerUri);
         trustedIssuer.resolveIssuerVerifyingKeys(issuerSignedJWT);

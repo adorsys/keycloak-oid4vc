@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package org.keycloak.sdjwt.consumer;
+package org.keycloak.util;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import org.keycloak.sdjwt.SdJwtUtils;
