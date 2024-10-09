@@ -24,6 +24,7 @@ import org.keycloak.crypto.SignatureVerifierContext;
 import org.keycloak.sdjwt.IssuerSignedJWT;
 import org.keycloak.sdjwt.JwkParsingUtils;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -46,6 +47,7 @@ import java.util.stream.Collectors;
 public class JwtVcMetadataTrustedSdJwtIssuer implements TrustedSdJwtIssuer {
 
     private static final String JWT_VC_ISSUER_END_POINT = "/.well-known/jwt-vc-issuer";
+    private static final HttpClient httpClient = new HttpClient();
 
     private final Pattern issuerUriPattern;
 
@@ -155,31 +157,14 @@ public class JwtVcMetadataTrustedSdJwtIssuer implements TrustedSdJwtIssuer {
         return (ArrayNode) jwks.get("keys");
     }
 
-    // Helper method to fetch data using HttpClient and parse JSON
     private JsonNode fetchData(String uri) throws VerificationException {
-        throw new UnsupportedOperationException();
-//        try {
-//            HttpRequest request = HttpRequest.newBuilder()
-//                    .uri(new URI(uri))
-//                    .GET()
-//                    .build();
-//
-//            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-//
-//            if (response.statusCode() == 200) {
-//                return SdJwtUtils.mapper.readTree(response.body());
-//            } else {
-//                throw new VerificationException(String.format(
-//                        "Failed to fetch data from URI %s with status code %s",
-//                        uri, response.statusCode()
-//                ));
-//            }
-//        } catch (URISyntaxException | InterruptedException e) {
-//            throw new VerificationException(
-//                    "Error occurred while fetching data from URI: " + uri, e
-//            );
-//        } catch (IOException e) {
-//            throw new RuntimeException(e);
-//        }
+        try {
+            return httpClient.fetchJsonData(uri);
+        } catch (IOException exception) {
+            throw new VerificationException(
+                    String.format("Could not fetch data from URI: %s", uri),
+                    exception
+            );
+        }
     }
 }
