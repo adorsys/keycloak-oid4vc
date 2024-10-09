@@ -20,10 +20,12 @@ package org.keycloak.sdjwt.consumer;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.keycloak.common.VerificationException;
 import org.keycloak.crypto.SignatureVerifierContext;
+import org.keycloak.sdjwt.IssuerSignedJWT;
 import org.keycloak.sdjwt.IssuerSignedJwtVerificationOpts;
 import org.keycloak.sdjwt.vp.KeyBindingJwtVerificationOpts;
 import org.keycloak.sdjwt.vp.SdJwtVP;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -43,7 +45,7 @@ public class SdJwtPresentationConsumer {
      *
      * @param sdJwtVP                         the presentation to verify
      * @param presentationRequirements        the requirements on presented claims
-     * @param trustedSdJwtIssuer              a trusted issuer for the verification
+     * @param trustedSdJwtIssuers             trusted issuers for the verification
      * @param issuerSignedJwtVerificationOpts policy for Issuer-signed JWT verification
      * @param keyBindingJwtVerificationOpts   policy for Key-binding JWT verification
      * @throws VerificationException if the verification fails for some reason
@@ -51,14 +53,18 @@ public class SdJwtPresentationConsumer {
     public void verifySdJwtPresentation(
             SdJwtVP sdJwtVP,
             PresentationRequirements presentationRequirements,
-            TrustedSdJwtIssuer trustedSdJwtIssuer,
+            List<TrustedSdJwtIssuer> trustedSdJwtIssuers,
             IssuerSignedJwtVerificationOpts issuerSignedJwtVerificationOpts,
             KeyBindingJwtVerificationOpts keyBindingJwtVerificationOpts
     ) throws VerificationException {
-        // Retrieve verifying key for Issuer-signed JWT
-        // TODO: Combine keys from multiple trusted issuers
-        List<SignatureVerifierContext> issuerVerifyingKeys = trustedSdJwtIssuer
-                .resolveIssuerVerifyingKeys(sdJwtVP.getIssuerSignedJWT());
+        // Retrieve verifying keys for Issuer-signed JWT
+        IssuerSignedJWT issuerSignedJWT = sdJwtVP.getIssuerSignedJWT();
+        List<SignatureVerifierContext> issuerVerifyingKeys = new ArrayList<>();
+        for (TrustedSdJwtIssuer trustedSdJwtIssuer : trustedSdJwtIssuers) {
+            List<SignatureVerifierContext> keys = trustedSdJwtIssuer
+                    .resolveIssuerVerifyingKeys(issuerSignedJWT);
+            issuerVerifyingKeys.addAll(keys);
+        }
 
         // Verify the SD-JWT token cryptographically
         // Capture returned Issuer-signed JWT's payload with presented claims disclosed
