@@ -55,6 +55,7 @@ public class SdJwtVP {
     private final String hashAlgorithm;
 
     private final Optional<KeyBindingJWT> keyBindingJWT;
+    private final SdJwtVerificationContext sdJwtVerificationContext;
 
     public Map<String, ArrayNode> getClaims() {
         return claims;
@@ -99,6 +100,14 @@ public class SdJwtVP {
         this.recursiveDigests = Collections.unmodifiableMap(recursiveDigests);
         this.ghostDigests = Collections.unmodifiableList(ghostDigests);
         this.keyBindingJWT = keyBindingJWT;
+
+        // Instantiate context for verification
+        this.sdJwtVerificationContext = new SdJwtVerificationContext(
+                this.sdJwtVpString,
+                this.issuerSignedJWT,
+                this.disclosures,
+                this.keyBindingJWT.orElse(null)
+        );
     }
 
     public static SdJwtVP of(String sdJwtString) {
@@ -225,10 +234,6 @@ public class SdJwtVP {
             IssuerSignedJwtVerificationOpts issuerSignedJwtVerificationOpts,
             KeyBindingJwtVerificationOpts keyBindingJwtVerificationOpts
     ) throws VerificationException {
-        SdJwtVerificationContext sdJwtVerificationContext = new SdJwtVerificationContext(
-                sdJwtVpString, issuerSignedJWT, disclosures, keyBindingJWT.orElse(null)
-        );
-
         return sdJwtVerificationContext.verifyPresentation(
                 issuerVerifyingKeys, issuerSignedJwtVerificationOpts, keyBindingJwtVerificationOpts
         );

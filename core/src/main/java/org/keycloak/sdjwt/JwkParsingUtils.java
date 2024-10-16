@@ -18,7 +18,9 @@
 package org.keycloak.sdjwt;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import org.keycloak.crypto.Algorithm;
 import org.keycloak.crypto.AsymmetricSignatureVerifierContext;
+import org.keycloak.crypto.ECCurve;
 import org.keycloak.crypto.ECDSASignatureVerifierContext;
 import org.keycloak.crypto.KeyType;
 import org.keycloak.crypto.KeyWrapper;
@@ -54,15 +56,15 @@ public class JwkParsingUtils {
                 Objects.requireNonNull(keyWrapper.getCurve());
 
                 String alg = null;
-                switch (keyWrapper.getCurve()) {
-                    case "P-256":
-                        alg = "ES256";
+                switch (ECCurve.fromStdCrv(keyWrapper.getCurve())) {
+                    case P256:
+                        alg = Algorithm.ES256;
                         break;
-                    case "P-384":
-                        alg = "ES384";
+                    case P384:
+                        alg = Algorithm.ES384;
                         break;
-                    case "P-521":
-                        alg = "ES512";
+                    case P521:
+                        alg = Algorithm.ES512;
                         break;
                 }
 
@@ -80,6 +82,6 @@ public class JwkParsingUtils {
         // KeyType is not supported
         // This is unreachable as of now given that `JWKSUtils.getKeyWrapper` will fail
         // on JWKs with key type not equal to EC or RSA.
-        throw new UnsupportedOperationException("JWK alg is not supported");
+        throw new IllegalArgumentException("Unexpected key type: " + keyWrapper.getType());
     }
 }
