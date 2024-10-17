@@ -216,7 +216,11 @@ public class SdJwt {
             List<SignatureVerifierContext> issuerVerifyingKeys,
             IssuerSignedJwtVerificationOpts verificationOpts
     ) throws VerificationException {
-        sdJwtVerificationContext.verifyIssuance(issuerVerifyingKeys, verificationOpts);
+        sdJwtVerificationContext.verifyIssuance(
+                issuerVerifyingKeys,
+                verificationOpts,
+                null
+        );
     }
 
     // builder for SdJwt

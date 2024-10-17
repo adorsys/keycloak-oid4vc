@@ -31,6 +31,12 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
+import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
+
+/**
+ * @author <a href="mailto:Ingrid.Kamga@adorsys.com">Ingrid Kamga</a>
+ */
 public abstract class SdJwtPresentationConsumerTest {
 
     @ClassRule
@@ -48,6 +54,26 @@ public abstract class SdJwtPresentationConsumerTest {
                 defaultIssuerSignedJwtVerificationOpts(),
                 defaultKeyBindingJwtVerificationOpts()
         );
+    }
+
+    @Test
+    public void shouldFail_IfPresentationRequirementsNotMet() {
+        SimplePresentationDefinition definition = SimplePresentationDefinition.builder()
+                .addClaimRequirement("vct", ".*diploma.*")
+                .build();
+
+        VerificationException exception = assertThrows(VerificationException.class,
+                () -> sdJwtPresentationConsumer.verifySdJwtPresentation(
+                        exampleSdJwtVP(),
+                        definition,
+                        exampleTrustedSdJwtIssuers(),
+                        defaultIssuerSignedJwtVerificationOpts(),
+                        defaultKeyBindingJwtVerificationOpts()
+                )
+        );
+
+        assertTrue(exception.getMessage()
+                .contains("A required field was not presented: `vct`"));
     }
 
     private SdJwtVP exampleSdJwtVP() {
