@@ -35,17 +35,28 @@ import java.util.Objects;
  */
 public class JwkParsingUtils {
 
-    public static SignatureVerifierContext convertJwkToVerifierContext(JsonNode jwkNode) {
-        // Parse JWK
+    public static SignatureVerifierContext convertJwkNodeToVerifierContext(JsonNode jwkNode) {
+        JWK jwk;
+
+        try {
+            jwk = SdJwtUtils.mapper.convertValue(jwkNode, JWK.class);
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Malformed JWK");
+        }
+
+        return convertJwkToVerifierContext(jwk);
+    }
+
+    public static SignatureVerifierContext convertJwkToVerifierContext(JWK jwk) {
+        // Wrap JWK
 
         KeyWrapper keyWrapper;
 
         try {
-            JWK jwk = SdJwtUtils.mapper.convertValue(jwkNode, JWK.class);
             keyWrapper = JWKSUtils.getKeyWrapper(jwk);
             Objects.requireNonNull(keyWrapper);
         } catch (Exception e) {
-            throw new IllegalArgumentException("Malformed or unsupported JWK");
+            throw new IllegalArgumentException("Unsupported or invalid JWK");
         }
 
         // Build verifier

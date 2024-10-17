@@ -20,6 +20,7 @@ package org.keycloak.sdjwt;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.jboss.logging.Logger;
 import org.keycloak.common.VerificationException;
 import org.keycloak.crypto.SignatureVerifierContext;
 import org.keycloak.sdjwt.consumer.PresentationRequirements;
@@ -31,6 +32,7 @@ import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -43,6 +45,9 @@ import java.util.stream.Collectors;
  * @author <a href="mailto:Ingrid.Kamga@adorsys.com">Ingrid Kamga</a>
  */
 public class SdJwtVerificationContext {
+
+    private static final Logger logger = Logger.getLogger(SdJwtVerificationContext.class.getName());
+
     private String sdJwtVpString;
 
     private final IssuerSignedJWT issuerSignedJwt;
@@ -166,6 +171,7 @@ public class SdJwtVerificationContext {
      * - the Issuer-signed JWT is valid, i.e., it is signed by the Issuer and the signature is valid
      * </p>
      *
+     * @param verifiers Verifying keys for validating the Issuer-signed JWT.
      * @throws VerificationException if verification failed
      */
     private void validateIssuerSignedJwt(
@@ -175,11 +181,17 @@ public class SdJwtVerificationContext {
         issuerSignedJwt.verifySdHashAlgorithm();
 
         // Validate the signature over the Issuer-signed JWT
-        for (SignatureVerifierContext verifier : verifiers) {
+        Iterator<SignatureVerifierContext> iterator = verifiers.iterator();
+        while (iterator.hasNext()) {
             try {
+                SignatureVerifierContext verifier = iterator.next();
                 issuerSignedJwt.verifySignature(verifier);
                 return;
-            } catch (VerificationException ignored) {
+            } catch (VerificationException e) {
+                logger.debugf(e, "Issuer-signed JWT's signature verification failed against one potential verifying key");
+                if (iterator.hasNext()) {
+                    logger.debugf("Retrying Issuer-signed JWT's signature verification with next potential verifying key");
+                }
             }
         }
 
@@ -258,7 +270,7 @@ public class SdJwtVerificationContext {
 
         // Convert JWK
         try {
-            return JwkParsingUtils.convertJwkToVerifierContext(cnfJwk);
+            return JwkParsingUtils.convertJwkNodeToVerifierContext(cnfJwk);
         } catch (Exception e) {
             throw new VerificationException("Could not process cnf/jwk", e);
         }
