@@ -30,6 +30,7 @@ import org.keycloak.jose.jws.JWSInputException;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.protocol.oid4vc.issuance.VCIssuanceContext;
 import org.keycloak.protocol.oid4vc.issuance.VCIssuerException;
+import org.keycloak.protocol.oid4vc.issuance.credentials.CredentialBuilderUtils;
 import org.keycloak.protocol.oid4vc.model.CredentialConfigId;
 import org.keycloak.protocol.oid4vc.model.CredentialSubject;
 import org.keycloak.protocol.oid4vc.model.Format;
@@ -158,7 +159,7 @@ public class SdJwtSigningService extends JwtProofBasedSigningService<String> {
 
         // Use vct as type for sd-jwt.
         rootNode.put(VERIFIABLE_CREDENTIAL_TYPE_CLAIM, vct.getValue());
-        rootNode.put(CREDENTIAL_ID_CLAIM, JwtSigningService.createCredentialId(verifiableCredential));
+        rootNode.put(CREDENTIAL_ID_CLAIM, CredentialBuilderUtils.createCredentialId(verifiableCredential));
 
         // add the key binding if any
         if (jwk != null) {

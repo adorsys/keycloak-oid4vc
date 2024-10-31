@@ -25,14 +25,13 @@ import org.keycloak.jose.jws.JWSBuilder;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.protocol.oid4vc.issuance.TimeProvider;
 import org.keycloak.protocol.oid4vc.issuance.VCIssuanceContext;
+import org.keycloak.protocol.oid4vc.issuance.credentials.CredentialBuilderUtils;
 import org.keycloak.protocol.oid4vc.model.Format;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
 import org.keycloak.representations.JsonWebToken;
 
-import java.net.URI;
 import java.time.Instant;
 import java.util.Optional;
-import java.util.UUID;
 
 /**
  * {@link VerifiableCredentialsSigningService} implementing the JWT_VC format. It returns a string, containing the
@@ -45,7 +44,6 @@ public class JwtSigningService extends SigningService<String> {
 
     private static final Logger LOGGER = Logger.getLogger(JwtSigningService.class);
 
-    private static final String ID_TEMPLATE = "urn:uuid:%s";
     private static final String VC_CLAIM_KEY = "vc";
     private static final String ID_CLAIM_KEY = "id";
 
@@ -86,7 +84,7 @@ public class JwtSigningService extends SigningService<String> {
         JsonWebToken jsonWebToken = new JsonWebToken()
                 .issuer(verifiableCredential.getIssuer().toString())
                 .nbf(iat)
-                .id(createCredentialId(verifiableCredential));
+                .id(CredentialBuilderUtils.createCredentialId(verifiableCredential));
         jsonWebToken.setOtherClaims(VC_CLAIM_KEY, verifiableCredential);
 
         // expiry is optional
@@ -106,13 +104,5 @@ public class JwtSigningService extends SigningService<String> {
                 .type(tokenType)
                 .jsonContent(jsonWebToken)
                 .sign(signatureSignerContext);
-    }
-
-    // retrieve the credential id from the given VC or generate one.
-    static String createCredentialId(VerifiableCredential verifiableCredential) {
-        return Optional.ofNullable(
-                        verifiableCredential.getId())
-                .orElse(URI.create(String.format(ID_TEMPLATE, UUID.randomUUID())))
-                .toString();
     }
 }
