@@ -18,13 +18,19 @@
 package org.keycloak.testsuite.oid4vc.issuance.signing;
 
 import org.junit.Test;
+import org.junit.experimental.runners.Enclosed;
+import org.junit.runner.RunWith;
 import org.keycloak.common.util.MultivaluedHashMap;
 import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerWellKnownProvider;
 import org.keycloak.protocol.oid4vc.model.CredentialIssuer;
 import org.keycloak.protocol.oid4vc.model.Format;
 import org.keycloak.representations.idm.ClientRepresentation;
 import org.keycloak.representations.idm.RealmRepresentation;
+import org.keycloak.testsuite.arquillian.SuiteContext;
+import org.keycloak.testsuite.client.KeycloakTestingClient;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -32,14 +38,47 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
+import static org.keycloak.testsuite.oid4vc.issuance.signing.OID4VCTest.RSA_KEY;
+import static org.keycloak.testsuite.oid4vc.issuance.signing.OID4VCTest.TEST_DID;
+import static org.keycloak.testsuite.oid4vc.issuance.signing.OID4VCTest.getJwtSigningProvider;
+import static org.keycloak.testsuite.oid4vc.issuance.signing.OID4VCTest.getRsaKeyProvider;
 
-public class OID4VCIssuerWellKnownProviderTest extends OID4VCTest {
+@RunWith(Enclosed.class)
+public class OID4VCIssuerWellKnownProviderTest {
 
-    @Test
-    public void getConfig() {
+    public static class OID4VCIssuerWellKnownProviderTestCredentialDefinitionInClientAttributesTest extends OID4VCTest {
+        @Test
+        public void getConfig() {
+            OID4VCIssuerWellKnownProviderTest.getConfig(suiteContext, TEST_REALM_NAME, testingClient);
+        }
+
+        @Override
+        public void configureTestRealm(RealmRepresentation testRealm) {
+            ClientRepresentation clientRepresentation = getTestClient("did:web:test.org");
+            OID4VCIssuerWellKnownProviderTest.configureTestRealm(testRealm, clientRepresentation);
+        }
+    }
+
+    public static class TestOID4VCIssuerWellKnownProviderTestCredentialDefinitionInRealmAttributes extends OID4VCTest {
+        @Test
+        public void getConfig() {
+            OID4VCIssuerWellKnownProviderTest.getConfig(suiteContext, TEST_REALM_NAME, testingClient);
+        }
+
+        @Override
+        public void configureTestRealm(RealmRepresentation testRealm) {
+            ClientRepresentation clientRepresentation = getTestClient("did:web:test.org");
+            clientRepresentation.setAttributes(new HashMap<>());
+
+            OID4VCIssuerWellKnownProviderTest.configureTestRealm(testRealm, clientRepresentation);
+            testRealm.getAttributes().putAll(getCredentialDefinitionAttributes());
+        }
+    }
+
+    public static void getConfig(SuiteContext suiteContext, String TEST_REALM_NAME, KeycloakTestingClient testingClient) {
         String expectedIssuer = suiteContext.getAuthServerInfo().getContextRoot().toString() + "/auth/realms/" + TEST_REALM_NAME;
         String expectedCredentialsEndpoint = expectedIssuer + "/protocol/oid4vc/credential";
-        String expectedAuthorizationServer = expectedIssuer;
+        final String expectedAuthorizationServer = expectedIssuer;
         testingClient
                 .server(TEST_REALM_NAME)
                 .run((session -> {
@@ -62,33 +101,35 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCTest {
                 }));
     }
 
-
-    @Override
-    public void configureTestRealm(RealmRepresentation testRealm) {
+    public static void configureTestRealm(RealmRepresentation testRealm, ClientRepresentation clientRepresentation) {
         if (testRealm.getComponents() != null) {
             testRealm.getComponents().add("org.keycloak.keys.KeyProvider", getRsaKeyProvider(RSA_KEY));
             testRealm.getComponents().add("org.keycloak.protocol.oid4vc.issuance.signing.VerifiableCredentialsSigningService", getJwtSigningProvider(RSA_KEY));
         } else {
+            // Using new HashMap and new ArrayList to create mutable structures
             testRealm.setComponents(new MultivaluedHashMap<>(
-                    Map.of("org.keycloak.keys.KeyProvider", List.of(getRsaKeyProvider(RSA_KEY)),
-                            "org.keycloak.protocol.oid4vc.issuance.signing.VerifiableCredentialsSigningService", List.of(getJwtSigningProvider(RSA_KEY))
-                    )));
+                    new HashMap<>(Map.of("org.keycloak.keys.KeyProvider", new ArrayList<>(List.of(getRsaKeyProvider(RSA_KEY))),
+                            "org.keycloak.protocol.oid4vc.issuance.signing.VerifiableCredentialsSigningService", new ArrayList<>(List.of(getJwtSigningProvider(RSA_KEY)))
+                    ))
+            ));
         }
-        ClientRepresentation clientRepresentation = getTestClient("did:web:test.org");
+
         if (testRealm.getClients() != null) {
             testRealm.getClients().add(clientRepresentation);
         } else {
-            testRealm.setClients(List.of(clientRepresentation));
+            testRealm.setClients(new ArrayList<>(List.of(clientRepresentation)));
         }
+
         if (testRealm.getUsers() != null) {
-            testRealm.getUsers().add(getUserRepresentation(Map.of(clientRepresentation.getClientId(), List.of("testRole"))));
+            testRealm.getUsers().add(OID4VCTest.getUserRepresentation(Map.of(clientRepresentation.getClientId(), List.of("testRole"))));
         } else {
-            testRealm.setUsers(List.of(getUserRepresentation(Map.of(clientRepresentation.getClientId(), List.of("testRole")))));
+            testRealm.setUsers(new ArrayList<>(List.of(OID4VCTest.getUserRepresentation(Map.of(clientRepresentation.getClientId(), List.of("testRole"))))));
         }
+
         if (testRealm.getAttributes() != null) {
             testRealm.getAttributes().put("issuerDid", TEST_DID.toString());
         } else {
-            testRealm.setAttributes(Map.of("issuerDid", TEST_DID.toString()));
+            testRealm.setAttributes(new HashMap<>(Map.of("issuerDid", TEST_DID.toString())));
         }
     }
 }
