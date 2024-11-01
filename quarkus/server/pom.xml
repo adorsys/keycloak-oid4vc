@@ -40,6 +40,10 @@
             <artifactId>ojdbc11</artifactId>
             <scope>provided</scope>
         </dependency>
+        <dependency>
+            <groupId>io.mvnpm</groupId>
+            <artifactId>importmap</artifactId>
+        </dependency>
     </dependencies>
 
     <properties>
@@ -90,6 +94,9 @@
                     <artifactId>keycloak-quarkus-server-deployment</artifactId>
                 </dependency>
             </dependencies>
+        </profile>
+        <profile>
+            <id>dev</id>
         </profile>
     </profiles>
 </project>
