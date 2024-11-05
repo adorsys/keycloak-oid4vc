@@ -15,10 +15,9 @@
  * limitations under the License.
  */
 
-package org.keycloak.protocol.oid4vc.issuance.credentials;
+package org.keycloak.protocol.oid4vc.issuance.credentialbuilder;
 
-import org.keycloak.protocol.oid4vc.issuance.VCIssuanceContext;
-import org.keycloak.protocol.oid4vc.issuance.VCIssuerException;
+import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
 import org.keycloak.provider.Provider;
 
 public interface CredentialBuilder extends Provider {
@@ -28,14 +27,16 @@ public interface CredentialBuilder extends Provider {
     }
 
     /**
-     * Builds a verifiable credential of a specific format based on an internal representation of the credential.
+     * Builds a verifiable credential of a specific format from the basis of
+     * an internal representation of the credential.
      *
      * <p>
-     * The credential is built incompletely, intended to be signed externally.
+     * The credential is built incompletely, intended that it would be signed externally.
      * </p>
      *
-     * @param vcIssuanceContext
-     * @return the built verifiable credential, ready to be signed
+     * @param verifiableCredential an internal representation of the credential
+     * @return the built verifiable credential of the specific format, ready to be signed
      */
-    CredentialBody buildCredentialBody(VCIssuanceContext vcIssuanceContext) throws CredentialBuilderException;
+    CredentialBody buildCredentialBody(VerifiableCredential verifiableCredential)
+            throws CredentialBuilderException;
 }

@@ -15,23 +15,20 @@
  * limitations under the License.
  */
 
-package org.keycloak.protocol.oid4vc.issuance.credentials;
+package org.keycloak.protocol.oid4vc.issuance.credentialbuilder;
 
-import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
+/**
+ * Exception to be thrown if credentials building does fail
+ *
+ * @author <a href="mailto:Ingrid.Kamga@adorsys.com">Ingrid Kamga</a>
+ */
+public class CredentialBuilderException extends RuntimeException {
 
-import java.net.URI;
-import java.util.Optional;
-import java.util.UUID;
+    public CredentialBuilderException(String message) {
+        super(message);
+    }
 
-public class CredentialBuilderUtils {
-
-    private static final String ID_TEMPLATE = "urn:uuid:%s";
-
-    // retrieve the credential id from the given VC or generate one.
-    public static String createCredentialId(VerifiableCredential verifiableCredential) {
-        return Optional.ofNullable(
-                        verifiableCredential.getId())
-                .orElse(URI.create(String.format(ID_TEMPLATE, UUID.randomUUID())))
-                .toString();
+    public CredentialBuilderException(String message, Throwable cause) {
+        super(message, cause);
     }
 }

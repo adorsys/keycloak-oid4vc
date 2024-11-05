@@ -1,4 +1,4 @@
-package org.keycloak.protocol.oid4vc.issuance.credentials;
+package org.keycloak.protocol.oid4vc.issuance.credentialbuilder;
 
 import org.keycloak.Config;
 import org.keycloak.component.ComponentFactory;

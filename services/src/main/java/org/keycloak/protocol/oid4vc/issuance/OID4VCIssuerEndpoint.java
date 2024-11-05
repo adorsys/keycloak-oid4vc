@@ -47,7 +47,10 @@ import org.keycloak.models.UserSessionModel;
 import org.keycloak.protocol.ProtocolMapper;
 import org.keycloak.protocol.oid4vc.OID4VCClientRegistrationProvider;
 import org.keycloak.protocol.oid4vc.OID4VCLoginProtocolFactory;
+import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.CredentialBody;
+import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.CredentialBuilder;
 import org.keycloak.protocol.oid4vc.issuance.mappers.OID4VCMapper;
+import org.keycloak.protocol.oid4vc.issuance.signing.VCSigningServiceProviderFactory;
 import org.keycloak.protocol.oid4vc.issuance.signing.VerifiableCredentialsSigningService;
 import org.keycloak.protocol.oid4vc.model.CredentialOfferURI;
 import org.keycloak.protocol.oid4vc.model.CredentialRequest;
@@ -55,6 +58,7 @@ import org.keycloak.protocol.oid4vc.model.CredentialResponse;
 import org.keycloak.protocol.oid4vc.model.CredentialsOffer;
 import org.keycloak.protocol.oid4vc.model.ErrorResponse;
 import org.keycloak.protocol.oid4vc.model.ErrorType;
+import org.keycloak.protocol.oid4vc.model.Format;
 import org.keycloak.protocol.oid4vc.model.OID4VCClient;
 import org.keycloak.protocol.oid4vc.model.OfferUriType;
 import org.keycloak.protocol.oid4vc.model.PreAuthorizedCode;
@@ -565,8 +569,21 @@ public class OID4VCIssuerEndpoint {
 
         LOGGER.debugf("The credential to sign is: %s", vc);
 
-        return new VCIssuanceContext().setAuthResult(authResult)
+        // Retrieve format-specific credential builder as per request
+        String credentialFormat = credentialRequestVO.getFormat();
+        var service = session.getProvider(VerifiableCredentialsSigningService.class, Format.SD_JWT_VC);
+        CredentialBuilder credentialBuilder = session.getProvider(CredentialBuilder.class, credentialFormat);
+        if (credentialBuilder != null || service == null) {
+            throw new BadRequestException("No credential builder provider found for format: " + credentialFormat);
+        }
+
+        // Build format-specific credential
+        CredentialBody credentialBody = credentialBuilder.buildCredentialBody(vc);
+
+        return new VCIssuanceContext()
+                .setAuthResult(authResult)
                 .setVerifiableCredential(vc)
+                .setCredentialBody(credentialBody)
                 .setCredentialConfig(credentialConfig)
                 .setCredentialRequest(credentialRequestVO);
     }

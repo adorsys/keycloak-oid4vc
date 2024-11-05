@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package org.keycloak.protocol.oid4vc.issuance.credentials;
+package org.keycloak.protocol.oid4vc.issuance.credentialbuilder;
 
 import org.keycloak.crypto.Algorithm;
 import org.keycloak.provider.ProviderConfigProperty;

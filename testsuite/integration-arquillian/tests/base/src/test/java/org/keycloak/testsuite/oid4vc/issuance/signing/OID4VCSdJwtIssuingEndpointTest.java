@@ -40,6 +40,7 @@ import org.keycloak.models.KeycloakSession;
 import org.keycloak.protocol.oid4vc.OID4VCLoginProtocolFactory;
 import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerEndpoint;
 import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerWellKnownProvider;
+import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.CredentialBuilder;
 import org.keycloak.protocol.oid4vc.issuance.signing.SdJwtSigningService;
 import org.keycloak.protocol.oid4vc.model.CredentialConfigId;
 import org.keycloak.protocol.oid4vc.model.CredentialIssuer;
@@ -57,6 +58,7 @@ import org.keycloak.representations.idm.ComponentExportRepresentation;
 import org.keycloak.sdjwt.vp.SdJwtVP;
 import org.keycloak.services.managers.AppAuthManager;
 import org.keycloak.testsuite.util.OAuthClient;
+import org.keycloak.userprofile.UserProfileProvider;
 import org.keycloak.util.JsonSerialization;
 
 import java.io.IOException;
@@ -81,6 +83,18 @@ import static org.junit.Assert.fail;
  * @author <a href="mailto:francis.pouatcha@adorsys.com">Francis Pouatcha</a>
  */
 public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
+
+    @Test
+    public void testRetrievingProviders() {
+        testingClient
+                .server(TEST_REALM_NAME)
+                .run(session -> {
+                    UserProfileProvider provider = session.getProvider(UserProfileProvider.class);
+                    assertNotNull("UserProfileProvider", provider);
+//                    var builder = session.getProvider(CredentialBuilder.class, Format.SD_JWT_VC);
+//                    assertNotNull("CredentialBuilder", builder);
+                });
+    }
 
     @Test
     public void testRequestTestCredential() {

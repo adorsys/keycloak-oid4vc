@@ -1,10 +1,8 @@
-package org.keycloak.protocol.oid4vc.issuance.credentials;
+package org.keycloak.protocol.oid4vc.issuance.credentialbuilder;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.keycloak.component.ComponentModel;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.protocol.oid4vc.issuance.VCIssuerException;
-import org.keycloak.protocol.oid4vc.model.CredentialConfigId;
 import org.keycloak.protocol.oid4vc.model.Format;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredentialType;
 import org.keycloak.provider.ProviderConfigProperty;
@@ -19,20 +17,6 @@ public class SdJwtCredentialBuilderFactory implements CredentialBuilderFactory {
 
     @Override
     public CredentialBuilder create(KeycloakSession session, ComponentModel model) {
-        String algorithmType = model.get(CredentialBuilderProperties.ALGORITHM_TYPE.getKey());
-        String tokenType = model.get(CredentialBuilderProperties.TOKEN_TYPE.getKey());
-        String hashAlgorithm = model.get(CredentialBuilderProperties.HASH_ALGORITHM.getKey());
-        int decoys = Integer.parseInt(model.get(CredentialBuilderProperties.DECOYS.getKey()));
-        // Store vct as a conditional attribute of the signing service.
-        // But is vcConfigId is provided, vct must be provided as well.
-        String vct = model.get(CredentialBuilderProperties.VC_VCT.getKey());
-        String vcConfigId = model.get(CredentialBuilderProperties.VC_CONFIG_ID.getKey());
-
-        List<String> visibleClaims = Optional.ofNullable(model.get(CredentialBuilderProperties.VISIBLE_CLAIMS.getKey()))
-                .map(vsbleClaims -> vsbleClaims.split(","))
-                .map(Arrays::asList)
-                .orElse(List.of());
-
         String issuerDid = Optional.ofNullable(
                         session
                                 .getContext()
@@ -40,16 +24,30 @@ public class SdJwtCredentialBuilderFactory implements CredentialBuilderFactory {
                                 .getAttribute(ISSUER_DID_REALM_ATTRIBUTE_KEY))
                 .orElseThrow(() -> new VCIssuerException("No issuerDid configured."));
 
+        String tokenType = model.get(CredentialBuilderProperties.TOKEN_TYPE.getKey());
+        String hashAlgorithm = model.get(CredentialBuilderProperties.HASH_ALGORITHM.getKey());
+        int numberOfDecoys = Integer.parseInt(model.get(CredentialBuilderProperties.DECOYS.getKey()));
+
+        List<String> visibleClaims = Optional.ofNullable(model.get(CredentialBuilderProperties.VISIBLE_CLAIMS.getKey()))
+                .map(vsbleClaims -> vsbleClaims.split(","))
+                .map(Arrays::asList)
+                .orElse(List.of());
+
+        String vct = model.get(CredentialBuilderProperties.VC_VCT.getKey());
+        String vcConfigId = model.get(CredentialBuilderProperties.VC_CONFIG_ID.getKey());
+
+        // Validate that if a config id is defined, a vct must be defined.
+        if (vcConfigId != null && vct == null) {
+            throw new CredentialBuilderException(String.format("Missing vct for credential config id %s.", vcConfigId));
+        }
+
         return new SdJwtCredentialBuilder(
-                new ObjectMapper(),
-                algorithmType,
+                issuerDid,
                 tokenType,
                 hashAlgorithm,
-                issuerDid,
-                decoys,
                 visibleClaims,
-                VerifiableCredentialType.from(vct),
-                CredentialConfigId.from(vcConfigId)
+                numberOfDecoys,
+                VerifiableCredentialType.from(vct)
         );
     }
 
