@@ -284,7 +284,7 @@ public abstract class OID4VCIssuerEndpointTest extends OID4VCTest {
     }
 
     protected String getBasePath(String realm) {
-        return getRealmPath(realm) + "/protocol/oid4vc/";
+        return getRealmPath(realm) + "/protocol/openid-connect/oid4vci/";
     }
 
     private String getRealmPath(String realm) {

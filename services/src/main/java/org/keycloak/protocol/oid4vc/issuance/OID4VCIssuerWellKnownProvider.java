@@ -17,7 +17,9 @@
 
 package org.keycloak.protocol.oid4vc.issuance;
 
+import jakarta.ws.rs.core.UriBuilder;
 import jakarta.ws.rs.core.UriInfo;
+
 import org.keycloak.models.KeycloakContext;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
@@ -28,7 +30,10 @@ import org.keycloak.protocol.oid4vc.issuance.signing.VerifiableCredentialsSignin
 import org.keycloak.protocol.oid4vc.model.CredentialIssuer;
 import org.keycloak.protocol.oid4vc.model.OID4VCClient;
 import org.keycloak.protocol.oid4vc.model.SupportedCredentialConfiguration;
+import org.keycloak.protocol.oidc.OIDCLoginProtocol;
+import org.keycloak.protocol.oidc.OIDCLoginProtocolService;
 import org.keycloak.services.Urls;
+import org.keycloak.services.resources.RealmsResource;
 import org.keycloak.urls.UrlType;
 import org.keycloak.wellknown.WellKnownProvider;
 
@@ -61,11 +66,16 @@ public class OID4VCIssuerWellKnownProvider implements WellKnownProvider {
 
     @Override
     public Object getConfig() {
+        KeycloakContext context = keycloakSession.getContext();
+        String realmName = context.getRealm().getName();
+        UriInfo frontendUriInfo = context.getUri(UrlType.FRONTEND);
+        UriBuilder frontendUriBuilder = RealmsResource.protocolUrl(frontendUriInfo);
+        String oidcIssuer = getIssuer(frontendUriInfo, realmName);
         return new CredentialIssuer()
-                .setCredentialIssuer(getIssuer(keycloakSession.getContext()))
-                .setCredentialEndpoint(getCredentialsEndpoint(keycloakSession.getContext()))
+                .setCredentialIssuer(oidcIssuer)// oid4vc issuer is same as the oidc issuer in this case
+                .setCredentialEndpoint(getCredentialsEndpoint(frontendUriBuilder, realmName))
                 .setCredentialsSupported(getSupportedCredentials(keycloakSession))
-                .setAuthorizationServers(List.of(getIssuer(keycloakSession.getContext())));
+                .setAuthorizationServers(List.of(oidcIssuer));// auth server is also same as the oidc issuer
     }
 
     /**
@@ -118,17 +128,29 @@ public class OID4VCIssuerWellKnownProvider implements WellKnownProvider {
      * Return the url of the issuer.
      */
     public static String getIssuer(KeycloakContext context) {
-        UriInfo frontendUriInfo = context.getUri(UrlType.FRONTEND);
-        return Urls.realmIssuer(frontendUriInfo.getBaseUri(),
-                context.getRealm().getName());
+        return getIssuer(context.getUri(UrlType.FRONTEND), context.getRealm().getName());
+    }
 
+    private static String getIssuer(UriInfo uriInfo, String realmName) {
+        return Urls.realmIssuer(uriInfo.getBaseUri(), realmName);
     }
 
     /**
      * Return the credentials endpoint address
      */
-    public static String getCredentialsEndpoint(KeycloakContext context) {
-        return getIssuer(context) + "/protocol/" + OID4VCLoginProtocolFactory.PROTOCOL_ID + "/" + OID4VCIssuerEndpoint.CREDENTIAL_PATH;
+    private static String getCredentialsEndpoint(UriBuilder uriBuilder, String realmName) {
+        return getProtocolEndpointSubpath(uriBuilder, realmName, OID4VCIssuerEndpoint.CREDENTIAL_PATH);
+    }
+
+    /**
+     * Helps build the uri for any sub resource of the oid4vci sub protocol
+     */
+    public static String getProtocolEndpointUri(KeycloakContext context, String subpath){
+        return getProtocolEndpointSubpath(RealmsResource.protocolUrl(context.getUri(UrlType.FRONTEND)), context.getRealm().getName(), subpath);
+    }
+
+    private static String getProtocolEndpointSubpath(UriBuilder uriBuilder, String realmName, String subpath){
+        return uriBuilder.path(OIDCLoginProtocolService.class, "oid4vci").path(subpath).build(realmName, OIDCLoginProtocol.LOGIN_PROTOCOL).toString();
     }
 
     private static final String VC_KEY = "vc";

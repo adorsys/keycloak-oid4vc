@@ -260,7 +260,7 @@ public class OID4VCIssuerEndpoint {
 
     private Response getOfferUriAsUri(String sessionCode) {
         CredentialOfferURI credentialOfferURI = new CredentialOfferURI()
-                .setIssuer(OID4VCIssuerWellKnownProvider.getIssuer(session.getContext()) + "/protocol/" + OID4VCLoginProtocolFactory.PROTOCOL_ID + "/" + CREDENTIAL_OFFER_PATH)
+                .setIssuer(OID4VCIssuerWellKnownProvider.getProtocolEndpointUri(session.getContext(), CREDENTIAL_OFFER_PATH))
                 .setNonce(sessionCode);
 
         return Response.ok()
@@ -271,7 +271,7 @@ public class OID4VCIssuerEndpoint {
 
     private Response getOfferUriAsQr(String sessionCode, int width, int height) {
         QRCodeWriter qrCodeWriter = new QRCodeWriter();
-        String encodedOfferUri = URLEncoder.encode(OID4VCIssuerWellKnownProvider.getIssuer(session.getContext()) + "/protocol/" + OID4VCLoginProtocolFactory.PROTOCOL_ID + "/" + CREDENTIAL_OFFER_PATH + sessionCode, StandardCharsets.UTF_8);
+        String encodedOfferUri = URLEncoder.encode(OID4VCIssuerWellKnownProvider.getProtocolEndpointUri(session.getContext(), CREDENTIAL_OFFER_PATH) + sessionCode, StandardCharsets.UTF_8);
         try {
             BitMatrix bitMatrix = qrCodeWriter.encode("openid-credential-offer://?credential_offer_uri=" + encodedOfferUri, BarcodeFormat.QR_CODE, width, height);
             ByteArrayOutputStream bos = new ByteArrayOutputStream();

@@ -185,7 +185,7 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
     @Test
     public void getConfig() {
         String expectedIssuer = suiteContext.getAuthServerInfo().getContextRoot().toString() + "/auth/realms/" + TEST_REALM_NAME;
-        String expectedCredentialsEndpoint = expectedIssuer + "/protocol/oid4vc/credential";
+        String expectedCredentialsEndpoint = expectedIssuer + "/protocol/openid-connect/oid4vci/credential";
         String expectedAuthorizationServer = expectedIssuer;
         testingClient
                 .server(TEST_REALM_NAME)

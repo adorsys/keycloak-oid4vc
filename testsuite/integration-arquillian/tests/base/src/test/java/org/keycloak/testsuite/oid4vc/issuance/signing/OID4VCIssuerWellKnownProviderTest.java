@@ -125,7 +125,7 @@ public class OID4VCIssuerWellKnownProviderTest {
 
     public static void testCredentialConfig(SuiteContext suiteContext, KeycloakTestingClient testingClient) {
         String expectedIssuer = suiteContext.getAuthServerInfo().getContextRoot().toString() + "/auth/realms/" + TEST_REALM_NAME;
-        String expectedCredentialsEndpoint = expectedIssuer + "/protocol/oid4vc/credential";
+        String expectedCredentialsEndpoint = expectedIssuer + "/protocol/openid-connect/oid4vci/credential";
         final String expectedAuthorizationServer = expectedIssuer;
         testingClient
                 .server(TEST_REALM_NAME)
