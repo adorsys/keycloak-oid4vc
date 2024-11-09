@@ -27,6 +27,7 @@ import org.keycloak.jose.jwk.JSONWebKeySet;
 import org.keycloak.models.Constants;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
+import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerEndpoint;
 import org.keycloak.protocol.oidc.endpoints.AuthorizationEndpoint;
 import org.keycloak.protocol.oidc.endpoints.LoginStatusIframeEndpoint;
 import org.keycloak.protocol.oidc.endpoints.LogoutEndpoint;
@@ -142,6 +143,10 @@ public class OIDCLoginProtocolService {
         return uriBuilder.path(OIDCLoginProtocolService.class, "revoke");
     }
 
+    public static UriBuilder oid4vciBaseUrl(UriBuilder baseUriBuilder) {
+        return baseUriBuilder.path(RealmsResource.class).path("{realm}/protocol/" + OIDCLoginProtocol.LOGIN_PROTOCOL);
+    }
+
     /**
      * Authorization endpoint
      */
@@ -240,6 +245,11 @@ public class OIDCLoginProtocolService {
             return provider;
         }
         throw new NotFoundException();
+    }
+
+    @Path("oid4vci")
+    public Object oid4vci(){
+        return new OID4VCIssuerEndpoint(session, event);
     }
 
     private void checkSsl() {
