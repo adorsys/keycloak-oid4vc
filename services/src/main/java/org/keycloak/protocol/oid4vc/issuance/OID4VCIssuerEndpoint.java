@@ -573,7 +573,7 @@ public class OID4VCIssuerEndpoint {
         String credentialFormat = credentialRequestVO.getFormat();
         var service = session.getProvider(VerifiableCredentialsSigningService.class, Format.SD_JWT_VC);
         CredentialBuilder credentialBuilder = session.getProvider(CredentialBuilder.class, credentialFormat);
-        if (credentialBuilder != null || service == null) {
+        if (credentialBuilder == null || service == null) {
             throw new BadRequestException("No credential builder provider found for format: " + credentialFormat);
         }
 

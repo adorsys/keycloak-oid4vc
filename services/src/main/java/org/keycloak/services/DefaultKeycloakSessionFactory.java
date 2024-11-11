@@ -328,7 +328,7 @@ public abstract class DefaultKeycloakSessionFactory implements KeycloakSessionFa
 
                     factories.put(factory.getId(), factory);
 
-                    logger.debugv("Loaded SPI {0} (provider = {1})", spi.getName(), provider);
+                    logger.infov("Loaded SPI {0} (provider = {1})", spi.getName(), provider);
                 }
 
             } else {
@@ -342,7 +342,7 @@ public abstract class DefaultKeycloakSessionFactory implements KeycloakSessionFa
                         }
                         factories.put(factory.getId(), factory);
                     } else {
-                        logger.debugv("SPI {0} provider {1} disabled", spi.getName(), factory.getId());
+                        logger.infov("SPI {0} provider {1} disabled", spi.getName(), factory.getId());
                     }
                 }
             }

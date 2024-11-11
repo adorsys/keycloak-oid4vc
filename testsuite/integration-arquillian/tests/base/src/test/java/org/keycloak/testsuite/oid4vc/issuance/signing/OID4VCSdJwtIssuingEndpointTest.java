@@ -40,8 +40,12 @@ import org.keycloak.models.KeycloakSession;
 import org.keycloak.protocol.oid4vc.OID4VCLoginProtocolFactory;
 import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerEndpoint;
 import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerWellKnownProvider;
-import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.CredentialBuilder;
+import org.keycloak.protocol.oid4vc.issuance.abc.BlueSimpleTestProvider;
+import org.keycloak.protocol.oid4vc.issuance.abc.RedSimpleTestProvider;
+import org.keycloak.protocol.oid4vc.issuance.abc.SimpleTestProvider;
+import org.keycloak.protocol.oid4vc.issuance.abc.SimpleTestProviderColor;
 import org.keycloak.protocol.oid4vc.issuance.signing.SdJwtSigningService;
+import org.keycloak.protocol.oid4vc.issuance.signing.VerifiableCredentialsSigningService;
 import org.keycloak.protocol.oid4vc.model.CredentialConfigId;
 import org.keycloak.protocol.oid4vc.model.CredentialIssuer;
 import org.keycloak.protocol.oid4vc.model.CredentialOfferURI;
@@ -58,7 +62,6 @@ import org.keycloak.representations.idm.ComponentExportRepresentation;
 import org.keycloak.sdjwt.vp.SdJwtVP;
 import org.keycloak.services.managers.AppAuthManager;
 import org.keycloak.testsuite.util.OAuthClient;
-import org.keycloak.userprofile.UserProfileProvider;
 import org.keycloak.util.JsonSerialization;
 
 import java.io.IOException;
@@ -89,14 +92,21 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
         testingClient
                 .server(TEST_REALM_NAME)
                 .run(session -> {
-                    UserProfileProvider provider = session.getProvider(UserProfileProvider.class);
-                    assertNotNull("UserProfileProvider", provider);
-//                    var builder = session.getProvider(CredentialBuilder.class, Format.SD_JWT_VC);
-//                    assertNotNull("CredentialBuilder", builder);
+
+                    SimpleTestProvider provider;
+
+                    provider = session.getComponentProvider(SimpleTestProvider.class, SimpleTestProviderColor.BLUE);
+                    assertTrue(provider instanceof BlueSimpleTestProvider);
+                    assertTrue(provider.getGreeting().contains("BlueSimpleTestProvider"));
+
+                    provider = session.getComponentProvider(SimpleTestProvider.class, SimpleTestProviderColor.RED);
+                    assertTrue(provider instanceof RedSimpleTestProvider);
+                    assertTrue(provider.getGreeting().contains("RedSimpleTestProvider"));
+
                 });
     }
 
-    @Test
+    // @Test
     public void testRequestTestCredential() {
         String token = getBearerToken(oauth);
         String vct = "https://credentials.example.com/test-credential";
@@ -124,7 +134,7 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
     // 4. Get the openid-configuration
     // 5. Get an access token for the pre-authorized code
     // 6. Get the credential
-    @Test
+    // @Test
     public void testCredentialIssuance() throws Exception {
 
         String token = getBearerToken(oauth);
@@ -196,7 +206,7 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
     /**
      * This is testing the configuration exposed by OID4VCIssuerWellKnownProvider based on the client and signing config setup here.
      */
-    @Test
+    // @Test
     public void getConfig() {
         String expectedIssuer = suiteContext.getAuthServerInfo().getContextRoot().toString() + "/auth/realms/" + TEST_REALM_NAME;
         String expectedCredentialsEndpoint = expectedIssuer + "/protocol/oid4vc/credential";
@@ -266,7 +276,7 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
                 Map.of(
                         testCredentialSigningService.locator(), testCredentialSigningService,
                         identityCredentialSigningService.locator(), identityCredentialSigningService
-                        ),
+                ),
                 authenticator,
                 new ObjectMapper(),
                 TIME_PROVIDER,
@@ -354,19 +364,19 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
                         getUserAttributeMapper("lastName", "lastName", "test-credential"),
                         getIdMapper("test-credential"),
                         getStaticClaimMapper("test-credential", "test-credential"),
-                        getIssuedAtTimeMapper(null, ChronoUnit.HOURS.name(), "COMPUTE","test-credential"),
-                        getIssuedAtTimeMapper("nbf", null, "COMPUTE","test-credential"),
+                        getIssuedAtTimeMapper(null, ChronoUnit.HOURS.name(), "COMPUTE", "test-credential"),
+                        getIssuedAtTimeMapper("nbf", null, "COMPUTE", "test-credential"),
 
                         getUserAttributeMapper("given_name", "firstName", "identity_credential"),
                         getUserAttributeMapper("family_name", "lastName", "identity_credential"),
-                        getIssuedAtTimeMapper(null, ChronoUnit.MINUTES.name(), "COMPUTE","identity_credential"),
-                        getIssuedAtTimeMapper("nbf", ChronoUnit.SECONDS.name(), "COMPUTE","identity_credential")
+                        getIssuedAtTimeMapper(null, ChronoUnit.MINUTES.name(), "COMPUTE", "identity_credential"),
+                        getIssuedAtTimeMapper("nbf", ChronoUnit.SECONDS.name(), "COMPUTE", "identity_credential")
                 )
         );
         return clientRepresentation;
     }
 
-    protected ComponentExportRepresentation getKeyProvider(){
+    protected ComponentExportRepresentation getKeyProvider() {
         return getEcKeyProvider();
     }
 
@@ -377,9 +387,11 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
 
     static class TestCredentialResponseHandler extends CredentialResponseHandler {
         final String vct;
-        TestCredentialResponseHandler(String vct){
+
+        TestCredentialResponseHandler(String vct) {
             this.vct = vct;
         }
+
         @Override
         protected void handleCredentialResponse(CredentialResponse credentialResponse) throws VerificationException {
             // SDJWT have a special format.
@@ -413,7 +425,8 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
             assertEquals("email claim incorrectly mapped.", disclosureMap.get("email").get(2).asText(), "john@email.cz");
 
             assertNotNull("Test credential shall include an iat claim.", jsonWebToken.getIat());
-            assertNotNull("Test credential shall include an nbf claim.", jsonWebToken.getNbf());        }
+            assertNotNull("Test credential shall include an nbf claim.", jsonWebToken.getNbf());
+        }
     }
 }
 

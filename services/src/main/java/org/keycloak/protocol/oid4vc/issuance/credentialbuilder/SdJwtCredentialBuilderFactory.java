@@ -16,6 +16,11 @@ import static org.keycloak.protocol.oid4vc.issuance.signing.VCSigningServiceProv
 public class SdJwtCredentialBuilderFactory implements CredentialBuilderFactory {
 
     @Override
+    public String getId() {
+        return Format.SD_JWT_VC;
+    }
+
+    @Override
     public CredentialBuilder create(KeycloakSession session, ComponentModel model) {
         String issuerDid = Optional.ofNullable(
                         session
@@ -59,10 +64,5 @@ public class SdJwtCredentialBuilderFactory implements CredentialBuilderFactory {
     @Override
     public List<ProviderConfigProperty> getConfigProperties() {
         return null;
-    }
-
-    @Override
-    public String getId() {
-        return Format.SD_JWT_VC;
     }
 }

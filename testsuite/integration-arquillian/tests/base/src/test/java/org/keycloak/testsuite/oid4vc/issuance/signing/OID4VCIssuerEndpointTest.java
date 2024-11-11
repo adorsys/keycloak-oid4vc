@@ -47,6 +47,7 @@ import org.keycloak.models.UserSessionModel;
 import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerEndpoint;
 import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerWellKnownProviderFactory;
 import org.keycloak.protocol.oid4vc.issuance.TimeProvider;
+import org.keycloak.protocol.oid4vc.issuance.abc.SimpleTestProviderColor;
 import org.keycloak.protocol.oid4vc.issuance.signing.JwtSigningService;
 import org.keycloak.protocol.oid4vc.model.CredentialIssuer;
 import org.keycloak.protocol.oid4vc.model.CredentialRequest;
@@ -77,6 +78,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 
@@ -312,15 +314,14 @@ public abstract class OID4VCIssuerEndpointTest extends OID4VCTest {
 
     @Override
     public void configureTestRealm(RealmRepresentation testRealm) {
-        if (testRealm.getComponents() != null) {
-            testRealm.getComponents().add("org.keycloak.keys.KeyProvider", getKeyProvider());
-            testRealm.getComponents().addAll("org.keycloak.protocol.oid4vc.issuance.signing.VerifiableCredentialsSigningService", getSigningProviders());
-        } else {
-            testRealm.setComponents(new MultivaluedHashMap<>(
-                    Map.of("org.keycloak.keys.KeyProvider", List.of(getKeyProvider()),
-                            "org.keycloak.protocol.oid4vc.issuance.signing.VerifiableCredentialsSigningService", getSigningProviders()
-                    )));
+        if (testRealm.getComponents() == null) {
+            testRealm.setComponents(new MultivaluedHashMap<>());
         }
+
+        testRealm.getComponents().add("org.keycloak.keys.KeyProvider", getKeyProvider());
+        testRealm.getComponents().addAll("org.keycloak.protocol.oid4vc.issuance.signing.VerifiableCredentialsSigningService", getSigningProviders());
+        testRealm.getComponents().addAll("org.keycloak.protocol.oid4vc.issuance.abc.SimpleTestProvider", getSimpleTestProviders());
+
         ClientRepresentation clientRepresentation = getTestClient("did:web:test.org");
         if (testRealm.getClients() != null) {
             testRealm.getClients().add(clientRepresentation);
@@ -363,6 +364,26 @@ public abstract class OID4VCIssuerEndpointTest extends OID4VCTest {
 
     protected List<ComponentExportRepresentation> getSigningProviders() {
         return List.of(getJwtSigningProvider(RSA_KEY));
+    }
+
+    protected List<ComponentExportRepresentation> getSimpleTestProviders() {
+        return List.of(
+                getSimpleTestProvider(SimpleTestProviderColor.BLUE),
+                getSimpleTestProvider(SimpleTestProviderColor.RED)
+        );
+    }
+
+    protected ComponentExportRepresentation getSimpleTestProvider(String testProviderColor) {
+        ComponentExportRepresentation componentExportRepresentation = new ComponentExportRepresentation();
+        componentExportRepresentation.setId(UUID.randomUUID().toString());
+
+        componentExportRepresentation.setName("simple-test-provider-" + testProviderColor);
+        componentExportRepresentation.setProviderId(testProviderColor);
+        componentExportRepresentation.setConfig(new MultivaluedHashMap<>(Map.of(
+                "a", List.of("b")
+        )));
+
+        return componentExportRepresentation;
     }
 
     protected static class CredentialResponseHandler {
