@@ -15,32 +15,19 @@
  * limitations under the License.
  */
 
-package org.keycloak.protocol.oid4vc.issuance.abc;
+package org.keycloak.protocol.oid4vc;
 
 import org.keycloak.provider.Provider;
-import org.keycloak.provider.ProviderFactory;
-import org.keycloak.provider.Spi;
 
-public class SimpleTestProviderSpi implements Spi {
-    private static final String NAME = "simpleTestProvider";
+/**
+ * @author <a href="mailto:Ingrid.Kamga@adorsys.com">Ingrid Kamga</a>
+ */
+public interface LocatableProvider extends Provider {
 
-    @Override
-    public boolean isInternal() {
-        return true;
-    }
-
-    @Override
-    public String getName() {
-        return NAME;
-    }
-
-    @Override
-    public Class<? extends Provider> getProviderClass() {
-        return SimpleTestProvider.class;
-    }
-
-    @Override
-    public Class<? extends ProviderFactory<SimpleTestProvider>> getProviderFactoryClass() {
-        return SimpleTestProviderFactory.class;
-    }
+    /**
+     * Enables a provider instance to self-identify based on its internal properties,
+     * which may potentially not be known by its factory before hand. This makes it
+     * possible to locate a created component with more precision.
+     */
+    String locator();
 }

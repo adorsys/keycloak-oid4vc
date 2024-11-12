@@ -47,7 +47,6 @@ import org.keycloak.models.UserSessionModel;
 import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerEndpoint;
 import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerWellKnownProviderFactory;
 import org.keycloak.protocol.oid4vc.issuance.TimeProvider;
-import org.keycloak.protocol.oid4vc.issuance.abc.SimpleTestProviderColor;
 import org.keycloak.protocol.oid4vc.issuance.signing.JwtSigningService;
 import org.keycloak.protocol.oid4vc.model.CredentialIssuer;
 import org.keycloak.protocol.oid4vc.model.CredentialRequest;
@@ -277,6 +276,7 @@ public abstract class OID4VCIssuerEndpointTest extends OID4VCTest {
         return new OID4VCIssuerEndpoint(
                 session,
                 "did:web:issuer.org",
+                Map.of(),
                 Map.of(jwtSigningService.locator(), jwtSigningService),
                 authenticator,
                 JsonSerialization.mapper,
@@ -320,7 +320,6 @@ public abstract class OID4VCIssuerEndpointTest extends OID4VCTest {
 
         testRealm.getComponents().add("org.keycloak.keys.KeyProvider", getKeyProvider());
         testRealm.getComponents().addAll("org.keycloak.protocol.oid4vc.issuance.signing.VerifiableCredentialsSigningService", getSigningProviders());
-        testRealm.getComponents().addAll("org.keycloak.protocol.oid4vc.issuance.abc.SimpleTestProvider", getSimpleTestProviders());
 
         ClientRepresentation clientRepresentation = getTestClient("did:web:test.org");
         if (testRealm.getClients() != null) {
@@ -364,26 +363,6 @@ public abstract class OID4VCIssuerEndpointTest extends OID4VCTest {
 
     protected List<ComponentExportRepresentation> getSigningProviders() {
         return List.of(getJwtSigningProvider(RSA_KEY));
-    }
-
-    protected List<ComponentExportRepresentation> getSimpleTestProviders() {
-        return List.of(
-                getSimpleTestProvider(SimpleTestProviderColor.BLUE),
-                getSimpleTestProvider(SimpleTestProviderColor.RED)
-        );
-    }
-
-    protected ComponentExportRepresentation getSimpleTestProvider(String testProviderColor) {
-        ComponentExportRepresentation componentExportRepresentation = new ComponentExportRepresentation();
-        componentExportRepresentation.setId(UUID.randomUUID().toString());
-
-        componentExportRepresentation.setName("simple-test-provider-" + testProviderColor);
-        componentExportRepresentation.setProviderId(testProviderColor);
-        componentExportRepresentation.setConfig(new MultivaluedHashMap<>(Map.of(
-                "a", List.of("b")
-        )));
-
-        return componentExportRepresentation;
     }
 
     protected static class CredentialResponseHandler {

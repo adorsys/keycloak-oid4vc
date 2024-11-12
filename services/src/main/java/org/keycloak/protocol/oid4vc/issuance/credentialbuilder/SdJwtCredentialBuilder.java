@@ -1,6 +1,7 @@
 package org.keycloak.protocol.oid4vc.issuance.credentialbuilder;
 
 import org.keycloak.protocol.oid4vc.model.CredentialSubject;
+import org.keycloak.protocol.oid4vc.model.Format;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredentialType;
 import org.keycloak.sdjwt.DisclosureSpec;
@@ -11,7 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.IntStream;
 
-public class SdJwtCredentialBuilder implements CredentialBuilder {
+public class SdJwtCredentialBuilder extends AbstractCredentialBuilder {
 
     private static final String ISSUER_CLAIM = "iss";
     private static final String VERIFIABLE_CREDENTIAL_TYPE_CLAIM = "vct";
@@ -42,6 +43,11 @@ public class SdJwtCredentialBuilder implements CredentialBuilder {
         this.numberOfDecoys = numberOfDecoys;
         this.visibleClaims = visibleClaims;
         this.vct = credentialType;
+    }
+
+    @Override
+    public String getSupportedFormat() {
+        return Format.SD_JWT_VC;
     }
 
     @Override

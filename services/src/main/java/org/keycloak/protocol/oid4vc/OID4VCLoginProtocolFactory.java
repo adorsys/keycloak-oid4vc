@@ -20,6 +20,7 @@ package org.keycloak.protocol.oid4vc;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.jboss.logging.Logger;
 import org.keycloak.Config;
+import org.keycloak.component.ComponentFactory;
 import org.keycloak.component.ComponentModel;
 import org.keycloak.events.EventBuilder;
 import org.keycloak.models.ClientModel;
@@ -34,11 +35,13 @@ import org.keycloak.protocol.LoginProtocolFactory;
 import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerEndpoint;
 import org.keycloak.protocol.oid4vc.issuance.OffsetTimeProvider;
 import org.keycloak.protocol.oid4vc.issuance.VCIssuerException;
+import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.CredentialBuilder;
 import org.keycloak.protocol.oid4vc.issuance.mappers.OID4VCSubjectIdMapper;
 import org.keycloak.protocol.oid4vc.issuance.mappers.OID4VCTargetRoleMapper;
 import org.keycloak.protocol.oid4vc.issuance.mappers.OID4VCUserAttributeMapper;
 import org.keycloak.protocol.oid4vc.issuance.signing.VCSigningServiceProviderFactory;
 import org.keycloak.protocol.oid4vc.issuance.signing.VerifiableCredentialsSigningService;
+import org.keycloak.provider.Provider;
 import org.keycloak.provider.ProviderFactory;
 import org.keycloak.representations.idm.ClientRepresentation;
 import org.keycloak.services.managers.AppAuthManager;
@@ -46,6 +49,8 @@ import org.keycloak.services.managers.AppAuthManager;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Factory for creating all OID4VC related endpoints and the default mappers.
@@ -97,26 +102,15 @@ public class OID4VCLoginProtocolFactory implements LoginProtocolFactory, OID4VCE
         return builtins;
     }
 
-    private void addServiceFromComponent(Map<String, VerifiableCredentialsSigningService> signingServices, KeycloakSession keycloakSession, ComponentModel componentModel) {
-        ProviderFactory<VerifiableCredentialsSigningService> factory = keycloakSession
-                .getKeycloakSessionFactory()
-                .getProviderFactory(VerifiableCredentialsSigningService.class, componentModel.getProviderId());
-        if (factory instanceof VCSigningServiceProviderFactory sspf) {
-            VerifiableCredentialsSigningService verifiableCredentialsSigningService = sspf.create(keycloakSession, componentModel);
-            signingServices.put(verifiableCredentialsSigningService.locator(), verifiableCredentialsSigningService);
-        } else {
-            throw new IllegalArgumentException(String.format("The component %s is not a VerifiableCredentialsSigningServiceProviderFactory", componentModel.getProviderId()));
-        }
-
-    }
-
     @Override
     public Object createProtocolEndpoint(KeycloakSession keycloakSession, EventBuilder event) {
+        Map<String, CredentialBuilder> credentialBuilders = initSpiComponents(
+                keycloakSession, CredentialBuilder.class
+        );
 
-        Map<String, VerifiableCredentialsSigningService> signingServices = new HashMap<>();
-        RealmModel realm = keycloakSession.getContext().getRealm();
-        realm.getComponentsStream(realm.getId(), VerifiableCredentialsSigningService.class.getName())
-                .forEach(cm -> addServiceFromComponent(signingServices, keycloakSession, cm));
+        Map<String, VerifiableCredentialsSigningService> signingServices = initSpiComponents(
+                keycloakSession, VerifiableCredentialsSigningService.class
+        );
 
         RealmModel realmModel = keycloakSession.getContext().getRealm();
         String issuerDid = Optional.ofNullable(realmModel.getAttribute(ISSUER_DID_REALM_ATTRIBUTE_KEY))
@@ -128,6 +122,7 @@ public class OID4VCLoginProtocolFactory implements LoginProtocolFactory, OID4VCE
         return new OID4VCIssuerEndpoint(
                 keycloakSession,
                 issuerDid,
+                credentialBuilders,
                 signingServices,
                 new AppAuthManager.BearerTokenAuthenticator(keycloakSession),
                 OBJECT_MAPPER,
@@ -169,4 +164,33 @@ public class OID4VCLoginProtocolFactory implements LoginProtocolFactory, OID4VCE
         return PROTOCOL_ID;
     }
 
+    /**
+     * Create components of the given class from the associated SPI factories in Keycloak's session.
+     * This enables the components to be locatable by their `locator` implementation.
+     * @return a map of the created components with their locator strings as keys
+     */
+    private <T extends LocatableProvider> Map<String, T> initSpiComponents(
+            KeycloakSession keycloakSession,
+            Class<T> clazz
+    ) {
+        KeycloakSessionFactory keycloakSessionFactory = keycloakSession.getKeycloakSessionFactory();
+        RealmModel realm = keycloakSession.getContext().getRealm();
+        Stream<ComponentModel> componentModels = realm.getComponentsStream(realm.getId(), clazz.getName());
+
+        return componentModels.map(componentModel -> {
+                    ProviderFactory<T> providerFactory = keycloakSessionFactory
+                            .getProviderFactory(clazz, componentModel.getProviderId());
+
+                    if (!(providerFactory instanceof ComponentFactory<?, ?>)) {
+                        throw new IllegalArgumentException(String.format(
+                                "Component %s is unexpectedly not a ComponentFactory",
+                                componentModel.getProviderId()
+                        ));
+                    }
+
+                    ComponentFactory<T, T> componentFactory = (ComponentFactory<T, T>) providerFactory;
+                    return componentFactory.create(keycloakSession, componentModel);
+                })
+                .collect(Collectors.toMap(LocatableProvider::locator, component -> component));
+    }
 }

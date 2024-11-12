@@ -40,12 +40,8 @@ import org.keycloak.models.KeycloakSession;
 import org.keycloak.protocol.oid4vc.OID4VCLoginProtocolFactory;
 import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerEndpoint;
 import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerWellKnownProvider;
-import org.keycloak.protocol.oid4vc.issuance.abc.BlueSimpleTestProvider;
-import org.keycloak.protocol.oid4vc.issuance.abc.RedSimpleTestProvider;
-import org.keycloak.protocol.oid4vc.issuance.abc.SimpleTestProvider;
-import org.keycloak.protocol.oid4vc.issuance.abc.SimpleTestProviderColor;
+import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.SdJwtCredentialBuilder;
 import org.keycloak.protocol.oid4vc.issuance.signing.SdJwtSigningService;
-import org.keycloak.protocol.oid4vc.issuance.signing.VerifiableCredentialsSigningService;
 import org.keycloak.protocol.oid4vc.model.CredentialConfigId;
 import org.keycloak.protocol.oid4vc.model.CredentialIssuer;
 import org.keycloak.protocol.oid4vc.model.CredentialOfferURI;
@@ -88,25 +84,6 @@ import static org.junit.Assert.fail;
 public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
 
     @Test
-    public void testRetrievingProviders() {
-        testingClient
-                .server(TEST_REALM_NAME)
-                .run(session -> {
-
-                    SimpleTestProvider provider;
-
-                    provider = session.getComponentProvider(SimpleTestProvider.class, SimpleTestProviderColor.BLUE);
-                    assertTrue(provider instanceof BlueSimpleTestProvider);
-                    assertTrue(provider.getGreeting().contains("BlueSimpleTestProvider"));
-
-                    provider = session.getComponentProvider(SimpleTestProvider.class, SimpleTestProviderColor.RED);
-                    assertTrue(provider instanceof RedSimpleTestProvider);
-                    assertTrue(provider.getGreeting().contains("RedSimpleTestProvider"));
-
-                });
-    }
-
-    // @Test
     public void testRequestTestCredential() {
         String token = getBearerToken(oauth);
         String vct = "https://credentials.example.com/test-credential";
@@ -206,7 +183,7 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
     /**
      * This is testing the configuration exposed by OID4VCIssuerWellKnownProvider based on the client and signing config setup here.
      */
-    // @Test
+    @Test
     public void getConfig() {
         String expectedIssuer = suiteContext.getAuthServerInfo().getContextRoot().toString() + "/auth/realms/" + TEST_REALM_NAME;
         String expectedCredentialsEndpoint = expectedIssuer + "/protocol/oid4vc/credential";
@@ -242,6 +219,15 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
 
 
     protected static OID4VCIssuerEndpoint prepareIssuerEndpoint(KeycloakSession session, AppAuthManager.BearerTokenAuthenticator authenticator) {
+        SdJwtCredentialBuilder testSdJwtCredentialBuilder = new SdJwtCredentialBuilder(
+                "did:web:issuer.org",
+                "example+sd-jwt",
+                "sha-256",
+                List.of("iat", "nbf", "vct", "iss"), // should be automatic?
+                2,
+                VerifiableCredentialType.from("https://credentials.example.com/test-credential")
+        );
+
         SdJwtSigningService testCredentialSigningService = new SdJwtSigningService(
                 session,
                 JsonSerialization.mapper,
@@ -273,6 +259,9 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
         return new OID4VCIssuerEndpoint(
                 session,
                 "did:web:issuer.org",
+                Map.of(
+                        testSdJwtCredentialBuilder.locator(), testSdJwtCredentialBuilder
+                ),
                 Map.of(
                         testCredentialSigningService.locator(), testCredentialSigningService,
                         identityCredentialSigningService.locator(), identityCredentialSigningService
