@@ -307,6 +307,21 @@ public abstract class OID4VCTest extends AbstractTestRealmKeycloakTest {
         return componentExportRepresentation;
     }
 
+    public static ComponentExportRepresentation getCredentialBuilderProvider() {
+        ComponentExportRepresentation componentExportRepresentation = new ComponentExportRepresentation();
+        componentExportRepresentation.setName("jwt-credential-builder");
+        componentExportRepresentation.setId(UUID.randomUUID().toString());
+        componentExportRepresentation.setProviderId(Format.JWT_VC);
+
+        componentExportRepresentation.setConfig(new MultivaluedHashMap<>(
+                Map.of(
+                        "tokenType", List.of(Format.JWT_VC)
+                )
+        ));
+
+        return componentExportRepresentation;
+    }
+
     public static UserRepresentation getUserRepresentation(Map<String, List<String>> clientRoles) {
         UserBuilder userBuilder = UserBuilder.create()
                 .id(KeycloakModelUtils.generateId())

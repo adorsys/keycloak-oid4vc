@@ -304,10 +304,10 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
         return componentExportRepresentation;
     }
 
-    private ComponentExportRepresentation getCredentialCredentialBuilderProvider(
+    private ComponentExportRepresentation getCredentialBuilderProvider(
             String vcConfigId, String vct, int numberOfDecoys) {
         ComponentExportRepresentation componentExportRepresentation = new ComponentExportRepresentation();
-        componentExportRepresentation.setName("sd-jwt-id-credential-builder");
+        componentExportRepresentation.setName("sd-jwt-credential-builder-" + vcConfigId);
         componentExportRepresentation.setId(UUID.randomUUID().toString());
         componentExportRepresentation.setProviderId(Format.SD_JWT_VC);
 
@@ -322,6 +322,7 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
                         "vcConfigId", List.of(vcConfigId)
                 )
         ));
+
         return componentExportRepresentation;
     }
 
@@ -387,8 +388,8 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
     @Override
     protected List<ComponentExportRepresentation> getCredentialBuilderProviders() {
         return List.of(
-                getCredentialCredentialBuilderProvider("id-credential", "https://credentials.example.com/id-credential", 2),
-                getCredentialCredentialBuilderProvider("test-credential", "https://credentials.example.com/test-credential", 0)
+                getCredentialBuilderProvider("id-credential", "https://credentials.example.com/id-credential", 2),
+                getCredentialBuilderProvider("test-credential", "https://credentials.example.com/test-credential", 0)
         );
     }
 

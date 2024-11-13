@@ -30,7 +30,6 @@ import org.keycloak.crypto.SignatureVerifierContext;
 import org.keycloak.jose.jws.crypto.HashUtils;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.protocol.oid4vc.issuance.VCIssuanceContext;
-import org.keycloak.protocol.oid4vc.issuance.signing.JwtSigningService;
 import org.keycloak.protocol.oid4vc.issuance.signing.SdJwtSigningService;
 import org.keycloak.protocol.oid4vc.issuance.signing.SigningServiceException;
 import org.keycloak.protocol.oid4vc.model.CredentialConfigId;
@@ -86,13 +85,13 @@ public class SdJwtSigningServiceTest extends OID4VCTest {
             getTestingClient()
                     .server(TEST_REALM_NAME)
                     .run(session ->
-                            new JwtSigningService(
+                            new SdJwtSigningService(
                                     session,
                                     "no-such-key",
                                     Algorithm.RS256,
-                                    "JWT",
-                                    "did:web:test.org",
-                                    new StaticTimeProvider(1000)));
+                                    Optional.empty(),
+                                    VerifiableCredentialType.from("https://credentials.example.com/test-credential"),
+                                    CredentialConfigId.from("test-credential")));
         } catch (RunOnServerException ros) {
             throw ros.getCause();
         }

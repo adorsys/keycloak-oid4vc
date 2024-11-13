@@ -64,10 +64,7 @@ public class SdJwtSigningServiceProviderFactory implements VCSigningServiceProvi
     public List<ProviderConfigProperty> getConfigProperties() {
         return VCSigningServiceProviderFactory.configurationBuilder()
                 .property(SigningProperties.ALGORITHM_TYPE.asConfigProperty())
-                .property(SigningProperties.TOKEN_TYPE.asConfigProperty())
-                .property(SigningProperties.DECOYS.asConfigProperty())
                 .property(SigningProperties.KID_HEADER.asConfigProperty())
-                .property(SigningProperties.HASH_ALGORITHM.asConfigProperty())
                 .property(SigningProperties.VC_VCT.asConfigProperty())
                 .property(SigningProperties.VC_CONFIG_ID.asConfigProperty())
                 .build();
@@ -81,10 +78,7 @@ public class SdJwtSigningServiceProviderFactory implements VCSigningServiceProvi
     @Override
     public void validateSpecificConfiguration(KeycloakSession session, RealmModel realm, ComponentModel model) throws ComponentValidationException {
         ConfigurationValidationHelper helper = ConfigurationValidationHelper.check(model)
-                .checkRequired(SigningProperties.HASH_ALGORITHM.asConfigProperty())
-                .checkRequired(SigningProperties.ALGORITHM_TYPE.asConfigProperty())
-                .checkRequired(SigningProperties.TOKEN_TYPE.asConfigProperty())
-                .checkInt(SigningProperties.DECOYS.asConfigProperty(), true);
+                .checkRequired(SigningProperties.ALGORITHM_TYPE.asConfigProperty());
         // Make sure VCT is set if vc config id is set.
         if (model.get(SigningProperties.VC_CONFIG_ID.getKey()) != null) {
             helper.checkRequired(SigningProperties.VC_VCT.asConfigProperty());

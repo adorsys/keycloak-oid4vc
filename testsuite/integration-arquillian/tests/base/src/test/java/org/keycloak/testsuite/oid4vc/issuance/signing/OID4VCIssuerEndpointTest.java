@@ -47,6 +47,7 @@ import org.keycloak.models.UserSessionModel;
 import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerEndpoint;
 import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerWellKnownProviderFactory;
 import org.keycloak.protocol.oid4vc.issuance.TimeProvider;
+import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.JwtCredentialBuilder;
 import org.keycloak.protocol.oid4vc.issuance.signing.JwtSigningService;
 import org.keycloak.protocol.oid4vc.model.CredentialIssuer;
 import org.keycloak.protocol.oid4vc.model.CredentialRequest;
@@ -265,17 +266,17 @@ public abstract class OID4VCIssuerEndpointTest extends OID4VCTest {
     }
 
     protected static OID4VCIssuerEndpoint prepareIssuerEndpoint(KeycloakSession session, AppAuthManager.BearerTokenAuthenticator authenticator) {
+        JwtCredentialBuilder jwtCredentialBuilder = new JwtCredentialBuilder(
+                "JWT",
+                new StaticTimeProvider(1000));
         JwtSigningService jwtSigningService = new JwtSigningService(
                 session,
                 getKeyFromSession(session).getKid(),
-                Algorithm.RS256,
-                "JWT",
-                "did:web:issuer.org",
-                TIME_PROVIDER);
+                Algorithm.RS256);
         return new OID4VCIssuerEndpoint(
                 session,
                 "did:web:issuer.org",
-                Map.of(),
+                Map.of(jwtCredentialBuilder.locator(), jwtCredentialBuilder),
                 Map.of(jwtSigningService.locator(), jwtSigningService),
                 authenticator,
                 JsonSerialization.mapper,
@@ -366,7 +367,7 @@ public abstract class OID4VCIssuerEndpointTest extends OID4VCTest {
     }
 
     protected List<ComponentExportRepresentation> getCredentialBuilderProviders() {
-        return List.of();
+        return List.of(getCredentialBuilderProvider());
     }
 
     protected static class CredentialResponseHandler {

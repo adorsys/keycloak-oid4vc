@@ -581,12 +581,7 @@ public class OID4VCIssuerEndpoint {
 
         // Build format-specific credential
         CredentialBuilder credentialBuilder = locateCredentialBuilder(credentialConfig);
-
-        // TODO: Update this after creating builders for all formats
-        CredentialBody credentialBody = null;
-        if (credentialBuilder != null) {
-            credentialBody = credentialBuilder.buildCredentialBody(vc);
-        }
+        CredentialBody credentialBody = credentialBuilder.buildCredentialBody(vc);
 
         return new VCIssuanceContext()
                 .setAuthResult(authResult)
@@ -613,12 +608,11 @@ public class OID4VCIssuerEndpoint {
                         credentialBuilders.get(formatOnlyKey))
         );
 
-        // TODO: Uncomment this after creating builders for all formats
-        /*if (credentialBuilder == null) {
+        if (credentialBuilder == null) {
             throw new BadRequestException(String.format(
                     "No credential builder matches credential config %s", vcConfigId.getValue()
             ));
-        }*/
+        }
 
         return credentialBuilder;
     }

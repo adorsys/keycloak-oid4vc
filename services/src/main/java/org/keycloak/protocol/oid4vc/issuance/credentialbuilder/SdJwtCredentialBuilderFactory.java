@@ -48,7 +48,7 @@ public class SdJwtCredentialBuilderFactory implements CredentialBuilderFactory {
 
     @Override
     public String getHelpText() {
-        return "Builds verifiable credentials on the SD-JWT format";
+        return "Builds verifiable credentials on the SD-JWT format (https://drafts.oauth.net/oauth-sd-jwt-vc/draft-ietf-oauth-sd-jwt-vc.html).";
     }
 
     @Override

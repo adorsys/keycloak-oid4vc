@@ -111,9 +111,7 @@ public class SdJwtSigningService extends JwtProofBasedSigningService<String> {
             sdJwtCredentialBody.addCnfClaim(Map.of(JWK_CLAIM, jwk));
         }
 
-        return sdJwtCredentialBody
-                .build(signatureSignerContext)
-                .toSdJwtString();
+        return sdJwtCredentialBody.sign(signatureSignerContext);
     }
 
     @Override
