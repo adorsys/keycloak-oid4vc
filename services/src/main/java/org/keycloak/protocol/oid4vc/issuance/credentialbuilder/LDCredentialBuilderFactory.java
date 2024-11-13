@@ -17,35 +17,35 @@
 
 package org.keycloak.protocol.oid4vc.issuance.credentialbuilder;
 
-import org.keycloak.provider.Provider;
-import org.keycloak.provider.ProviderFactory;
-import org.keycloak.provider.Spi;
+import org.keycloak.component.ComponentModel;
+import org.keycloak.models.KeycloakSession;
+import org.keycloak.protocol.oid4vc.model.Format;
+import org.keycloak.provider.ProviderConfigProperty;
+
+import java.util.List;
 
 /**
- * Spi implementation of the creation of {@link CredentialBuilder}
- *
  * @author <a href="mailto:Ingrid.Kamga@adorsys.com">Ingrid Kamga</a>
  */
-public class CredentialBuilderSpi implements Spi {
-    private static final String NAME = "credentialBuilder";
+public class LDCredentialBuilderFactory implements CredentialBuilderFactory {
 
     @Override
-    public boolean isInternal() {
-        return true;
+    public String getId() {
+        return Format.LDP_VC;
     }
 
     @Override
-    public String getName() {
-        return NAME;
+    public String getHelpText() {
+        return "Builds verifiable credentials on the LDP-VC format";
     }
 
     @Override
-    public Class<? extends Provider> getProviderClass() {
-        return CredentialBuilder.class;
+    public List<ProviderConfigProperty> getConfigProperties() {
+        return null;
     }
 
     @Override
-    public Class<? extends ProviderFactory<CredentialBuilder>> getProviderFactoryClass() {
-        return CredentialBuilderFactory.class;
+    public CredentialBuilder create(KeycloakSession session, ComponentModel model) {
+        return new LDCredentialBuilder();
     }
 }

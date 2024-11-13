@@ -17,9 +17,6 @@
 
 package org.keycloak.protocol.oid4vc.issuance.signing;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.jboss.logging.Logger;
 import org.keycloak.common.VerificationException;
 import org.keycloak.crypto.KeyWrapper;
@@ -31,21 +28,13 @@ import org.keycloak.models.KeycloakSession;
 import org.keycloak.protocol.oid4vc.issuance.VCIssuanceContext;
 import org.keycloak.protocol.oid4vc.issuance.VCIssuerException;
 import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.CredentialBody;
-import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.CredentialBuilderUtils;
 import org.keycloak.protocol.oid4vc.model.CredentialConfigId;
-import org.keycloak.protocol.oid4vc.model.CredentialSubject;
 import org.keycloak.protocol.oid4vc.model.Format;
-import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredentialType;
-import org.keycloak.sdjwt.DisclosureSpec;
-import org.keycloak.sdjwt.SdJwt;
-import org.keycloak.sdjwt.SdJwtUtils;
 
 import java.io.IOException;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.stream.IntStream;
 
 /**
  * {@link VerifiableCredentialsSigningService} implementing the SD_JWT_VC format. It returns a String, containing
@@ -64,17 +53,14 @@ public class SdJwtSigningService extends JwtProofBasedSigningService<String> {
 
     private final SignatureSignerContext signatureSignerContext;
 
-    protected final String issuerDid;
-
     private final CredentialConfigId vcConfigId;
 
     // See: https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#name-credential-request-6
     // vct sort of additional category for sd-jwt.
     private final VerifiableCredentialType vct;
 
-    public SdJwtSigningService(KeycloakSession keycloakSession, ObjectMapper objectMapper, String keyId, String algorithmType, String tokenType, String hashAlgorithm, String issuerDid, int decoys, List<String> visibleClaims, Optional<String> kid, VerifiableCredentialType credentialType, CredentialConfigId vcConfigId) {
+    public SdJwtSigningService(KeycloakSession keycloakSession,String keyId, String algorithmType, Optional<String> kid, VerifiableCredentialType credentialType, CredentialConfigId vcConfigId) {
         super(keycloakSession, keyId, Format.SD_JWT_VC, algorithmType);
-        this.issuerDid = issuerDid;
         this.vcConfigId = vcConfigId;
         this.vct = credentialType;
 

@@ -52,6 +52,7 @@ import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.CredentialBody;
 import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.CredentialBuilder;
 import org.keycloak.protocol.oid4vc.issuance.mappers.OID4VCMapper;
 import org.keycloak.protocol.oid4vc.issuance.signing.VerifiableCredentialsSigningService;
+import org.keycloak.protocol.oid4vc.model.CredentialConfigId;
 import org.keycloak.protocol.oid4vc.model.CredentialOfferURI;
 import org.keycloak.protocol.oid4vc.model.CredentialRequest;
 import org.keycloak.protocol.oid4vc.model.CredentialResponse;
@@ -64,6 +65,7 @@ import org.keycloak.protocol.oid4vc.model.PreAuthorizedCode;
 import org.keycloak.protocol.oid4vc.model.PreAuthorizedGrant;
 import org.keycloak.protocol.oid4vc.model.SupportedCredentialConfiguration;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
+import org.keycloak.protocol.oid4vc.model.VerifiableCredentialType;
 import org.keycloak.protocol.oidc.grants.PreAuthorizedCodeGrantType;
 import org.keycloak.protocol.oidc.grants.PreAuthorizedCodeGrantTypeFactory;
 import org.keycloak.protocol.oidc.utils.OAuth2Code;
@@ -577,17 +579,14 @@ public class OID4VCIssuerEndpoint {
 
         LOGGER.debugf("The credential to sign is: %s", vc);
 
-        // Retrieve format-specific credential builder as per request
-        String credentialFormat = credentialRequestVO.getFormat();
-        CredentialBuilder credentialBuilder = credentialBuilders
-                .get(AbstractCredentialBuilder.computeLocator(credentialFormat));
-
-        if (credentialBuilder == null) {
-            throw new BadRequestException("No credential builder provider found for format: " + credentialFormat);
-        }
-
         // Build format-specific credential
-        CredentialBody credentialBody = credentialBuilder.buildCredentialBody(vc);
+        CredentialBuilder credentialBuilder = locateCredentialBuilder(credentialConfig);
+
+        // TODO: Update this after creating builders for all formats
+        CredentialBody credentialBody = null;
+        if (credentialBuilder != null) {
+            credentialBody = credentialBuilder.buildCredentialBody(vc);
+        }
 
         return new VCIssuanceContext()
                 .setAuthResult(authResult)
@@ -595,5 +594,32 @@ public class OID4VCIssuerEndpoint {
                 .setCredentialBody(credentialBody)
                 .setCredentialConfig(credentialConfig)
                 .setCredentialRequest(credentialRequestVO);
+    }
+
+    private CredentialBuilder locateCredentialBuilder(SupportedCredentialConfiguration credentialConfig) {
+        String format = credentialConfig.getFormat();
+        VerifiableCredentialType credentialType = credentialConfig.deriveType();
+        CredentialConfigId vcConfigId = credentialConfig.deriveConfiId();
+
+        String fullyQualifiedConfigKey = AbstractCredentialBuilder.computeLocator(format, credentialType, vcConfigId);
+        String formatAndTypeKey = AbstractCredentialBuilder.computeLocator(format, credentialType, null);
+        String formatOnlyKey = AbstractCredentialBuilder.computeLocator(format, null, null);
+
+        // Search from specific to general config.
+        CredentialBuilder credentialBuilder = credentialBuilders.getOrDefault(
+                fullyQualifiedConfigKey,
+                credentialBuilders.getOrDefault(
+                        formatAndTypeKey,
+                        credentialBuilders.get(formatOnlyKey))
+        );
+
+        // TODO: Uncomment this after creating builders for all formats
+        /*if (credentialBuilder == null) {
+            throw new BadRequestException(String.format(
+                    "No credential builder matches credential config %s", vcConfigId.getValue()
+            ));
+        }*/
+
+        return credentialBuilder;
     }
 }

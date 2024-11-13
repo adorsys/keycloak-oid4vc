@@ -18,7 +18,6 @@
 package org.keycloak.testsuite.oid4vc.issuance.signing;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.Test;
 import org.keycloak.TokenVerifier;
 import org.keycloak.common.VerificationException;
@@ -59,7 +58,7 @@ import static org.junit.Assert.fail;
 
 public class SdJwtSigningServiceTest extends OID4VCTest {
 
-    private static KeyWrapper rsaKey = getRsaKey();
+    private static final KeyWrapper rsaKey = getRsaKey();
 
     // If an unsupported algorithm is provided, the JWT Signing Service should not be instantiated.
     @Test(expected = SigningServiceException.class)
@@ -70,14 +69,8 @@ public class SdJwtSigningServiceTest extends OID4VCTest {
                     .run(session ->
                             new SdJwtSigningService(
                                     session,
-                                    new ObjectMapper(),
                                     getKeyFromSession(session).getKid(),
                                     "unsupported-algorithm",
-                                    "JWT",
-                                    "sha-256",
-                                    "did:web:test.org",
-                                    0,
-                                    List.of(),
                                     Optional.empty(),
                                     VerifiableCredentialType.from("https://credentials.example.com/test-credential"),
                                     CredentialConfigId.from("test-credential")));
@@ -190,14 +183,8 @@ public class SdJwtSigningServiceTest extends OID4VCTest {
 
         SdJwtSigningService signingService = new SdJwtSigningService(
                 session,
-                new ObjectMapper(),
                 keyWrapper.getKid(),
                 algorithm,
-                "vc+sd-jwt",
-                "sha-256",
-                "did:web:test.org",
-                decoys,
-                visibleClaims,
                 keyId,
                 VerifiableCredentialType.from("https://credentials.example.com/test-credential"),
                 CredentialConfigId.from("test-credential"));

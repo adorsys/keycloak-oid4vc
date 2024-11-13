@@ -19,9 +19,12 @@ package org.keycloak.protocol.oid4vc.issuance.credentialbuilder;
 
 import org.keycloak.protocol.oid4vc.LocatableProvider;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
-import org.keycloak.provider.Provider;
 
 public interface CredentialBuilder extends LocatableProvider {
+
+    @Override
+    default void close() {
+    }
 
     /**
      * Builds a verifiable credential of a specific format from the basis of

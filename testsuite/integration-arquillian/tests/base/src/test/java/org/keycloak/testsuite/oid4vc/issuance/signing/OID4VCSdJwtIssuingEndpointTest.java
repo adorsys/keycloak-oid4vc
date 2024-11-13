@@ -111,7 +111,7 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
     // 4. Get the openid-configuration
     // 5. Get an access token for the pre-authorized code
     // 6. Get the credential
-    // @Test
+    @Test
     public void testCredentialIssuance() throws Exception {
 
         String token = getBearerToken(oauth);
@@ -223,35 +223,24 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
                 "did:web:issuer.org",
                 "example+sd-jwt",
                 "sha-256",
-                List.of("iat", "nbf", "vct", "iss"), // should be automatic?
+                List.of("iat", "nbf"),
                 2,
-                VerifiableCredentialType.from("https://credentials.example.com/test-credential")
+                VerifiableCredentialType.from("https://credentials.example.com/test-credential"),
+                CredentialConfigId.from("test-credential")
         );
 
         SdJwtSigningService testCredentialSigningService = new SdJwtSigningService(
                 session,
-                JsonSerialization.mapper,
                 getKeyFromSession(session).getKid(),
                 Algorithm.ES256,
-                Format.SD_JWT_VC,
-                "sha-256",
-                "did:web:issuer.org",
-                2,
-                List.of("iat", "nbf"),
                 Optional.empty(),
                 VerifiableCredentialType.from("https://credentials.example.com/test-credential"),
                 CredentialConfigId.from("test-credential"));
 
         SdJwtSigningService identityCredentialSigningService = new SdJwtSigningService(
                 session,
-                JsonSerialization.mapper,
                 getKeyFromSession(session).getKid(),
                 Algorithm.ES256,
-                Format.SD_JWT_VC,
-                "sha-256",
-                "did:web:issuer.org",
-                0,
-                List.of("given_name", "iat", "nbf"),
                 Optional.empty(),
                 VerifiableCredentialType.from("https://credentials.example.com/identity_credential"),
                 CredentialConfigId.from("IdentityCredential"));
@@ -315,6 +304,27 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
         return componentExportRepresentation;
     }
 
+    private ComponentExportRepresentation getCredentialCredentialBuilderProvider(
+            String vcConfigId, String vct, int numberOfDecoys) {
+        ComponentExportRepresentation componentExportRepresentation = new ComponentExportRepresentation();
+        componentExportRepresentation.setName("sd-jwt-id-credential-builder");
+        componentExportRepresentation.setId(UUID.randomUUID().toString());
+        componentExportRepresentation.setProviderId(Format.SD_JWT_VC);
+
+        componentExportRepresentation.setConfig(new MultivaluedHashMap<>(
+                Map.of(
+                        "tokenType", List.of(Format.SD_JWT_VC),
+                        "issuerDid", List.of(TEST_DID.toString()),
+                        "hashAlgorithm", List.of("sha-256"),
+                        "decoys", List.of(String.valueOf(numberOfDecoys)),
+                        "vct", List.of(vct),
+                        "visibleClaims", List.of("iat,nbf"),
+                        "vcConfigId", List.of(vcConfigId)
+                )
+        ));
+        return componentExportRepresentation;
+    }
+
     @Override
     protected ClientRepresentation getTestClient(String clientId) {
         ClientRepresentation clientRepresentation = new ClientRepresentation();
@@ -372,6 +382,14 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
     @Override
     protected List<ComponentExportRepresentation> getSigningProviders() {
         return List.of(getIdCredentialSigningProvider(), getTestCredentialSigningProvider());
+    }
+
+    @Override
+    protected List<ComponentExportRepresentation> getCredentialBuilderProviders() {
+        return List.of(
+                getCredentialCredentialBuilderProvider("id-credential", "https://credentials.example.com/id-credential", 2),
+                getCredentialCredentialBuilderProvider("test-credential", "https://credentials.example.com/test-credential", 0)
+        );
     }
 
     static class TestCredentialResponseHandler extends CredentialResponseHandler {

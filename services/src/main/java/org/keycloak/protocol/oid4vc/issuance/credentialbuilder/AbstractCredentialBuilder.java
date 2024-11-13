@@ -17,24 +17,41 @@
 
 package org.keycloak.protocol.oid4vc.issuance.credentialbuilder;
 
+import org.keycloak.protocol.oid4vc.issuance.signing.VerifiableCredentialsSigningService;
+import org.keycloak.protocol.oid4vc.model.CredentialConfigId;
+import org.keycloak.protocol.oid4vc.model.VerifiableCredentialType;
+
 /**
  * @author <a href="mailto:Ingrid.Kamga@adorsys.com">Ingrid Kamga</a>
  */
 public abstract class AbstractCredentialBuilder implements CredentialBuilder {
 
-    abstract String getSupportedFormat();
+    abstract LocatorInfo getLocatorInfo();
 
     @Override
     public String locator() {
-        return computeLocator(getSupportedFormat());
+        LocatorInfo locatorInfo = getLocatorInfo();
+        return computeLocator(locatorInfo.format, locatorInfo.credentialType, locatorInfo.vcConfigId);
     }
 
-    public static String computeLocator(String format) {
-        return format;
+    public static String computeLocator(
+            String format,
+            VerifiableCredentialType credentialType,
+            CredentialConfigId vcConfigId
+    ) {
+        return VerifiableCredentialsSigningService.locator(format, credentialType, vcConfigId);
     }
 
-    @Override
-    public void close() {
-        // no-op
+    public static class LocatorInfo {
+
+        private final String format;
+        private final VerifiableCredentialType credentialType;
+        private final CredentialConfigId vcConfigId;
+
+        public LocatorInfo(String format, VerifiableCredentialType credentialType, CredentialConfigId vcConfigId) {
+            this.format = format;
+            this.credentialType = credentialType;
+            this.vcConfigId = vcConfigId;
+        }
     }
 }
