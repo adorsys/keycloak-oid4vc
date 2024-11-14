@@ -17,10 +17,21 @@
 
 package org.keycloak.protocol.oid4vc.issuance.credentialbuilder;
 
+import org.keycloak.crypto.SignatureSignerContext;
+import org.keycloak.jose.jws.JWSBuilder;
+
 /**
- * Incomplete representations of format-specific credentials.
- *
  * @author <a href="mailto:Ingrid.Kamga@adorsys.com">Ingrid Kamga</a>
  */
-public interface CredentialBody {
+public class JwtCredentialBody implements CredentialBody {
+
+    private final JWSBuilder.EncodingBuilder jwsEncodingBuilder;
+
+    public JwtCredentialBody(JWSBuilder.EncodingBuilder jwsEncodingBuilder) {
+        this.jwsEncodingBuilder = jwsEncodingBuilder;
+    }
+
+    public String sign(SignatureSignerContext signatureSignerContext) {
+        return jwsEncodingBuilder.sign(signatureSignerContext);
+    }
 }

@@ -35,6 +35,7 @@ import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.CredentialBody;
 import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.JwtCredentialBuilder;
 import org.keycloak.protocol.oid4vc.issuance.signing.JwtSigningService;
 import org.keycloak.protocol.oid4vc.issuance.signing.SigningServiceException;
+import org.keycloak.protocol.oid4vc.model.CredentialBuildConfig;
 import org.keycloak.protocol.oid4vc.model.CredentialSubject;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
 import org.keycloak.representations.JsonWebToken;
@@ -147,8 +148,11 @@ public class JwtSigningServiceTest extends OID4VCTest {
                 algorithm);
 
         VerifiableCredential testCredential = getTestCredential(claims);
-        JwtCredentialBuilder builder = new JwtCredentialBuilder("JWT", new StaticTimeProvider(1000));
-        CredentialBody credentialBody = builder.buildCredentialBody(testCredential);
+        JwtCredentialBuilder builder = new JwtCredentialBuilder(new StaticTimeProvider(1000));
+        CredentialBody credentialBody = builder.buildCredentialBody(
+                testCredential,
+                new CredentialBuildConfig().setTokenJwsType("JWT")
+        );
 
         VCIssuanceContext context = new VCIssuanceContext().setCredentialBody(credentialBody);
         String jwtCredential = jwtSigningService.signCredential(context);

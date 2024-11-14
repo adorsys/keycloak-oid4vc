@@ -17,6 +17,7 @@
 
 package org.keycloak.protocol.oid4vc.issuance.credentialbuilder;
 
+import org.keycloak.protocol.oid4vc.model.CredentialBuildConfig;
 import org.keycloak.protocol.oid4vc.model.Format;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
 
@@ -30,15 +31,17 @@ public class LDCredentialBuilder extends AbstractCredentialBuilder {
 
 
     @Override
-    public LocatorInfo getLocatorInfo() {
-        return new LocatorInfo(Format.LDP_VC, null, null);
+    public String getSupportedFormat() {
+        return Format.LDP_VC;
     }
 
     @Override
-    public CredentialBody.LDCredentialBody buildCredentialBody(VerifiableCredential verifiableCredential)
-            throws CredentialBuilderException {
+    public LDCredentialBody buildCredentialBody(
+            VerifiableCredential verifiableCredential,
+            CredentialBuildConfig credentialBuildConfig
+    ) throws CredentialBuilderException {
         // The default credential format is basically this format,
         // so not much is to be done.
-        return new CredentialBody.LDCredentialBody(verifiableCredential);
+        return new LDCredentialBody(verifiableCredential);
     }
 }

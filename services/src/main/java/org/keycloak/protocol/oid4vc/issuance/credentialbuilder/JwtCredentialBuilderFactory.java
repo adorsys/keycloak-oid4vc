@@ -18,14 +18,10 @@
 package org.keycloak.protocol.oid4vc.issuance.credentialbuilder;
 
 import org.keycloak.component.ComponentModel;
-import org.keycloak.component.ComponentValidationException;
 import org.keycloak.models.KeycloakSession;
-import org.keycloak.models.RealmModel;
 import org.keycloak.protocol.oid4vc.issuance.OffsetTimeProvider;
 import org.keycloak.protocol.oid4vc.model.Format;
-import org.keycloak.provider.ConfigurationValidationHelper;
 import org.keycloak.provider.ProviderConfigProperty;
-import org.keycloak.provider.ProviderConfigurationBuilder;
 
 import java.util.List;
 
@@ -46,21 +42,11 @@ public class JwtCredentialBuilderFactory implements CredentialBuilderFactory {
 
     @Override
     public List<ProviderConfigProperty> getConfigProperties() {
-        return ProviderConfigurationBuilder.create()
-                .property(CredentialBuilderProperties.TOKEN_TYPE.asConfigProperty())
-                .build();
-    }
-
-    @Override
-    public void validateConfiguration(KeycloakSession session, RealmModel realm, ComponentModel model)
-            throws ComponentValidationException {
-        ConfigurationValidationHelper.check(model)
-                .checkRequired(CredentialBuilderProperties.TOKEN_TYPE.asConfigProperty());
+        return null;
     }
 
     @Override
     public CredentialBuilder create(KeycloakSession session, ComponentModel model) {
-        String tokenType = model.get(CredentialBuilderProperties.TOKEN_TYPE.getKey());
-        return new JwtCredentialBuilder(tokenType, new OffsetTimeProvider());
+        return new JwtCredentialBuilder(new OffsetTimeProvider());
     }
 }

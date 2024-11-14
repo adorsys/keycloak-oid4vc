@@ -25,6 +25,7 @@ import org.keycloak.models.KeycloakSession;
 import org.keycloak.protocol.oid4vc.issuance.VCIssuanceContext;
 import org.keycloak.protocol.oid4vc.issuance.VCIssuerException;
 import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.CredentialBody;
+import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.JwtCredentialBody;
 import org.keycloak.protocol.oid4vc.model.Format;
 
 /**
@@ -60,7 +61,7 @@ public class JwtSigningService extends SigningService<String> {
         LOGGER.debugf("Sign credentials to jwt-vc format.");
 
         CredentialBody credentialBody = vcIssuanceContext.getCredentialBody();
-        if (!(credentialBody instanceof CredentialBody.JwtCredentialBody jwtCredentialBody)) {
+        if (!(credentialBody instanceof JwtCredentialBody jwtCredentialBody)) {
             throw new VCIssuerException("Credential body unexpectedly not of type JwtCredentialBody");
         }
 

@@ -30,10 +30,11 @@ import org.keycloak.crypto.SignatureVerifierContext;
 import org.keycloak.jose.jws.crypto.HashUtils;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.protocol.oid4vc.issuance.VCIssuanceContext;
-import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.CredentialBody;
+import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.SdJwtCredentialBody;
 import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.SdJwtCredentialBuilder;
 import org.keycloak.protocol.oid4vc.issuance.signing.SdJwtSigningService;
 import org.keycloak.protocol.oid4vc.issuance.signing.SigningServiceException;
+import org.keycloak.protocol.oid4vc.model.CredentialBuildConfig;
 import org.keycloak.protocol.oid4vc.model.CredentialConfigId;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredentialType;
@@ -183,15 +184,12 @@ public class SdJwtSigningServiceTest extends OID4VCTest {
             algorithm, Map<String, Object> claims, int decoys, List<String> visibleClaims) {
         KeyWrapper keyWrapper = getKeyFromSession(session);
 
-        SdJwtCredentialBuilder sdJwtCredentialBuilder = new SdJwtCredentialBuilder(
-                "did:web:test.org",
-                "example+sd-jwt",
-                "sha-256",
-                visibleClaims,
-                decoys,
-                VerifiableCredentialType.from("https://credentials.example.com/test-credential"),
-                CredentialConfigId.from("test-credential")
-        );
+        CredentialBuildConfig credentialBuildConfig = new CredentialBuildConfig()
+                .setCredentialType("https://credentials.example.com/test-credential")
+                .setTokenJwsType("example+sd-jwt")
+                .setHashAlgorithm("sha-256")
+                .setNumberOfDecoys(decoys)
+                .setVisibleClaims(visibleClaims);
 
         SdJwtSigningService signingService = new SdJwtSigningService(
                 session,
@@ -203,8 +201,8 @@ public class SdJwtSigningServiceTest extends OID4VCTest {
                 CredentialConfigId.from("test-credential"));
 
         VerifiableCredential testCredential = getTestCredential(claims);
-        CredentialBody.SdJwtCredentialBody sdJwtCredentialBody = sdJwtCredentialBuilder
-                .buildCredentialBody(testCredential);
+        SdJwtCredentialBody sdJwtCredentialBody = new SdJwtCredentialBuilder("did:web:test.org")
+                .buildCredentialBody(testCredential, credentialBuildConfig);
 
         VCIssuanceContext context = new VCIssuanceContext().setCredentialBody(sdJwtCredentialBody);
         String sdJwt = signingService.signCredential(context);

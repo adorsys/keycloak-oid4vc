@@ -17,10 +17,20 @@
 
 package org.keycloak.protocol.oid4vc.issuance.credentialbuilder;
 
+import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
+
 /**
- * Incomplete representations of format-specific credentials.
- *
  * @author <a href="mailto:Ingrid.Kamga@adorsys.com">Ingrid Kamga</a>
  */
-public interface CredentialBody {
+public class LDCredentialBody implements CredentialBody {
+
+    private final VerifiableCredential verifiableCredential;
+
+    public LDCredentialBody(VerifiableCredential verifiableCredential) {
+        this.verifiableCredential = verifiableCredential;
+    }
+
+    public VerifiableCredential getVerifiableCredential() {
+        return verifiableCredential;
+    }
 }

@@ -36,7 +36,7 @@ public class LDCredentialBuilderFactory implements CredentialBuilderFactory {
 
     @Override
     public String getHelpText() {
-        return "Builds verifiable credentials on the LDP-VC format";
+        return "Builds verifiable credentials on the LDP-VC format (https://www.w3.org/TR/vc-data-model).";
     }
 
     @Override

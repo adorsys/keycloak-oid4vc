@@ -24,10 +24,11 @@ import org.keycloak.common.util.MultivaluedHashMap;
 import org.keycloak.crypto.KeyWrapper;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.protocol.oid4vc.issuance.VCIssuanceContext;
-import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.CredentialBody;
+import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.LDCredentialBody;
 import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.LDCredentialBuilder;
 import org.keycloak.protocol.oid4vc.issuance.signing.LDSigningService;
 import org.keycloak.protocol.oid4vc.issuance.signing.SigningServiceException;
+import org.keycloak.protocol.oid4vc.model.CredentialBuildConfig;
 import org.keycloak.protocol.oid4vc.model.CredentialSubject;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
 import org.keycloak.protocol.oid4vc.model.vcdm.LdProof;
@@ -153,8 +154,8 @@ public class LDSigningServiceTest extends OID4VCTest {
                 kid);
 
         VerifiableCredential testCredential = getTestCredential(claims);
-        CredentialBody.LDCredentialBody ldCredentialBody = new LDCredentialBuilder()
-                .buildCredentialBody(testCredential);
+        LDCredentialBody ldCredentialBody = new LDCredentialBuilder()
+                .buildCredentialBody(testCredential, new CredentialBuildConfig());
 
         VCIssuanceContext context = new VCIssuanceContext().setCredentialBody(ldCredentialBody);
         VerifiableCredential verifiableCredential = ldSigningService.signCredential(context);

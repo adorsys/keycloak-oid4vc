@@ -28,6 +28,7 @@ import org.keycloak.models.KeycloakSession;
 import org.keycloak.protocol.oid4vc.issuance.VCIssuanceContext;
 import org.keycloak.protocol.oid4vc.issuance.VCIssuerException;
 import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.CredentialBody;
+import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.SdJwtCredentialBody;
 import org.keycloak.protocol.oid4vc.model.CredentialConfigId;
 import org.keycloak.protocol.oid4vc.model.Format;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredentialType;
@@ -59,7 +60,7 @@ public class SdJwtSigningService extends JwtProofBasedSigningService<String> {
     // vct sort of additional category for sd-jwt.
     private final VerifiableCredentialType vct;
 
-    public SdJwtSigningService(KeycloakSession keycloakSession,String keyId, String algorithmType, String issuerDid, Optional<String> kid, VerifiableCredentialType credentialType, CredentialConfigId vcConfigId) {
+    public SdJwtSigningService(KeycloakSession keycloakSession, String keyId, String algorithmType, String issuerDid, Optional<String> kid, VerifiableCredentialType credentialType, CredentialConfigId vcConfigId) {
         super(keycloakSession, keyId, Format.SD_JWT_VC, algorithmType, issuerDid);
         this.vcConfigId = vcConfigId;
         this.vct = credentialType;
@@ -94,7 +95,7 @@ public class SdJwtSigningService extends JwtProofBasedSigningService<String> {
     public String signCredential(VCIssuanceContext vcIssuanceContext) throws VCIssuerException {
 
         CredentialBody credentialBody = vcIssuanceContext.getCredentialBody();
-        if (!(credentialBody instanceof CredentialBody.SdJwtCredentialBody sdJwtCredentialBody)) {
+        if (!(credentialBody instanceof SdJwtCredentialBody sdJwtCredentialBody)) {
             throw new VCIssuerException("Credential body unexpectedly not of type SdJwtCredentialBody");
         }
 
