@@ -233,6 +233,7 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
                 session,
                 getKeyFromSession(session).getKid(),
                 Algorithm.ES256,
+                "did:web:issuer.org",
                 Optional.empty(),
                 VerifiableCredentialType.from("https://credentials.example.com/test-credential"),
                 CredentialConfigId.from("test-credential"));
@@ -241,6 +242,7 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
                 session,
                 getKeyFromSession(session).getKid(),
                 Algorithm.ES256,
+                "did:web:issuer.org",
                 Optional.empty(),
                 VerifiableCredentialType.from("https://credentials.example.com/identity_credential"),
                 CredentialConfigId.from("IdentityCredential"));

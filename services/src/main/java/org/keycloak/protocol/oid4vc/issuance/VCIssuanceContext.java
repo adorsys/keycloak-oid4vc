@@ -33,8 +33,6 @@ import org.keycloak.services.managers.AuthenticationManager;
 public class VCIssuanceContext {
 
     private CredentialBody credentialBody;
-    private VerifiableCredential verifiableCredential;
-
     private SupportedCredentialConfiguration credentialConfig;
     private CredentialRequest credentialRequest;
     private AuthenticationManager.AuthResult authResult;
@@ -45,15 +43,6 @@ public class VCIssuanceContext {
 
     public VCIssuanceContext setCredentialBody(CredentialBody credentialBody) {
         this.credentialBody = credentialBody;
-        return this;
-    }
-
-    public VerifiableCredential getVerifiableCredential() {
-        return verifiableCredential;
-    }
-
-    public VCIssuanceContext setVerifiableCredential(VerifiableCredential verifiableCredential) {
-        this.verifiableCredential = verifiableCredential;
         return this;
     }
 

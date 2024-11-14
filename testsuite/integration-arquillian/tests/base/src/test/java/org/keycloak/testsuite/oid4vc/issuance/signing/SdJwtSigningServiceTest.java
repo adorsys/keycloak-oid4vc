@@ -30,10 +30,11 @@ import org.keycloak.crypto.SignatureVerifierContext;
 import org.keycloak.jose.jws.crypto.HashUtils;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.protocol.oid4vc.issuance.VCIssuanceContext;
+import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.CredentialBody;
+import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.SdJwtCredentialBuilder;
 import org.keycloak.protocol.oid4vc.issuance.signing.SdJwtSigningService;
 import org.keycloak.protocol.oid4vc.issuance.signing.SigningServiceException;
 import org.keycloak.protocol.oid4vc.model.CredentialConfigId;
-import org.keycloak.protocol.oid4vc.model.SupportedCredentialConfiguration;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredentialType;
 import org.keycloak.representations.JsonWebToken;
@@ -70,6 +71,7 @@ public class SdJwtSigningServiceTest extends OID4VCTest {
                                     session,
                                     getKeyFromSession(session).getKid(),
                                     "unsupported-algorithm",
+                                    "did:web:issuer.org",
                                     Optional.empty(),
                                     VerifiableCredentialType.from("https://credentials.example.com/test-credential"),
                                     CredentialConfigId.from("test-credential")));
@@ -89,6 +91,7 @@ public class SdJwtSigningServiceTest extends OID4VCTest {
                                     session,
                                     "no-such-key",
                                     Algorithm.RS256,
+                                    "did:web:issuer.org",
                                     Optional.empty(),
                                     VerifiableCredentialType.from("https://credentials.example.com/test-credential"),
                                     CredentialConfigId.from("test-credential")));
@@ -180,19 +183,32 @@ public class SdJwtSigningServiceTest extends OID4VCTest {
             algorithm, Map<String, Object> claims, int decoys, List<String> visibleClaims) {
         KeyWrapper keyWrapper = getKeyFromSession(session);
 
+        SdJwtCredentialBuilder sdJwtCredentialBuilder = new SdJwtCredentialBuilder(
+                "did:web:test.org",
+                "example+sd-jwt",
+                "sha-256",
+                visibleClaims,
+                decoys,
+                VerifiableCredentialType.from("https://credentials.example.com/test-credential"),
+                CredentialConfigId.from("test-credential")
+        );
+
         SdJwtSigningService signingService = new SdJwtSigningService(
                 session,
                 keyWrapper.getKid(),
                 algorithm,
+                "did:web:test.org",
                 keyId,
                 VerifiableCredentialType.from("https://credentials.example.com/test-credential"),
                 CredentialConfigId.from("test-credential"));
 
         VerifiableCredential testCredential = getTestCredential(claims);
-        VCIssuanceContext vcIssuanceContext = new VCIssuanceContext()
-                .setVerifiableCredential(testCredential)
-                .setCredentialConfig(new SupportedCredentialConfiguration());
-        String sdJwt = signingService.signCredential(vcIssuanceContext);
+        CredentialBody.SdJwtCredentialBody sdJwtCredentialBody = sdJwtCredentialBuilder
+                .buildCredentialBody(testCredential);
+
+        VCIssuanceContext context = new VCIssuanceContext().setCredentialBody(sdJwtCredentialBody);
+        String sdJwt = signingService.signCredential(context);
+
         SignatureVerifierContext verifierContext = null;
         switch (algorithm) {
             case Algorithm.ES256: {

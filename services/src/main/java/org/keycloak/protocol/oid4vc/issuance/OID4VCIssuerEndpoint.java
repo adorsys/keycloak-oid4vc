@@ -585,7 +585,6 @@ public class OID4VCIssuerEndpoint {
 
         return new VCIssuanceContext()
                 .setAuthResult(authResult)
-                .setVerifiableCredential(vc)
                 .setCredentialBody(credentialBody)
                 .setCredentialConfig(credentialConfig)
                 .setCredentialRequest(credentialRequestVO);
