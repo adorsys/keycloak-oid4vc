@@ -76,6 +76,7 @@ import org.keycloak.util.JsonSerialization;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.BiFunction;
@@ -338,11 +339,13 @@ public abstract class OID4VCIssuerEndpointTest extends OID4VCTest {
         } else {
             testRealm.setUsers(List.of(getUserRepresentation(Map.of(clientRepresentation.getClientId(), List.of("testRole")))));
         }
-        if (testRealm.getAttributes() != null) {
-            testRealm.getAttributes().put("issuerDid", TEST_DID.toString());
-        } else {
-            testRealm.setAttributes(Map.of("issuerDid", TEST_DID.toString()));
+
+        if (testRealm.getAttributes() == null) {
+            testRealm.setAttributes(new HashMap<>());
         }
+
+        testRealm.getAttributes().put("issuerDid", TEST_DID.toString());
+        testRealm.getAttributes().putAll(getCredentialDefinitionAttributes());
     }
 
     protected void withCausePropagation(Runnable r) throws Throwable {
@@ -366,6 +369,10 @@ public abstract class OID4VCIssuerEndpointTest extends OID4VCTest {
 
     protected List<ComponentExportRepresentation> getCredentialBuilderProviders() {
         return List.of(getCredentialBuilderProvider(Format.JWT_VC));
+    }
+
+    protected Map<String, String> getCredentialDefinitionAttributes() {
+        return getTestCredentialDefinitionAttributes();
     }
 
     protected static class CredentialResponseHandler {

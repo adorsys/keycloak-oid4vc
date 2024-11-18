@@ -295,38 +295,6 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
         clientRepresentation.setClientId(clientId);
         clientRepresentation.setProtocol(OID4VCLoginProtocolFactory.PROTOCOL_ID);
         clientRepresentation.setEnabled(true);
-        Map<String, String> testCredentialAttributes = Map.ofEntries(
-                Map.entry("vc.test-credential.expiry_in_s", "1800"),
-                Map.entry("vc.test-credential.format", Format.SD_JWT_VC),
-                Map.entry("vc.test-credential.scope", "test-credential"),
-                Map.entry("vc.test-credential.claims", "{ \"firstName\": {\"mandatory\": false, \"display\": [{\"name\": \"First Name\", \"locale\": \"en-US\"}, {\"name\": \"名前\", \"locale\": \"ja-JP\"}]}, \"lastName\": {\"mandatory\": false}, \"email\": {\"mandatory\": false} }"),
-                Map.entry("vc.test-credential.vct", "https://credentials.example.com/test-credential"),
-                Map.entry("vc.test-credential.credential_signing_alg_values_supported", "ES256,ES384"),
-                Map.entry("vc.test-credential.display.0", "{\n  \"name\": \"Test Credential\"\n}"),
-                Map.entry("vc.test-credential.credential_build_config.token_jws_type", "example+sd-jwt"),
-                Map.entry("vc.test-credential.credential_build_config.hash_algorithm", "sha-256"),
-                Map.entry("vc.test-credential.credential_build_config.visible_claims", "iat,nbf"),
-                Map.entry("vc.test-credential.credential_build_config.decoys", "2")
-        );
-        Map<String, String> identityCredentialAttributes = Map.ofEntries(
-                Map.entry("vc.IdentityCredential.expiry_in_s", "31536000"),
-                Map.entry("vc.IdentityCredential.format", Format.SD_JWT_VC),
-                Map.entry("vc.IdentityCredential.scope", "identity_credential"),
-                Map.entry("vc.IdentityCredential.vct", "https://credentials.example.com/identity_credential"),
-                Map.entry("vc.IdentityCredential.cryptographic_binding_methods_supported", "jwk"),
-                Map.entry("vc.IdentityCredential.credential_signing_alg_values_supported", "ES256,ES384"),
-                Map.entry("vc.IdentityCredential.claims", "{\"given_name\":{\"display\":[{\"name\":\"الاسم الشخصي\",\"locale\":\"ar\"},{\"name\":\"Vorname\",\"locale\":\"de\"},{\"name\":\"Given Name\",\"locale\":\"en\"},{\"name\":\"Nombre\",\"locale\":\"es\"},{\"name\":\"نام\",\"locale\":\"fa\"},{\"name\":\"Etunimi\",\"locale\":\"fi\"},{\"name\":\"Prénom\",\"locale\":\"fr\"},{\"name\":\"पहचानी गई नाम\",\"locale\":\"hi\"},{\"name\":\"Nome\",\"locale\":\"it\"},{\"name\":\"名\",\"locale\":\"ja\"},{\"name\":\"Овог нэр\",\"locale\":\"mn\"},{\"name\":\"Voornaam\",\"locale\":\"nl\"},{\"name\":\"Nome Próprio\",\"locale\":\"pt\"},{\"name\":\"Förnamn\",\"locale\":\"sv\"},{\"name\":\"مسلمان نام\",\"locale\":\"ur\"}]},\"family_name\":{\"display\":[{\"name\":\"اسم العائلة\",\"locale\":\"ar\"},{\"name\":\"Nachname\",\"locale\":\"de\"},{\"name\":\"Family Name\",\"locale\":\"en\"},{\"name\":\"Apellido\",\"locale\":\"es\"},{\"name\":\"نام خانوادگی\",\"locale\":\"fa\"},{\"name\":\"Sukunimi\",\"locale\":\"fi\"},{\"name\":\"Nom de famille\",\"locale\":\"fr\"},{\"name\":\"परिवार का नाम\",\"locale\":\"hi\"},{\"name\":\"Cognome\",\"locale\":\"it\"},{\"name\":\"姓\",\"locale\":\"ja\"},{\"name\":\"өөрийн нэр\",\"locale\":\"mn\"},{\"name\":\"Achternaam\",\"locale\":\"nl\"},{\"name\":\"Sobrenome\",\"locale\":\"pt\"},{\"name\":\"Efternamn\",\"locale\":\"sv\"},{\"name\":\"خاندانی نام\",\"locale\":\"ur\"}]},\"birthdate\":{\"display\":[{\"name\":\"تاريخ الميلاد\",\"locale\":\"ar\"},{\"name\":\"Geburtsdatum\",\"locale\":\"de\"},{\"name\":\"Date of Birth\",\"locale\":\"en\"},{\"name\":\"Fecha de Nacimiento\",\"locale\":\"es\"},{\"name\":\"تاریخ تولد\",\"locale\":\"fa\"},{\"name\":\"Syntymäaika\",\"locale\":\"fi\"},{\"name\":\"Date de naissance\",\"locale\":\"fr\"},{\"name\":\"जन्म की तारीख\",\"locale\":\"hi\"},{\"name\":\"Data di nascita\",\"locale\":\"it\"},{\"name\":\"生年月日\",\"locale\":\"ja\"},{\"name\":\"төрсөн өдөр\",\"locale\":\"mn\"},{\"name\":\"Geboortedatum\",\"locale\":\"nl\"},{\"name\":\"Data de Nascimento\",\"locale\":\"pt\"},{\"name\":\"Födelsedatum\",\"locale\":\"sv\"},{\"name\":\"تاریخ پیدائش\",\"locale\":\"ur\"}]}}"),
-                Map.entry("vc.IdentityCredential.display.0", "{\"name\": \"Identity Credential\"}"),
-                Map.entry("vc.IdentityCredential.proof_types_supported", "{\"jwt\":{\"proof_signing_alg_values_supported\":[\"ES256\"]}}"),
-                Map.entry("vc.IdentityCredential.credential_build_config.token_jws_type", "example+sd-jwt"),
-                Map.entry("vc.IdentityCredential.credential_build_config.hash_algorithm", "sha-256"),
-                Map.entry("vc.IdentityCredential.credential_build_config.visible_claims", "iat,nbf"),
-                Map.entry("vc.IdentityCredential.credential_build_config.decoys", "0")
-        );
-        HashedMap<String, String> allAttributes = new HashedMap<>();
-        allAttributes.putAll(testCredentialAttributes);
-        allAttributes.putAll(identityCredentialAttributes);
-        clientRepresentation.setAttributes(allAttributes);
         clientRepresentation.setProtocolMappers(
                 List.of(
                         getRoleMapper(clientId, "test-credential"),
@@ -359,6 +327,45 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
     @Override
     protected List<ComponentExportRepresentation> getCredentialBuilderProviders() {
         return List.of(getCredentialBuilderProvider(Format.SD_JWT_VC));
+    }
+
+    @Override
+    protected Map<String, String> getCredentialDefinitionAttributes() {
+        Map<String, String> testCredentialAttributes = Map.ofEntries(
+                Map.entry("vc.test-credential.expiry_in_s", "1800"),
+                Map.entry("vc.test-credential.format", Format.SD_JWT_VC),
+                Map.entry("vc.test-credential.scope", "test-credential"),
+                Map.entry("vc.test-credential.claims", "{ \"firstName\": {\"mandatory\": false, \"display\": [{\"name\": \"First Name\", \"locale\": \"en-US\"}, {\"name\": \"名前\", \"locale\": \"ja-JP\"}]}, \"lastName\": {\"mandatory\": false}, \"email\": {\"mandatory\": false} }"),
+                Map.entry("vc.test-credential.vct", "https://credentials.example.com/test-credential"),
+                Map.entry("vc.test-credential.credential_signing_alg_values_supported", "ES256,ES384"),
+                Map.entry("vc.test-credential.display.0", "{\n  \"name\": \"Test Credential\"\n}"),
+                Map.entry("vc.test-credential.credential_build_config.token_jws_type", "example+sd-jwt"),
+                Map.entry("vc.test-credential.credential_build_config.hash_algorithm", "sha-256"),
+                Map.entry("vc.test-credential.credential_build_config.visible_claims", "iat,nbf"),
+                Map.entry("vc.test-credential.credential_build_config.decoys", "2")
+        );
+
+        Map<String, String> identityCredentialAttributes = Map.ofEntries(
+                Map.entry("vc.IdentityCredential.expiry_in_s", "31536000"),
+                Map.entry("vc.IdentityCredential.format", Format.SD_JWT_VC),
+                Map.entry("vc.IdentityCredential.scope", "identity_credential"),
+                Map.entry("vc.IdentityCredential.vct", "https://credentials.example.com/identity_credential"),
+                Map.entry("vc.IdentityCredential.cryptographic_binding_methods_supported", "jwk"),
+                Map.entry("vc.IdentityCredential.credential_signing_alg_values_supported", "ES256,ES384"),
+                Map.entry("vc.IdentityCredential.claims", "{\"given_name\":{\"display\":[{\"name\":\"الاسم الشخصي\",\"locale\":\"ar\"},{\"name\":\"Vorname\",\"locale\":\"de\"},{\"name\":\"Given Name\",\"locale\":\"en\"},{\"name\":\"Nombre\",\"locale\":\"es\"},{\"name\":\"نام\",\"locale\":\"fa\"},{\"name\":\"Etunimi\",\"locale\":\"fi\"},{\"name\":\"Prénom\",\"locale\":\"fr\"},{\"name\":\"पहचानी गई नाम\",\"locale\":\"hi\"},{\"name\":\"Nome\",\"locale\":\"it\"},{\"name\":\"名\",\"locale\":\"ja\"},{\"name\":\"Овог нэр\",\"locale\":\"mn\"},{\"name\":\"Voornaam\",\"locale\":\"nl\"},{\"name\":\"Nome Próprio\",\"locale\":\"pt\"},{\"name\":\"Förnamn\",\"locale\":\"sv\"},{\"name\":\"مسلمان نام\",\"locale\":\"ur\"}]},\"family_name\":{\"display\":[{\"name\":\"اسم العائلة\",\"locale\":\"ar\"},{\"name\":\"Nachname\",\"locale\":\"de\"},{\"name\":\"Family Name\",\"locale\":\"en\"},{\"name\":\"Apellido\",\"locale\":\"es\"},{\"name\":\"نام خانوادگی\",\"locale\":\"fa\"},{\"name\":\"Sukunimi\",\"locale\":\"fi\"},{\"name\":\"Nom de famille\",\"locale\":\"fr\"},{\"name\":\"परिवार का नाम\",\"locale\":\"hi\"},{\"name\":\"Cognome\",\"locale\":\"it\"},{\"name\":\"姓\",\"locale\":\"ja\"},{\"name\":\"өөрийн нэр\",\"locale\":\"mn\"},{\"name\":\"Achternaam\",\"locale\":\"nl\"},{\"name\":\"Sobrenome\",\"locale\":\"pt\"},{\"name\":\"Efternamn\",\"locale\":\"sv\"},{\"name\":\"خاندانی نام\",\"locale\":\"ur\"}]},\"birthdate\":{\"display\":[{\"name\":\"تاريخ الميلاد\",\"locale\":\"ar\"},{\"name\":\"Geburtsdatum\",\"locale\":\"de\"},{\"name\":\"Date of Birth\",\"locale\":\"en\"},{\"name\":\"Fecha de Nacimiento\",\"locale\":\"es\"},{\"name\":\"تاریخ تولد\",\"locale\":\"fa\"},{\"name\":\"Syntymäaika\",\"locale\":\"fi\"},{\"name\":\"Date de naissance\",\"locale\":\"fr\"},{\"name\":\"जन्म की तारीख\",\"locale\":\"hi\"},{\"name\":\"Data di nascita\",\"locale\":\"it\"},{\"name\":\"生年月日\",\"locale\":\"ja\"},{\"name\":\"төрсөн өдөр\",\"locale\":\"mn\"},{\"name\":\"Geboortedatum\",\"locale\":\"nl\"},{\"name\":\"Data de Nascimento\",\"locale\":\"pt\"},{\"name\":\"Födelsedatum\",\"locale\":\"sv\"},{\"name\":\"تاریخ پیدائش\",\"locale\":\"ur\"}]}}"),
+                Map.entry("vc.IdentityCredential.display.0", "{\"name\": \"Identity Credential\"}"),
+                Map.entry("vc.IdentityCredential.proof_types_supported", "{\"jwt\":{\"proof_signing_alg_values_supported\":[\"ES256\"]}}"),
+                Map.entry("vc.IdentityCredential.credential_build_config.token_jws_type", "example+sd-jwt"),
+                Map.entry("vc.IdentityCredential.credential_build_config.hash_algorithm", "sha-256"),
+                Map.entry("vc.IdentityCredential.credential_build_config.visible_claims", "iat,nbf"),
+                Map.entry("vc.IdentityCredential.credential_build_config.decoys", "0")
+        );
+
+        HashedMap<String, String> allAttributes = new HashedMap<>();
+        allAttributes.putAll(testCredentialAttributes);
+        allAttributes.putAll(identityCredentialAttributes);
+
+        return allAttributes;
     }
 
     static class TestCredentialResponseHandler extends CredentialResponseHandler {

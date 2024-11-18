@@ -185,7 +185,6 @@ public abstract class OID4VCTest extends AbstractTestRealmKeycloakTest {
         clientRepresentation.setClientId(clientId);
         clientRepresentation.setProtocol(OID4VCLoginProtocolFactory.PROTOCOL_ID);
         clientRepresentation.setEnabled(true);
-        clientRepresentation.setAttributes(getTestCredentialDefinitionAttributes());
         clientRepresentation.setProtocolMappers(
                 List.of(
                         getRoleMapper(clientId, "VerifiableCredential"),
