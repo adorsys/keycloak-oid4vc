@@ -344,10 +344,10 @@ public abstract class OID4VCTest extends AbstractTestRealmKeycloakTest {
         return role;
     }
 
-    static class StaticTimeProvider implements TimeProvider {
+    public static class StaticTimeProvider implements TimeProvider {
         private final int currentTimeInS;
 
-        StaticTimeProvider(int currentTimeInS) {
+        public StaticTimeProvider(int currentTimeInS) {
             this.currentTimeInS = currentTimeInS;
         }
 

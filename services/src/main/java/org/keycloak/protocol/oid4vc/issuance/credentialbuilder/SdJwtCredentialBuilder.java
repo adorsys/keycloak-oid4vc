@@ -34,9 +34,9 @@ import java.util.stream.IntStream;
  */
 public class SdJwtCredentialBuilder extends AbstractCredentialBuilder {
 
-    private static final String ISSUER_CLAIM = "iss";
-    private static final String VERIFIABLE_CREDENTIAL_TYPE_CLAIM = "vct";
-    private static final String CREDENTIAL_ID_CLAIM = "jti";
+    public static final String ISSUER_CLAIM = "iss";
+    public static final String VERIFIABLE_CREDENTIAL_TYPE_CLAIM = "vct";
+    public static final String CREDENTIAL_ID_CLAIM = "jti";
 
     private final String issuerDid;
 
@@ -65,6 +65,10 @@ public class SdJwtCredentialBuilder extends AbstractCredentialBuilder {
                 .filter(entry -> !credentialBuildConfig.getVisibleClaims().contains(entry.getKey()))
                 .forEach(entry -> {
                     if (entry instanceof List<?> listValue) {
+                        // FIXME: Unreachable branch. The intent was probably to check `entry.getValue()`,
+                        //  but changing just that will expose the array field name and break many tests.
+                        //  Needs further discussion on the wanted behavior.
+
                         IntStream.range(0, listValue.size())
                                 .forEach(i -> disclosureSpecBuilder
                                         .withUndisclosedArrayElt(entry.getKey(), i, SdJwtUtils.randomSalt())
