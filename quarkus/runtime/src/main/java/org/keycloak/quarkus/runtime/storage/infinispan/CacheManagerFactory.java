@@ -28,6 +28,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
@@ -52,6 +53,7 @@ import org.infinispan.configuration.global.ShutdownHookBehavior;
 import org.infinispan.configuration.parsing.ConfigurationBuilderHolder;
 import org.infinispan.configuration.parsing.ParserRegistry;
 import org.infinispan.manager.DefaultCacheManager;
+import org.infinispan.manager.EmbeddedCacheManager;
 import org.infinispan.metrics.config.MicrometerMeterRegisterConfigurationBuilder;
 import org.infinispan.persistence.remote.configuration.ExhaustedAction;
 import org.infinispan.persistence.remote.configuration.RemoteStoreConfigurationBuilder;
@@ -110,12 +112,21 @@ public class CacheManagerFactory {
 
     private static final Logger logger = Logger.getLogger(CacheManagerFactory.class);
 
+    private final CompletableFuture<EmbeddedCacheManager> cacheManagerFuture;
     private final CompletableFuture<RemoteCacheManager> remoteCacheManagerFuture;
-    private final String config;
-    private volatile DefaultCacheManager cacheManager;
+    private final Function<EntityManager, EmbeddedCacheManager> jdbcCacheManagerFunction;
+    private volatile EmbeddedCacheManager cacheManager;
 
     public CacheManagerFactory(String config) {
-        this.config = config;
+        ConfigurationBuilderHolder builder = new ParserRegistry().parse(config);
+        if (!isJdbcPingRequired(builder)) {
+            cacheManagerFuture = CompletableFuture.supplyAsync(() -> startEmbeddedCacheManager(builder, null));
+            jdbcCacheManagerFunction = null;
+        } else {
+            cacheManagerFuture = null;
+            jdbcCacheManagerFunction = em -> startEmbeddedCacheManager(builder, em);
+        }
+
         if (InfinispanUtils.isRemoteInfinispan()) {
             logger.debug("Remote Cache feature is enabled");
             this.remoteCacheManagerFuture = CompletableFuture.supplyAsync(this::startRemoteCacheManager);
@@ -125,11 +136,32 @@ public class CacheManagerFactory {
         }
     }
 
-    public DefaultCacheManager getOrCreateEmbeddedCacheManager(KeycloakSession keycloakSession) {
+    private static boolean isJdbcPingRequired(ConfigurationBuilderHolder builder) {
+        if (InfinispanUtils.isRemoteInfinispan())
+            return false;
+
+        var transportConfig = builder.getGlobalConfigurationBuilder().transport();
+        if (transportConfig.getTransport() == null)
+            return false;
+
+        String transportStack = Configuration.getRawValue("kc.cache-stack");
+        if (transportStack != null && !isJdbcPingStack(transportStack))
+            return false;
+
+        var stackXmlAttribute = transportConfig.defaultTransport().attributes().attribute(STACK);
+        return !stackXmlAttribute.isModified() || isJdbcPingStack(stackXmlAttribute.get());
+    }
+
+    public EmbeddedCacheManager getOrCreateEmbeddedCacheManager(KeycloakSession keycloakSession) {
+        if (cacheManagerFuture != null)
+            return join(cacheManagerFuture);
+
         if (cacheManager == null) {
            synchronized (this) {
-              if (cacheManager == null)
-                 cacheManager = startEmbeddedCacheManager(keycloakSession);
+              if (cacheManager == null) {
+                  EntityManager em = keycloakSession.getProvider(JpaConnectionProvider.class).getEntityManager();
+                  cacheManager = jdbcCacheManagerFunction.apply(em);
+              }
            }
         }
         return cacheManager;
@@ -156,8 +188,6 @@ public class CacheManagerFactory {
         Integer cacheRemotePort = Configuration.getOptionalKcValue(CACHE_REMOTE_PORT_PROPERTY)
                 .map(Integer::parseInt)
                 .orElse(ConfigurationProperties.DEFAULT_HOTROD_PORT);
-        String cacheRemoteUsername = requiredStringProperty(CACHE_REMOTE_USERNAME_PROPERTY);
-        String cacheRemotePassword = requiredStringProperty(CACHE_REMOTE_PASSWORD_PROPERTY);
 
         org.infinispan.client.hotrod.configuration.ConfigurationBuilder builder = new org.infinispan.client.hotrod.configuration.ConfigurationBuilder();
         builder.addServer().host(cacheRemoteHost).port(cacheRemotePort);
@@ -173,8 +203,8 @@ public class CacheManagerFactory {
         if (isRemoteAuthenticationEnabled()) {
             builder.security().authentication()
                     .enable()
-                    .username(cacheRemoteUsername)
-                    .password(cacheRemotePassword)
+                    .username(requiredStringProperty(CACHE_REMOTE_USERNAME_PROPERTY))
+                    .password(requiredStringProperty(CACHE_REMOTE_PASSWORD_PROPERTY))
                     .realm("default")
                     .saslMechanism(SCRAM_SHA_512);
         }
@@ -288,9 +318,8 @@ public class CacheManagerFactory {
         admin.reindexCache(cacheName);
     }
 
-    private DefaultCacheManager startEmbeddedCacheManager(KeycloakSession keycloakSession) {
+    private EmbeddedCacheManager startEmbeddedCacheManager(ConfigurationBuilderHolder builder, EntityManager em) {
         logger.info("Starting Infinispan embedded cache manager");
-        ConfigurationBuilderHolder builder = new ParserRegistry().parse(config);
 
         // We must disable the Infinispan default ShutdownHook as we manage the EmbeddedCacheManager lifecycle explicitly
         // with #shutdown and multiple calls to EmbeddedCacheManager#stop can lead to Exceptions being thrown
@@ -324,7 +353,7 @@ public class CacheManagerFactory {
         } else {
             // embedded mode!
             if (builder.getNamedConfigurationBuilders().entrySet().stream().anyMatch(c -> c.getValue().clustering().cacheMode().isClustered())) {
-                configureTransportStack(builder, keycloakSession);
+                configureTransportStack(builder, em);
                 configureRemoteStores(builder);
             }
             configureCacheMaxCount(builder, CachingOptions.CLUSTERED_MAX_COUNT_CACHES);
@@ -370,9 +399,9 @@ public class CacheManagerFactory {
         return Integer.getInteger("kc.cache-ispn-start-timeout", 120);
     }
 
-    private void configureTransportStack(ConfigurationBuilderHolder builder, KeycloakSession keycloakSession) {
+    private static void configureTransportStack(ConfigurationBuilderHolder builder, EntityManager em) {
         var transportConfig = builder.getGlobalConfigurationBuilder().transport();
-        if (Configuration.isTrue(CachingOptions.CACHE_EMBEDDED_MTLS_ENABLED_PROPERTY)) {
+        if (Configuration.isTrue(CachingOptions.CACHE_EMBEDDED_MTLS_ENABLED)) {
             validateTlsAvailable(transportConfig.build());
             var tls = new TLS()
                   .enabled(true)
@@ -390,21 +419,25 @@ public class CacheManagerFactory {
 
         String transportStack = Configuration.getRawValue("kc.cache-stack");
         if (transportStack != null && !transportStack.isBlank() && !isJdbcPingStack(transportStack)) {
+            warnDeprecatedStack(transportStack);
             transportConfig.defaultTransport().stack(transportStack);
             return;
         }
 
         var stackXmlAttribute = transportConfig.defaultTransport().attributes().attribute(STACK);
         // If the user has explicitly defined a transport stack that is not jdbc-ping or jdbc-ping-udp, return
-        if (stackXmlAttribute.isModified() && !isJdbcPingStack(stackXmlAttribute.get()))
+        if (stackXmlAttribute.isModified() && !isJdbcPingStack(stackXmlAttribute.get())) {
+            warnDeprecatedStack(stackXmlAttribute.get());
             return;
+        }
 
         var stackName = transportStack != null ?
               transportStack :
-              stackXmlAttribute.isModified() ? stackXmlAttribute.get() : "jdbc-ping-udp";
+              stackXmlAttribute.isModified() ? stackXmlAttribute.get() : "jdbc-ping";
+        warnDeprecatedStack(stackName);
+
         var udp = stackName.endsWith("udp");
 
-        EntityManager em = keycloakSession.getProvider(JpaConnectionProvider.class).getEntityManager();
         var tableName = JpaUtils.getTableNameForNativeQuery("JGROUPS_PING", em);
         var attributes = Map.of(
               // Leave initialize_sql blank as table is already created by Keycloak
@@ -428,7 +461,19 @@ public class CacheManagerFactory {
         transportConfig.defaultTransport().stack(stackName);
     }
 
-    private boolean isJdbcPingStack(String stackName) {
+    private static void warnDeprecatedStack(String stackName) {
+        switch (stackName) {
+            case "jdbc-ping-udp":
+            case "tcp":
+            case "udp":
+            case "azure":
+            case "ec2":
+            case "google":
+                Logger.getLogger(CacheManagerFactory.class).warnf("Stack '%s' is deprecated. We recommend to use 'jdbc-ping' instead", stackName);
+        }
+    }
+
+    private static boolean isJdbcPingStack(String stackName) {
         return "jdbc-ping".equals(stackName) || "jdbc-ping-udp".equals(stackName);
     }
 

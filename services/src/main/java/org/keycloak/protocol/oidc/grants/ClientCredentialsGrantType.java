@@ -41,8 +41,6 @@ import org.keycloak.services.clientpolicy.context.ServiceAccountTokenRequestCont
 import org.keycloak.services.clientpolicy.context.ServiceAccountTokenResponseContext;
 import org.keycloak.services.managers.AuthenticationManager;
 import org.keycloak.services.managers.AuthenticationSessionManager;
-import org.keycloak.services.managers.ClientManager;
-import org.keycloak.services.managers.RealmManager;
 import org.keycloak.services.managers.UserSessionManager;
 import org.keycloak.sessions.AuthenticationSessionModel;
 import org.keycloak.sessions.RootAuthenticationSessionModel;
@@ -79,12 +77,11 @@ public class ClientCredentialsGrantType extends OAuth2GrantTypeBase {
         }
 
         UserModel clientUser = session.users().getServiceAccount(client);
-
-        if (clientUser == null || client.getProtocolMapperByName(OIDCLoginProtocol.LOGIN_PROTOCOL, ServiceAccountConstants.CLIENT_ID_PROTOCOL_MAPPER) == null) {
-            // May need to handle bootstrap here as well
-            logger.debugf("Service account user for client '%s' not found or default protocol mapper for service account not found. Creating now", client.getClientId());
-            new ClientManager(new RealmManager(session)).enableServiceAccount(client);
-            clientUser = session.users().getServiceAccount(client);
+        if (clientUser == null) {
+            event.detail(Details.REASON, "The associated service account for the client does not exist");
+            event.error(Errors.USER_NOT_FOUND);
+            throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_REQUEST,
+                    "The associated service account for the client does not exist", Response.Status.UNAUTHORIZED);
         }
 
         String clientUsername = clientUser.getUsername();

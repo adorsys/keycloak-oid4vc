@@ -33,7 +33,6 @@ jobs:
       ci-store: ${{ steps.conditional.outputs.ci-store }}
       ci-sssd: ${{ steps.conditional.outputs.ci-sssd }}
       ci-webauthn: ${{ steps.conditional.outputs.ci-webauthn }}
-      ci-test-poc: ${{ steps.conditional.outputs.ci-test-poc }}
       ci-aurora: ${{ steps.auroradb-tests.outputs.run-aurora-tests }}
 
     steps:
@@ -84,12 +83,12 @@ jobs:
         run: |
           SEP=""
           PROJECTS=""
-          for i in `find -name '*Test.java' -type f | egrep -v './(testsuite|quarkus|docs|test-poc|test-framework)/' | sed 's|/src/test/java/.*||' | sort | uniq | sed 's|./||'`; do
+          for i in `find -name '*Test.java' -type f | egrep -v './(testsuite|quarkus|docs|tests|test-framework)/' | sed 's|/src/test/java/.*||' | sort | uniq | sed 's|./||'`; do
             PROJECTS="$PROJECTS$SEP$i"
             SEP=","
           done
 
-          ./mvnw install -pl "$PROJECTS" -am
+          ./mvnw test -pl "$PROJECTS" -am
 
       - name: Upload JVM Heapdumps
         if: always()
@@ -210,7 +209,7 @@ jobs:
         if: always()
         uses: ./.github/actions/archive-surefire-reports
         with:
-          job-id: quarkus-unit-tests
+          job-id: quarkus-unit-tests-${{ matrix.os }}
 
   quarkus-integration-tests:
     name: Quarkus IT
@@ -269,7 +268,7 @@ jobs:
         if: always()
         uses: ./.github/actions/archive-surefire-reports
         with:
-          job-id: quarkus-integration-tests-${{ matrix.os }}-${{ matrix.server }}
+          job-id: quarkus-integration-tests-${{ matrix.os }}-${{ matrix.suite }}
 
   jdk-integration-tests:
     name: Java Distribution IT
@@ -308,6 +307,41 @@ jobs:
       - name: Build with JDK
         run:
           ./mvnw install -e -DskipTests -DskipExamples
+
+      - name: Upload JVM Heapdumps
+        if: always()
+        uses: ./.github/actions/upload-heapdumps
+
+      - uses: ./.github/actions/upload-flaky-tests
+        name: Upload flaky tests
+        env:
+          GH_TOKEN: ${{ github.token }}
+        with:
+          job-name: Java Distribution IT
+
+      - name: Surefire reports
+        if: always()
+        uses: ./.github/actions/archive-surefire-reports
+        with:
+          job-id: jdk-integration-tests-${{ matrix.os }}-${{ matrix.dist }}-${{ matrix.version }}
+
+  login-v1-tests:
+    name: Login Theme v1 tests
+    needs: build
+    timeout-minutes: 100
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: integration-test-setup
+        name: Integration test setup
+        uses: ./.github/actions/integration-test-setup
+
+      - name: Run base tests
+        run: |
+          TESTS=`testsuite/integration-arquillian/tests/base/testsuites/suite.sh login`
+          echo "Tests: $TESTS"
+          ./mvnw test ${{ env.SUREFIRE_RETRY }} -Pauth-server-quarkus -Dtest=$TESTS -pl testsuite/integration-arquillian/tests/base 2>&1 | misc/log/trimmer.sh
 
       - name: Upload JVM Heapdumps
         if: always()
@@ -595,6 +629,15 @@ jobs:
         name: Integration test setup
         uses: ./.github/actions/integration-test-setup
 
+      - name: Run new base tests
+        run: |
+          KC_TEST_DATABASE=${{ matrix.db }} KC_TEST_DATABASE_REUSE=true TESTCONTAINERS_REUSE_ENABLE=true ./mvnw test -f tests/pom.xml -Dtest=DatabaseTestSuite
+
+      - name: Database container port
+        run: |
+          DATABASE_PORT=$(docker ps -l --format '{{ .ID }}' | xargs docker port | cut -d ':' -f 2)
+          echo "DATABASE_PORT=$DATABASE_PORT" >> $GITHUB_ENV 
+
       - name: Run base tests
         run: |
           TESTS=`testsuite/integration-arquillian/tests/base/testsuites/suite.sh database`
@@ -603,7 +646,9 @@ jobs:
             -Pauth-server-quarkus -Pdb-${{ matrix.db }} \
             "-Dwebdriver.chrome.driver=$CHROMEWEBDRIVER/chromedriver" \
             -Dtest=$TESTS \
-            -Ddocker.keepRunning \
+            -Ddocker.database.skip=true \
+            -Ddocker.database.port=$DATABASE_PORT \
+            -Ddocker.container.testdb.ip=localhost \
             -pl testsuite/integration-arquillian/tests/base 2>&1 | misc/log/trimmer.sh
 
       - name: Run cluster JDBC_PING2 UDP smoke test
@@ -615,7 +660,8 @@ jobs:
             -Dsession.cache.owners=2 \
             -Dauth.server.quarkus.cluster.stack=jdbc-ping-udp \
             -Ddocker.database.skip=true \
-            -Dauth.server.db.host=localhost \
+            -Ddocker.database.port=$DATABASE_PORT \
+            -Ddocker.container.testdb.ip=localhost \
             -pl testsuite/integration-arquillian/tests/base \
             2>&1 | misc/log/trimmer.sh
 
@@ -628,7 +674,8 @@ jobs:
             -Dsession.cache.owners=2 \
             -Dauth.server.quarkus.cluster.stack=jdbc-ping \
             -Ddocker.database.skip=true \
-            -Dauth.server.db.host=localhost \
+            -Ddocker.database.port=$DATABASE_PORT \
+            -Ddocker.container.testdb.ip=localhost \
             -pl testsuite/integration-arquillian/tests/base \
             2>&1 | misc/log/trimmer.sh
 
@@ -958,7 +1005,7 @@ jobs:
           job-id: migration-tests-${{ matrix.old-version }}-${{ matrix.database }}
 
   test-framework:
-    name: Keycloak Test Framework
+    name: Test Framework
     runs-on: ubuntu-latest
     needs: build
     timeout-minutes: 30
@@ -970,14 +1017,12 @@ jobs:
         uses: ./.github/actions/integration-test-setup
 
       - name: Run tests
-        run: ./mvnw test -f test-framework/pom.xml
+        run: ./mvnw package -f test-framework/pom.xml
 
-  test-poc:
-    name: Test PoC
+  base-new-integration-tests:
+    name: Base IT (new)
     runs-on: ubuntu-latest
-    if: needs.conditional.outputs.ci-test-poc == 'true'
     needs:
-      - conditional
       - build
     timeout-minutes: 30
     steps:
@@ -988,9 +1033,7 @@ jobs:
         uses: ./.github/actions/integration-test-setup
 
       - name: Run tests
-        env:
-          KC_TEST_BROWSER: chrome-headless
-        run: ./mvnw clean install -f test-poc/pom.xml
+        run: ./mvnw test -f tests/pom.xml
 
   check:
     name: Status Check - Keycloak CI
@@ -1015,7 +1058,8 @@ jobs:
       - sssd-unit-tests
       - migration-tests
       - external-infinispan-tests
-      - test-poc
+      - test-framework
+      - base-new-integration-tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

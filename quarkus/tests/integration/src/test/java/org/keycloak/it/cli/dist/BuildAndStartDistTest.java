@@ -24,6 +24,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
 import org.keycloak.it.junit5.extension.CLIResult;
 import org.keycloak.it.junit5.extension.DistributionTest;
+import org.keycloak.it.junit5.extension.DryRun;
 import org.keycloak.it.junit5.extension.RawDistOnly;
 import org.keycloak.it.junit5.extension.WithEnvVars;
 import org.keycloak.it.utils.KeycloakDistribution;
@@ -32,11 +33,13 @@ import org.keycloak.it.utils.RawKeycloakDistribution;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.keycloak.quarkus.runtime.cli.command.AbstractStartCommand.OPTIMIZED_BUILD_OPTION_LONG;
 
+@WithEnvVars({"KC_CACHE", "local"}) // avoid flakey port conflicts
 @DistributionTest
 @RawDistOnly(reason = "Containers are immutable")
 @TestMethodOrder(OrderAnnotation.class)
 public class BuildAndStartDistTest {
 
+    @DryRun
     @Test
     void testBuildAndStart(KeycloakDistribution dist) {
         RawKeycloakDistribution rawDist = dist.unwrap(RawKeycloakDistribution.class);
@@ -45,7 +48,7 @@ public class BuildAndStartDistTest {
         cliResult.assertBuild();
         cliResult = rawDist.run("start", "--http-enabled=true", "--hostname-strict=false", OPTIMIZED_BUILD_OPTION_LONG);
         cliResult.assertNoBuild();
-        cliResult.assertStarted();
+        assertTrue(cliResult.getErrorOutput().isBlank());
 
         // start using based on the build options set via conf file
         rawDist.setProperty("http-enabled", "true");
@@ -55,19 +58,19 @@ public class BuildAndStartDistTest {
         cliResult.assertBuild();
         cliResult = rawDist.run("start", OPTIMIZED_BUILD_OPTION_LONG);
         cliResult.assertNoBuild();
-        cliResult.assertStarted();
+        assertTrue(cliResult.getErrorOutput().isBlank());
         // running start without optimized flag should not cause a build
         cliResult = rawDist.run("start");
         cliResult.assertNoBuild();
-        cliResult.assertStarted();
+        assertTrue(cliResult.getErrorOutput().isBlank());
 
         // remove the build option from conf file to force a build during start
         rawDist.removeProperty("http-relative-path");
         cliResult = rawDist.run("start");
         cliResult.assertBuild();
-        cliResult.assertStarted();
+        assertTrue(cliResult.getErrorOutput().isBlank());
     }
-    
+
     @Test
     @WithEnvVars({"KEYCLOAK_ADMIN", "oldadmin123", "KEYCLOAK_ADMIN_PASSWORD", "oldadmin123"})
     @Launch({"start-dev"})

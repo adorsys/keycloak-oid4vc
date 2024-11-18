@@ -21,13 +21,19 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
-import java.util.List;
+import java.util.Map;
+import java.util.Properties;
+import java.util.stream.Stream;
 
 import org.junit.Test;
+import org.keycloak.quarkus.runtime.Environment;
+import org.keycloak.quarkus.runtime.KeycloakMain;
 import org.keycloak.quarkus.runtime.cli.Picocli;
 import org.keycloak.quarkus.runtime.configuration.ConfigArgsConfigSource;
 import org.keycloak.quarkus.runtime.configuration.test.AbstractConfigurationTest;
@@ -45,55 +51,48 @@ public class PicocliTest extends AbstractConfigurationTest {
         final StringWriter out = new StringWriter();
         SmallRyeConfig config;
         int exitCode = Integer.MAX_VALUE;
+        boolean reaug;
+        private Properties buildProps;
 
         String getErrString() {
             return normalize(err);
         }
-        
+
         // normalize line endings - TODO: could also normalize non-printable chars
         // but for now those are part of the expected output
         String normalize(StringWriter writer) {
             return System.lineSeparator().equals("\n") ? writer.toString()
                     : writer.toString().replace(System.lineSeparator(), "\n");
         }
-        
+
         String getOutString() {
             return normalize(out);
         }
 
         @Override
-        protected PrintWriter getErrWriter() {
+        public PrintWriter getErrWriter() {
             return new PrintWriter(err, true);
         }
-        
+
         @Override
-        protected PrintWriter getOutWriter() {
+        public PrintWriter getOutWriter() {
             return new PrintWriter(out, true);
         }
 
         @Override
-        protected void exitOnFailure(int exitCode, CommandLine cmd) {
+        public void exit(int exitCode) {
             this.exitCode = exitCode;
         }
 
-        protected int runReAugmentationIfNeeded(List<String> cliArgs, CommandLine cmd, CommandLine currentCommand) {
-            throw new AssertionError("Should not reaugment");
-        };
+        @Override
+        public void start() {
+            // skip
+        }
 
         @Override
-        public void parseAndRun(List<String> cliArgs) {
-            config = createConfig();
-            super.parseAndRun(cliArgs);
-        }
-        
-        @Override
-        public void start(CommandLine cmd) {
-            // skip
-        }
-        
-        @Override
         public void build() throws Throwable {
-            // skip
+            reaug = true;
+            this.buildProps = getNonPersistedBuildTimeOptions();
         }
 
     };
@@ -101,8 +100,9 @@ public class PicocliTest extends AbstractConfigurationTest {
     NonRunningPicocli pseudoLaunch(String... args) {
         NonRunningPicocli nonRunningPicocli = new NonRunningPicocli();
         ConfigArgsConfigSource.setCliArgs(args);
-        var cliArgs = Picocli.parseArgs(args);
-        nonRunningPicocli.parseAndRun(cliArgs);
+        // TODO: this needs refined, otherwise profile handling will not be correct
+        nonRunningPicocli.config = createConfig();
+        KeycloakMain.main(args, nonRunningPicocli);
         return nonRunningPicocli;
     }
 
@@ -206,20 +206,31 @@ public class PicocliTest extends AbstractConfigurationTest {
                 .errorText("Unknown option: '--db-pasword'")
                 + "\nPossible solutions: --db-url, --db-url-host, --db-url-database, --db-url-port, --db-url-properties, --db-username, --db-password, --db-schema, --db-pool-initial-size, --db-pool-min-size, --db-pool-max-size, --db-driver, --db"));
     }
-    
+
     @Test
     public void httpStoreTypeValidation() {
         NonRunningPicocli nonRunningPicocli = pseudoLaunch("start", "--https-key-store-file=not-there.ks", "--hostname-strict=false");
         assertEquals(CommandLine.ExitCode.USAGE, nonRunningPicocli.exitCode);
         assertThat(nonRunningPicocli.getErrString(), containsString("Unable to determine 'https-key-store-type' automatically. Adjust the file extension or specify the property"));
-        
+
         nonRunningPicocli = pseudoLaunch("start", "--https-key-store-file=not-there.ks", "--hostname-strict=false", "--https-key-store-type=jdk");
         assertEquals(CommandLine.ExitCode.USAGE, nonRunningPicocli.exitCode);
         assertThat(nonRunningPicocli.getErrString(), containsString("Failed to load 'https-key-' material: NoSuchFileException not-there.ks"));
-        
+
         nonRunningPicocli = pseudoLaunch("start", "--https-trust-store-file=not-there.jks", "--https-key-store-file=not-there.ks", "--hostname-strict=false", "--https-key-store-type=jdk");
         assertEquals(CommandLine.ExitCode.USAGE, nonRunningPicocli.exitCode);
         assertThat(nonRunningPicocli.getErrString(), containsString("No trust store password provided"));
+    }
+
+    @Test
+    public void testShowConfigHidesSystemProperties() {
+        setSystemProperty("kc.something", "password", () -> {
+            NonRunningPicocli nonRunningPicocli = pseudoLaunch("show-config");
+            // the command line should now show up within the output
+            assertThat(nonRunningPicocli.getOutString(), not(containsString("show-config")));
+            // arbitrary kc system properties should not show up either
+            assertThat(nonRunningPicocli.getOutString(), not(containsString("kc.something")));
+        });
     }
 
     @Test
@@ -229,19 +240,138 @@ public class PicocliTest extends AbstractConfigurationTest {
         assertThat(nonRunningPicocli.getErrString(), containsString(
                 "Option: '--db postgres' is not expected to contain whitespace, please remove any unnecessary quoting/escaping"));
     }
-    
+
     @Test
     public void spiRuntimeAllowedWithStart() {
         NonRunningPicocli nonRunningPicocli = pseudoLaunch("start", "--http-enabled=true", "--spi-something-pass=changeme");
         assertEquals(CommandLine.ExitCode.OK, nonRunningPicocli.exitCode);
         assertThat(nonRunningPicocli.getOutString(), not(containsString("kc.spi-something-pass")));
     }
-    
+
     @Test
     public void spiRuntimeWarnWithBuild() {
         NonRunningPicocli nonRunningPicocli = pseudoLaunch("build", "--spi-something-pass=changeme");
         assertEquals(CommandLine.ExitCode.OK, nonRunningPicocli.exitCode);
         assertThat(nonRunningPicocli.getOutString(), containsString("The following run time options were found, but will be ignored during build time: kc.spi-something-pass"));
     }
-    
+
+    @Test
+    public void failBuildDev() {
+        NonRunningPicocli nonRunningPicocli = pseudoLaunch("--profile=dev", "build");
+        assertThat(nonRunningPicocli.getErrString(), containsString("You can not 'build' the server in development mode."));
+        assertEquals(CommandLine.ExitCode.SOFTWARE, nonRunningPicocli.exitCode);
+    }
+
+    @Test
+    public void failStartBuildDev() {
+        NonRunningPicocli nonRunningPicocli = pseudoLaunch("--profile=dev", "start");
+        assertThat(nonRunningPicocli.getErrString(), containsString("You can not 'start' the server in development mode."));
+        assertEquals(CommandLine.ExitCode.USAGE, nonRunningPicocli.exitCode);
+    }
+
+    @Test
+    public void failIfOptimizedUsedForFirstStartupExport() {
+        NonRunningPicocli nonRunningPicocli = pseudoLaunch("export", "--optimized", "--dir=data");
+        assertEquals(CommandLine.ExitCode.USAGE, nonRunningPicocli.exitCode);
+        assertThat(nonRunningPicocli.getErrString(), containsString("The '--optimized' flag was used for first ever server start."));
+    }
+
+    @Test
+    public void testReaugFromProdToDev() {
+        build("build");
+
+        Environment.setRebuildCheck(); // will be reset by the system properties logic
+        NonRunningPicocli nonRunningPicocli = pseudoLaunch("start-dev", "--hostname=name", "--http-enabled=true");
+        assertEquals(CommandLine.ExitCode.OK, nonRunningPicocli.exitCode);
+        assertTrue(nonRunningPicocli.reaug);
+        assertEquals("dev", nonRunningPicocli.buildProps.getProperty(org.keycloak.common.util.Environment.PROFILE));;
+    }
+
+    /**
+     * Runs a fake build to setup the state of the persisted build properties
+     */
+    private void build(String... args) {
+        if (Stream.of(args).anyMatch("start-dev"::equals)) {
+            Environment.setRebuildCheck(); // auto-build
+        }
+        NonRunningPicocli nonRunningPicocli = pseudoLaunch(args);
+        assertTrue(nonRunningPicocli.reaug);
+        assertEquals(CommandLine.ExitCode.OK, nonRunningPicocli.exitCode);
+        onAfter();
+        addPersistedConfigValues((Map)nonRunningPicocli.buildProps);
+    }
+
+    @Test
+    public void testReaugFromProdToDevExport() {
+        build("build");
+
+        Environment.setRebuildCheck(); // will be reset by the system properties logic
+        NonRunningPicocli nonRunningPicocli = pseudoLaunch("--profile=dev", "export", "--file=file");
+        assertEquals(CommandLine.ExitCode.OK, nonRunningPicocli.exitCode);
+        assertTrue(nonRunningPicocli.reaug);
+    }
+
+    @Test
+    public void testNoReaugFromProdToExport() {
+        build("build");
+
+        Environment.setRebuildCheck(); // will be reset by the system properties logic
+        NonRunningPicocli nonRunningPicocli = pseudoLaunch("export", "--file=file");
+        assertEquals(CommandLine.ExitCode.OK, nonRunningPicocli.exitCode);
+        assertFalse(nonRunningPicocli.reaug);
+    }
+
+    @Test
+    public void testReaugFromDevToProd() {
+        build("start-dev");
+
+        Environment.setRebuildCheck(); // will be reset by the system properties logic
+        NonRunningPicocli nonRunningPicocli = pseudoLaunch("start", "--hostname=name", "--http-enabled=true");
+        assertEquals(CommandLine.ExitCode.OK, nonRunningPicocli.exitCode);
+        assertTrue(nonRunningPicocli.reaug);
+    }
+
+    @Test
+    public void testNoReaugFromDevToDevExport() {
+        build("start-dev");
+
+        Environment.setRebuildCheck(); // will be reset by the system properties logic
+        NonRunningPicocli nonRunningPicocli = pseudoLaunch("--profile=dev", "export", "--file=file");
+        assertEquals(CommandLine.ExitCode.OK, nonRunningPicocli.exitCode);
+        assertFalse(nonRunningPicocli.reaug);
+    }
+
+    @Test
+    public void testReaugFromDevToProdExport() {
+        build("start-dev");
+
+        Environment.setRebuildCheck(); // will be reset by the system properties logic
+        NonRunningPicocli nonRunningPicocli = pseudoLaunch("export", "--file=file");
+        assertEquals(CommandLine.ExitCode.OK, nonRunningPicocli.exitCode);
+        assertTrue(nonRunningPicocli.reaug);
+        assertEquals("prod", nonRunningPicocli.buildProps.getProperty(org.keycloak.common.util.Environment.PROFILE));;
+    }
+
+    @Test
+    public void testOptimizedReaugmentationMessage() {
+        build("build");
+
+        Environment.setRebuildCheck(); // will be reset by the system properties logic
+        NonRunningPicocli nonRunningPicocli = pseudoLaunch("start", "--features=docker", "--hostname=name", "--http-enabled=true");
+        assertEquals(CommandLine.ExitCode.OK, nonRunningPicocli.exitCode);
+        assertThat(nonRunningPicocli.getOutString(), containsString("features=<unset> > features=docker"));
+        assertTrue(nonRunningPicocli.reaug);
+    }
+
+    @Test
+    public void fastStartOptimizedSucceeds() {
+        build("build");
+
+        System.setProperty("kc.http-enabled", "true");
+        System.setProperty("kc.hostname-strict", "false");
+
+        NonRunningPicocli nonRunningPicocli = pseudoLaunch("start", "--optimized");
+        assertEquals(Integer.MAX_VALUE, nonRunningPicocli.exitCode); // "running" state
+    }
+
 }

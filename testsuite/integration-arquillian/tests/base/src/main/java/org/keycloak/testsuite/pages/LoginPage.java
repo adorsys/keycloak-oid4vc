@@ -54,6 +54,9 @@ public class LoginPage extends LanguageComboboxAwarePage {
     @FindBy(id = "input-error-password")
     private WebElement passwordInputError;
 
+    @FindBy(id = "input-error")
+    private WebElement inputError;
+
     @FindBy(id = "rememberMe")
     private WebElement rememberMe;
 
@@ -170,7 +173,11 @@ public class LoginPage extends LanguageComboboxAwarePage {
             try {
                 return getTextFromElement(passwordInputError);
             } catch (NoSuchElementException e) {
-                return null;
+                try {
+                    return getTextFromElement(inputError);
+                } catch (NoSuchElementException error) {
+                    return null;
+                }
             }
         }
     }
@@ -199,11 +206,13 @@ public class LoginPage extends LanguageComboboxAwarePage {
         }
     }
 
+    @Override
     public boolean isCurrent() {
         String realm = "test";
         return isCurrent(realm);
     }
 
+    @Override
     public boolean isCurrent(String realm) {
         return DroneUtils.getCurrentDriver().getTitle().equals("Sign in to " + realm) || DroneUtils.getCurrentDriver().getTitle().equals("Anmeldung bei " + realm);
     }

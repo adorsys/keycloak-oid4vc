@@ -96,10 +96,8 @@
         <h2.version>2.3.230</h2.version>
         <hibernate-orm.plugin.version>6.2.13.Final</hibernate-orm.plugin.version>
         <hibernate.c3p0.version>6.2.13.Final</hibernate.c3p0.version>
-        <infinispan.version>15.0.10.Final</infinispan.version>
-        <!-- version number is needed for the proto-schema-compatibility-maven-plugin and needs to be in-sync with the version used in Infinispan -->
-        <protostream.version>5.0.8.Final</protostream.version>
-        <!-- protostream.plugin.version property can be replaced with protostream.version once protostream.version >= 5.0.10.Final -->
+        <infinispan.version>15.0.11.Final</infinispan.version>
+        <!-- protostream.plugin.version property can be replaced with protostream.version once protostream.version >= 5.0.12.Final (IPROTO-395) -->
         <protostream.plugin.version>5.0.12.Final</protostream.plugin.version>
 
         <!--JAKARTA-->
@@ -159,17 +157,22 @@
 
         <!-- Databases - also published to db.adoc as "Tested Version" -->
         <mysql.version>8.0</mysql.version>
+        <mysql.container>mysql:${mysql.version}</mysql.container>
         <mysql-jdbc.version>8.3.0</mysql-jdbc.version>
         <postgresql.version>16</postgresql.version>
+        <postgresql.container>postgres:${postgresql.version}</postgresql.container>
         <aurora-postgresql.version>16.1</aurora-postgresql.version>
         <aws-jdbc-wrapper.version>2.3.1</aws-jdbc-wrapper.version>
         <postgresql-jdbc.version>42.7.4</postgresql-jdbc.version>
         <mariadb.version>10.11</mariadb.version>
+        <mariadb.container>mariadb:${mariadb.version}</mariadb.container>
         <mariadb-jdbc.version>3.4.1</mariadb-jdbc.version>
-        <mssql.version>2022-latest</mssql.version>
+        <mssql.version>2022</mssql.version>
+        <mssql.container>mcr.microsoft.com/mssql/server:${mssql.version}-latest</mssql.container>
         <!-- this is the mssql driver version also used in the Quarkus BOM -->
         <mssql-jdbc.version>12.8.1.jre11</mssql-jdbc.version>
-        <oracledb.version>19.3</oracledb.version>
+        <oracledb.version>23.5</oracledb.version>
+        <oracledb.container>gvenzl/oracle-free:${oracledb.version}-slim-faststart</oracledb.container>
         <!-- this is the oracle driver version also used in the Quarkus BOM -->
         <oracle-jdbc.version>23.5.0.24.07</oracle-jdbc.version>
 
@@ -307,6 +310,7 @@
         <module>authz</module>
         <module>js</module>
         <module>test-framework</module>
+        <module>tests</module>
         <module>quarkus</module>
     </modules>
 
@@ -1288,23 +1292,6 @@
                 <type>test-jar</type>
                 <version>${infinispan.version}</version>
             </dependency>
-            <dependency>
-                <groupId>org.infinispan.protostream</groupId>
-                <artifactId>protostream</artifactId>
-                <version>${protostream.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.infinispan.protostream</groupId>
-                <artifactId>protostream-types</artifactId>
-                <version>${protostream.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.infinispan.protostream</groupId>
-                <artifactId>protostream-processor</artifactId>
-                <version>${protostream.version}</version>
-                <!-- compile-only dependency -->
-                <scope>provided</scope>
-            </dependency>
 
         </dependencies>
     </dependencyManagement>
@@ -1516,7 +1503,7 @@
                                 <goal>pnpm</goal>
                             </goals>
                             <configuration>
-                                <arguments>install --prefer-offline --frozen-lockfile --ignore-scripts</arguments>
+                                <arguments>${pnpm.args.install}</arguments>
                                 <workingDirectory>${maven.multiModuleProjectDirectory}</workingDirectory>
                             </configuration>
                         </execution>
@@ -1584,13 +1571,6 @@
             </activation>
             <modules>
                 <module>testsuite</module>
-            </modules>
-        </profile>
-
-        <profile>
-            <id>test-poc</id>
-            <modules>
-                <module>test-poc</module>
             </modules>
         </profile>
 
