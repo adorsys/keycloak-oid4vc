@@ -55,6 +55,7 @@ import org.keycloak.protocol.oid4vc.OID4VCLoginProtocolFactory;
 import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.AbstractCredentialBuilder;
 import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.CredentialBody;
 import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.CredentialBuilder;
+import org.keycloak.protocol.oid4vc.issuance.keybinding.ProofValidator;
 import org.keycloak.protocol.oid4vc.issuance.mappers.OID4VCMapper;
 import org.keycloak.protocol.oid4vc.issuance.signing.VerifiableCredentialsSigningService;
 import org.keycloak.protocol.oid4vc.model.CredentialOfferURI;
@@ -67,6 +68,7 @@ import org.keycloak.protocol.oid4vc.model.OID4VCClient;
 import org.keycloak.protocol.oid4vc.model.OfferUriType;
 import org.keycloak.protocol.oid4vc.model.PreAuthorizedCode;
 import org.keycloak.protocol.oid4vc.model.PreAuthorizedGrant;
+import org.keycloak.protocol.oid4vc.model.Proof;
 import org.keycloak.protocol.oid4vc.model.SupportedCredentialConfiguration;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
 import org.keycloak.protocol.oidc.grants.PreAuthorizedCodeGrantType;
@@ -496,6 +498,9 @@ public class OID4VCIssuerEndpoint {
 
         VCIssuanceContext vcIssuanceContext = getVCToSign(protocolMappers, credentialConfig, authResult, credentialRequestVO);
 
+        // Enforce key binding prior to signing if necessary
+        enforceKeyBindingIfProofProvided(vcIssuanceContext);
+
         String fullyQualifiedConfigKey = VerifiableCredentialsSigningService.locator(credentialConfig.getFormat(), credentialConfig.deriveType(), credentialConfig.deriveConfiId());
         String formatAndTypeKey = VerifiableCredentialsSigningService.locator(credentialConfig.getFormat(), credentialConfig.deriveType(), null);
         String formatOnlyKey = VerifiableCredentialsSigningService.locator(credentialConfig.getFormat(), null, null);
@@ -626,6 +631,30 @@ public class OID4VCIssuerEndpoint {
                 .setCredentialBody(credentialBody)
                 .setCredentialConfig(credentialConfig)
                 .setCredentialRequest(credentialRequestVO);
+    }
+
+    /**
+     * Enforce key binding: Validate proof and bind associated key to credential in issuance context.
+     */
+    private void enforceKeyBindingIfProofProvided(VCIssuanceContext vcIssuanceContext) {
+        Proof proof = vcIssuanceContext.getCredentialRequest().getProof();
+        if (proof == null) {
+            LOGGER.debugf("No proof provided, skipping key binding");
+            return;
+        }
+
+        ProofValidator proofValidator = session.getProvider(ProofValidator.class, proof.getProofType());
+        if (proofValidator == null) {
+            throw new BadRequestException(String.format("Unable to validate proofs of type %s", proof.getProofType()));
+        }
+
+        // Validate proof and bind public key to credential
+        try {
+            Optional.ofNullable(proofValidator.validateProof(vcIssuanceContext))
+                    .ifPresent(jwk -> vcIssuanceContext.getCredentialBody().addKeyBinding(jwk));
+        } catch (VCIssuerException e) {
+            throw new BadRequestException("Could not validate provided proof", e);
+        }
     }
 
     private CredentialBuilder locateCredentialBuilder(SupportedCredentialConfiguration credentialConfig) {

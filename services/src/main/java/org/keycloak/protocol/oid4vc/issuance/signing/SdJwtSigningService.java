@@ -18,12 +18,9 @@
 package org.keycloak.protocol.oid4vc.issuance.signing;
 
 import org.jboss.logging.Logger;
-import org.keycloak.common.VerificationException;
 import org.keycloak.crypto.KeyWrapper;
 import org.keycloak.crypto.SignatureProvider;
 import org.keycloak.crypto.SignatureSignerContext;
-import org.keycloak.jose.jwk.JWK;
-import org.keycloak.jose.jws.JWSInputException;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.protocol.oid4vc.issuance.VCIssuanceContext;
 import org.keycloak.protocol.oid4vc.issuance.VCIssuerException;
@@ -33,8 +30,6 @@ import org.keycloak.protocol.oid4vc.model.CredentialConfigId;
 import org.keycloak.protocol.oid4vc.model.Format;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredentialType;
 
-import java.io.IOException;
-import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -46,11 +41,9 @@ import java.util.Optional;
  *
  * @author <a href="https://github.com/wistefan">Stefan Wiedemann</a>
  */
-public class SdJwtSigningService extends JwtProofBasedSigningService<String> {
+public class SdJwtSigningService extends SigningService<String> {
 
     private static final Logger LOGGER = Logger.getLogger(SdJwtSigningService.class);
-
-    private static final String JWK_CLAIM = "jwk";
 
     private final SignatureSignerContext signatureSignerContext;
 
@@ -61,7 +54,7 @@ public class SdJwtSigningService extends JwtProofBasedSigningService<String> {
     private final VerifiableCredentialType vct;
 
     public SdJwtSigningService(KeycloakSession keycloakSession, String keyId, String algorithmType, String issuerDid, Optional<String> kid, VerifiableCredentialType credentialType, CredentialConfigId vcConfigId) {
-        super(keycloakSession, keyId, Format.SD_JWT_VC, algorithmType, issuerDid);
+        super(keycloakSession, keyId, Format.SD_JWT_VC, algorithmType);
         this.vcConfigId = vcConfigId;
         this.vct = credentialType;
 
@@ -97,19 +90,6 @@ public class SdJwtSigningService extends JwtProofBasedSigningService<String> {
         CredentialBody credentialBody = vcIssuanceContext.getCredentialBody();
         if (!(credentialBody instanceof SdJwtCredentialBody sdJwtCredentialBody)) {
             throw new VCIssuerException("Credential body unexpectedly not of type SdJwtCredentialBody");
-        }
-
-        JWK jwk;
-        try {
-            // null returned is a valid result. Means no key binding will be included.
-            jwk = validateProof(vcIssuanceContext);
-        } catch (JWSInputException | VerificationException | IOException e) {
-            throw new VCIssuerException("Can not verify proof", e);
-        }
-
-        // add the key binding if any
-        if (jwk != null) {
-            sdJwtCredentialBody.addCnfClaim(Map.of(JWK_CLAIM, jwk));
         }
 
         return sdJwtCredentialBody.sign(signatureSignerContext);

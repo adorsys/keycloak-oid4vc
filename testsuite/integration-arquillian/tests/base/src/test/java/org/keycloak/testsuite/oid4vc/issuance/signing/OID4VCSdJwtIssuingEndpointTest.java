@@ -18,6 +18,7 @@ package org.keycloak.testsuite.oid4vc.issuance.signing;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.ws.rs.BadRequestException;
 import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.Response;
 import org.apache.commons.collections4.map.HashedMap;
@@ -49,6 +50,8 @@ import org.keycloak.protocol.oid4vc.model.CredentialRequest;
 import org.keycloak.protocol.oid4vc.model.CredentialResponse;
 import org.keycloak.protocol.oid4vc.model.CredentialsOffer;
 import org.keycloak.protocol.oid4vc.model.Format;
+import org.keycloak.protocol.oid4vc.model.Proof;
+import org.keycloak.protocol.oid4vc.model.ProofType;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredentialType;
 import org.keycloak.protocol.oidc.grants.PreAuthorizedCodeGrantTypeFactory;
 import org.keycloak.protocol.oidc.representations.OIDCConfigurationRepresentation;
@@ -86,22 +89,63 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
     @Test
     public void testRequestTestCredential() {
         String token = getBearerToken(oauth);
-        String vct = "https://credentials.example.com/test-credential";
+        testingClient
+                .server(TEST_REALM_NAME)
+                .run(session -> testRequestTestCredential(session, token, null));
+    }
+
+    @Test
+    public void testRequestTestCredentialWithKeybinding() {
+        String token = getBearerToken(oauth);
         testingClient
                 .server(TEST_REALM_NAME)
                 .run((session -> {
-                    AppAuthManager.BearerTokenAuthenticator authenticator = new AppAuthManager.BearerTokenAuthenticator(session);
-                    authenticator.setTokenString(token);
-                    OID4VCIssuerEndpoint issuerEndpoint = prepareIssuerEndpoint(session, authenticator);
-                    CredentialRequest credentialRequest = new CredentialRequest()
-                            .setFormat(Format.SD_JWT_VC)
-                            .setVct(vct);
-                    Response credentialResponse = issuerEndpoint.requestCredential(credentialRequest);
-                    assertEquals("The credential request should be answered successfully.", HttpStatus.SC_OK, credentialResponse.getStatus());
-                    assertNotNull("A credential should be responded.", credentialResponse.getEntity());
-                    CredentialResponse credentialResponseVO = JsonSerialization.mapper.convertValue(credentialResponse.getEntity(), CredentialResponse.class);
-                    new TestCredentialResponseHandler(vct).handleCredentialResponse(credentialResponseVO);
+                    Proof proof = new Proof()
+                            .setProofType(ProofType.JWT)
+                            .setJwt(generateJwtProof(TEST_DID.toString(), null));
+
+                    SdJwtVP sdJwtVP = testRequestTestCredential(session, token, proof);
+                    assertNotNull("A cnf claim must be attached to the credential", sdJwtVP.getCnfClaim());
                 }));
+    }
+
+    @Test(expected = BadRequestException.class)
+    public void testRequestTestCredentialWithInvalidKeybinding() throws Throwable {
+        String token = getBearerToken(oauth);
+        withCausePropagation(() ->
+                testingClient
+                        .server(TEST_REALM_NAME)
+                        .run((session -> {
+                                    Proof proof = new Proof()
+                                            .setProofType(ProofType.JWT)
+                                            .setJwt(generateInvalidJwtProof(TEST_DID.toString(), null));
+
+                                    testRequestTestCredential(session, token, proof);
+                                })
+                        )
+        );
+    }
+
+    private static SdJwtVP testRequestTestCredential(KeycloakSession session, String token, Proof proof)
+            throws VerificationException {
+        String vct = "https://credentials.example.com/test-credential";
+
+        AppAuthManager.BearerTokenAuthenticator authenticator = new AppAuthManager.BearerTokenAuthenticator(session);
+        authenticator.setTokenString(token);
+        OID4VCIssuerEndpoint issuerEndpoint = prepareIssuerEndpoint(session, authenticator);
+
+        CredentialRequest credentialRequest = new CredentialRequest()
+                .setFormat(Format.SD_JWT_VC)
+                .setVct(vct)
+                .setProof(proof);
+
+        Response credentialResponse = issuerEndpoint.requestCredential(credentialRequest);
+        assertEquals("The credential request should be answered successfully.", HttpStatus.SC_OK, credentialResponse.getStatus());
+        assertNotNull("A credential should be responded.", credentialResponse.getEntity());
+        CredentialResponse credentialResponseVO = JsonSerialization.mapper.convertValue(credentialResponse.getEntity(), CredentialResponse.class);
+        new TestCredentialResponseHandler(vct).handleCredentialResponse(credentialResponseVO);
+
+        return SdJwtVP.of(credentialResponseVO.getCredential().toString());
     }
 
     // Tests the complete flow from
@@ -339,6 +383,8 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
                 Map.entry("vc.test-credential.vct", "https://credentials.example.com/test-credential"),
                 Map.entry("vc.test-credential.credential_signing_alg_values_supported", "ES256,ES384"),
                 Map.entry("vc.test-credential.display.0", "{\n  \"name\": \"Test Credential\"\n}"),
+                Map.entry("vc.test-credential.cryptographic_binding_methods_supported", "jwk"),
+                Map.entry("vc.test-credential.proof_types_supported", "{\"jwt\":{\"proof_signing_alg_values_supported\":[\"ES256\"]}}"),
                 Map.entry("vc.test-credential.credential_build_config.token_jws_type", "example+sd-jwt"),
                 Map.entry("vc.test-credential.credential_build_config.hash_algorithm", "sha-256"),
                 Map.entry("vc.test-credential.credential_build_config.visible_claims", "iat,nbf"),

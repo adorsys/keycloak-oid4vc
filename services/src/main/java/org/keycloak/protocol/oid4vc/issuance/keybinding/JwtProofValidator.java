@@ -14,15 +14,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.keycloak.protocol.oid4vc.issuance.signing;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
-import java.util.Objects;
-import java.util.Optional;
+package org.keycloak.protocol.oid4vc.issuance.keybinding;
 
-import org.jboss.logging.Logger;
 import org.keycloak.common.VerificationException;
 import org.keycloak.crypto.SignatureVerifierContext;
 import org.keycloak.jose.jwk.JWK;
@@ -40,22 +34,31 @@ import org.keycloak.protocol.oid4vc.model.SupportedCredentialConfiguration;
 import org.keycloak.representations.AccessToken;
 import org.keycloak.util.JsonSerialization;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+import java.util.Objects;
+import java.util.Optional;
+
 /**
- * Common signing service logic to handle proofs.
- *
- * @author <a href="mailto:francis.pouatcha@adorsys.com">Francis Pouatcha</a>
+ * Validates the conformance and authenticity of presented JWT proofs.
+ * @see "https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#name-jwt-proof-type"
  */
-public abstract class JwtProofBasedSigningService<T> extends SigningService<T> {
+public class JwtProofValidator extends AbstractProofValidator {
 
-    private static final Logger LOGGER = Logger.getLogger(JwtProofBasedSigningService.class);
     private static final String CRYPTOGRAPHIC_BINDING_METHOD_JWK = "jwk";
-    public static final String PROOF_JWT_TYP="openid4vci-proof+jwt";
+    public static final String PROOF_JWT_TYP = "openid4vci-proof+jwt";
 
-    protected final String issuerDid;
+    protected JwtProofValidator(KeycloakSession keycloakSession) {
+        super(keycloakSession);
+    }
 
-    protected JwtProofBasedSigningService(KeycloakSession keycloakSession, String keyId, String format, String type, String issuerDid) {
-        super(keycloakSession, keyId, format, type);
-        this.issuerDid = issuerDid;
+    public JWK validateProof(VCIssuanceContext vcIssuanceContext) throws VCIssuerException {
+        try {
+            return validateJwtProof(vcIssuanceContext);
+        } catch (JWSInputException | VerificationException | IOException e) {
+            throw new VCIssuerException("Could not validate proof", e);
+        }
     }
 
     /*
@@ -73,7 +76,7 @@ public abstract class JwtProofBasedSigningService<T> extends SigningService<T> {
      * @throws IllegalStateException: is credential type badly configured
      * @throws IOException
      */
-    protected JWK validateProof(VCIssuanceContext vcIssuanceContext) throws VCIssuerException, JWSInputException, VerificationException, IOException {
+    private JWK validateJwtProof(VCIssuanceContext vcIssuanceContext) throws VCIssuerException, JWSInputException, VerificationException, IOException {
 
         Optional<Proof> optionalProof = getProofFromContext(vcIssuanceContext);
 
@@ -178,7 +181,7 @@ public abstract class JwtProofBasedSigningService<T> extends SigningService<T> {
         //                .orElseThrow(() -> new VCIssuerException("Issuer claim must be null for preauthorized code else the clientId of the client making the request: " + azp));
 
         // The issuer is the token / credential is the audience of the proof
-        String credentialIssuer = issuerDid;
+        String credentialIssuer = getIssuerDid();
         Optional.ofNullable(proofPayload.getAudience()) // Ensure null-safety with Optional
                 .map(Arrays::asList) // Convert to List<String>
                 .filter(audiences -> audiences.contains(credentialIssuer)) // Check if the issuer is in the audience list
@@ -195,16 +198,16 @@ public abstract class JwtProofBasedSigningService<T> extends SigningService<T> {
         // - stored in the access token
         // - having the same validity as the access token.
         Optional.ofNullable(vcIssuanceContext.getAuthResult().getToken().getNonce())
-                        .ifPresent(
-                                cNonce -> {
-                                    Optional.ofNullable(proofPayload.getNonce())
-                                            .filter(nonce -> Objects.equals(cNonce, nonce))
-                                            .orElseThrow(() -> new VCIssuerException("Missing or wrong nonce value. Please provide nonce returned by the issuer if any."));
+                .ifPresent(
+                        cNonce -> {
+                            Optional.ofNullable(proofPayload.getNonce())
+                                    .filter(nonce -> Objects.equals(cNonce, nonce))
+                                    .orElseThrow(() -> new VCIssuerException("Missing or wrong nonce value. Please provide nonce returned by the issuer if any."));
 
-                                    // We expect the expiration to be identical to the token expiration. We assume token expiration has been checked by AuthManager,
-                                    // So no_op
-                                }
-                        );
+                            // We expect the expiration to be identical to the token expiration. We assume token expiration has been checked by AuthManager,
+                            // So no_op
+                        }
+                );
 
     }
 }
