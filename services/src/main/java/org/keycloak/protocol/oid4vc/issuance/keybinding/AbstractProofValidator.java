@@ -34,7 +34,7 @@ import java.util.Optional;
 public abstract class AbstractProofValidator implements ProofValidator {
 
     /**
-     * Key for the realm attribute providing the issuerDidy.
+     * Key for the realm attribute providing the issuerDid.
      */
     String ISSUER_DID_REALM_ATTRIBUTE_KEY = "issuerDid";
 

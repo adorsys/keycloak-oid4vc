@@ -17,14 +17,8 @@
 
 package org.keycloak.protocol.oid4vc.issuance.signing;
 
-import org.keycloak.common.VerificationException;
 import org.keycloak.crypto.KeyUse;
 import org.keycloak.crypto.KeyWrapper;
-import org.keycloak.crypto.SignatureProvider;
-import org.keycloak.crypto.SignatureVerifierContext;
-import org.keycloak.jose.jwk.JWK;
-import org.keycloak.jose.jwk.JWKParser;
-import org.keycloak.jose.jwk.OKPPublicJWK;
 import org.keycloak.models.KeycloakSession;
 
 /**
@@ -72,30 +66,6 @@ public abstract class SigningService<T> implements VerifiableCredentialsSigningS
             return keycloakSession.keys().getActiveKey(keycloakSession.getContext().getRealm(), KeyUse.SIG, algorithm);
         }
         return keycloakSession.keys().getKey(keycloakSession.getContext().getRealm(), kid, KeyUse.SIG, algorithm);
-    }
-
-    protected SignatureVerifierContext getVerifier(JWK jwk, String jwsAlgorithm) throws VerificationException {
-        SignatureProvider signatureProvider = keycloakSession.getProvider(SignatureProvider.class, jwsAlgorithm);
-        return signatureProvider.verifier(getKeyWrapper(jwk, jwsAlgorithm, KeyUse.SIG));
-    }
-
-    private KeyWrapper getKeyWrapper(JWK jwk, String algorithm, KeyUse keyUse) {
-        KeyWrapper keyWrapper = new KeyWrapper();
-        keyWrapper.setType(jwk.getKeyType());
-
-        // Use the algorithm provided by the caller, and not the one inside the jwk (if any)
-        // As jws validation will also check that one against the value "none"
-        keyWrapper.setAlgorithm(algorithm);
-
-        // Set the curve if any
-        if (jwk.getOtherClaims().get(OKPPublicJWK.CRV) != null) {
-            keyWrapper.setCurve((String) jwk.getOtherClaims().get(OKPPublicJWK.CRV));
-        }
-
-        keyWrapper.setUse(keyUse);
-        JWKParser parser = JWKParser.create(jwk);
-        keyWrapper.setPublicKey(parser.toPublicKey());
-        return keyWrapper;
     }
 
     @Override

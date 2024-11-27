@@ -57,6 +57,7 @@ import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.CredentialBody;
 import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.CredentialBuilder;
 import org.keycloak.protocol.oid4vc.issuance.keybinding.ProofValidator;
 import org.keycloak.protocol.oid4vc.issuance.mappers.OID4VCMapper;
+import org.keycloak.protocol.oid4vc.issuance.signers.CredentialSigner;
 import org.keycloak.protocol.oid4vc.issuance.signing.VerifiableCredentialsSigningService;
 import org.keycloak.protocol.oid4vc.model.CredentialOfferURI;
 import org.keycloak.protocol.oid4vc.model.CredentialRequest;
@@ -501,22 +502,17 @@ public class OID4VCIssuerEndpoint {
         // Enforce key binding prior to signing if necessary
         enforceKeyBindingIfProofProvided(vcIssuanceContext);
 
-        String fullyQualifiedConfigKey = VerifiableCredentialsSigningService.locator(credentialConfig.getFormat(), credentialConfig.deriveType(), credentialConfig.deriveConfiId());
-        String formatAndTypeKey = VerifiableCredentialsSigningService.locator(credentialConfig.getFormat(), credentialConfig.deriveType(), null);
-        String formatOnlyKey = VerifiableCredentialsSigningService.locator(credentialConfig.getFormat(), null, null);
+        // Retrieve matching credential signer
+        String format = credentialRequestVO.getFormat();
+        CredentialSigner credentialSigner = session.getProvider(CredentialSigner.class, format);
 
-        // Search from specific to general config.
-        VerifiableCredentialsSigningService signingService = signingServices.getOrDefault(
-                fullyQualifiedConfigKey,
-                signingServices.getOrDefault(
-                        formatAndTypeKey,
-                        signingServices.get(formatOnlyKey))
-        );
-
-        return Optional.ofNullable(signingService)
-                .map(service -> service.signCredential(vcIssuanceContext))
+        return Optional.ofNullable(credentialSigner)
+                .map(signer -> signer.signCredential(
+                        vcIssuanceContext.getCredentialBody(),
+                        credentialConfig.getCredentialBuildConfig()
+                ))
                 .orElseThrow(() -> new BadRequestException(
-                        String.format("No signer found for specific config '%s' or '%s' or format '%s'.", fullyQualifiedConfigKey, formatAndTypeKey, formatOnlyKey)
+                        String.format("No signer found for format '%s'.", format)
                 ));
     }
 

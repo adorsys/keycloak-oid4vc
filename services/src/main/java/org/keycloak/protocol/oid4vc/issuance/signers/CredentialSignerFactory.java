@@ -15,14 +15,24 @@
  * limitations under the License.
  */
 
-package org.keycloak.protocol.oid4vc.issuance.keybinding;
+package org.keycloak.protocol.oid4vc.issuance.signers;
 
 import org.keycloak.Config;
 import org.keycloak.models.KeycloakSessionFactory;
 import org.keycloak.protocol.oid4vc.OID4VCEnvironmentProviderFactory;
 import org.keycloak.provider.ProviderFactory;
 
-public interface ProofValidatorFactory extends ProviderFactory<ProofValidator>, OID4VCEnvironmentProviderFactory {
+public interface CredentialSignerFactory extends ProviderFactory<CredentialSigner>, OID4VCEnvironmentProviderFactory {
+
+    /**
+     * Returns the credential format supported by the credential signer.
+     */
+    String getSupportedFormat();
+
+    @Override
+    default String getId() {
+        return getSupportedFormat();
+    }
 
     @Override
     default void init(Config.Scope config) {

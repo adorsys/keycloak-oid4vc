@@ -15,24 +15,36 @@
  * limitations under the License.
  */
 
-package org.keycloak.protocol.oid4vc.issuance.keybinding;
+package org.keycloak.protocol.oid4vc.issuance.signers;
 
-import org.keycloak.Config;
-import org.keycloak.models.KeycloakSessionFactory;
-import org.keycloak.protocol.oid4vc.OID4VCEnvironmentProviderFactory;
-import org.keycloak.provider.ProviderFactory;
+import org.keycloak.provider.Spi;
 
-public interface ProofValidatorFactory extends ProviderFactory<ProofValidator>, OID4VCEnvironmentProviderFactory {
+/**
+ * Spi implementation of the creation of {@link CredentialSigner}
+ *
+ * @author <a href="https://github.com/wistefan">Stefan Wiedemann</a>
+ */
+public class CredentialSignerSpi implements Spi {
+    private static final String NAME = "credentialSigner";
 
     @Override
-    default void init(Config.Scope config) {
+    public boolean isInternal() {
+        return true;
     }
 
     @Override
-    default void postInit(KeycloakSessionFactory factory) {
+    public String getName() {
+        return NAME;
     }
 
     @Override
-    default void close() {
+    public Class<CredentialSigner> getProviderClass() {
+        return CredentialSigner.class;
+    }
+
+    @Override
+    public Class<CredentialSignerFactory> getProviderFactoryClass() {
+        return CredentialSignerFactory.class;
     }
 }
+

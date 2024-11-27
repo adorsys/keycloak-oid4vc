@@ -15,24 +15,21 @@
  * limitations under the License.
  */
 
-package org.keycloak.protocol.oid4vc.issuance.keybinding;
+package org.keycloak.protocol.oid4vc.issuance.signers;
 
-import org.keycloak.Config;
-import org.keycloak.models.KeycloakSessionFactory;
-import org.keycloak.protocol.oid4vc.OID4VCEnvironmentProviderFactory;
-import org.keycloak.provider.ProviderFactory;
+import org.keycloak.models.KeycloakSession;
+import org.keycloak.protocol.oid4vc.issuance.OffsetTimeProvider;
+import org.keycloak.protocol.oid4vc.model.Format;
 
-public interface ProofValidatorFactory extends ProviderFactory<ProofValidator>, OID4VCEnvironmentProviderFactory {
+public class LDCredentialSignerFactory implements CredentialSignerFactory {
 
     @Override
-    default void init(Config.Scope config) {
+    public String getSupportedFormat() {
+        return Format.LDP_VC;
     }
 
     @Override
-    default void postInit(KeycloakSessionFactory factory) {
-    }
-
-    @Override
-    default void close() {
+    public CredentialSigner create(KeycloakSession session) {
+        return new LDCredentialSigner(session, new OffsetTimeProvider());
     }
 }
