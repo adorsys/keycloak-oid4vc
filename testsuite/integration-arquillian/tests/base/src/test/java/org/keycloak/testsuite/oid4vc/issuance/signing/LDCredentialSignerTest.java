@@ -23,11 +23,11 @@ import org.keycloak.common.crypto.CryptoIntegration;
 import org.keycloak.common.util.MultivaluedHashMap;
 import org.keycloak.crypto.KeyWrapper;
 import org.keycloak.models.KeycloakSession;
-import org.keycloak.protocol.oid4vc.issuance.VCIssuanceContext;
 import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.LDCredentialBody;
 import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.LDCredentialBuilder;
-import org.keycloak.protocol.oid4vc.issuance.signing.LDSigningService;
-import org.keycloak.protocol.oid4vc.issuance.signing.SigningServiceException;
+import org.keycloak.protocol.oid4vc.issuance.signers.CredentialSignerException;
+import org.keycloak.protocol.oid4vc.issuance.signers.LDCredentialSigner;
+import org.keycloak.protocol.oid4vc.issuance.signing.vcdm.Ed255192018Suite;
 import org.keycloak.protocol.oid4vc.model.CredentialBuildConfig;
 import org.keycloak.protocol.oid4vc.model.CredentialSubject;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
@@ -44,7 +44,7 @@ import java.util.UUID;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 
-public class LDSigningServiceTest extends OID4VCTest {
+public class LDCredentialSignerTest extends OID4VCTest {
 
     @Before
     public void setup() {
@@ -52,38 +52,36 @@ public class LDSigningServiceTest extends OID4VCTest {
     }
 
     // If an unsupported algorithm is provided, the JWT Signing Service should not be instantiated.
-    @Test(expected = SigningServiceException.class)
+    @Test(expected = CredentialSignerException.class)
     public void testUnsupportedLdpType() throws Throwable {
         try {
             getTestingClient()
                     .server(TEST_REALM_NAME)
                     .run(session ->
-                            new LDSigningService(
+                            testSignLdCredential(
                                     session,
-                                    getKeyFromSession(session).getKid(),
-                                    "EdDSA",
-                                    "UnsupportedSignatureType",
-                                    new StaticTimeProvider(1000),
-                                    Optional.empty()));
+                                    getKeyIdFromSession(session),
+                                    Map.of(),
+                                    null,
+                                    "UnsupportedSignatureType"));
         } catch (RunOnServerException ros) {
             throw ros.getCause();
         }
     }
 
     // If no key is provided, the JWT Signing Service should not be instantiated.
-    @Test(expected = SigningServiceException.class)
+    @Test(expected = CredentialSignerException.class)
     public void testFailIfNoKey() throws Throwable {
         try {
             getTestingClient()
                     .server(TEST_REALM_NAME)
                     .run(session ->
-                            new LDSigningService(
+                            testSignLdCredential(
                                     session,
                                     "no-such-key",
-                                    "EdDSA",
-                                    "Ed25519Signature2018",
-                                    new StaticTimeProvider(1000),
-                                    Optional.empty()));
+                                    Map.of(),
+                                    null,
+                                    Ed255192018Suite.PROOF_TYPE));
         } catch (RunOnServerException ros) {
             throw ros.getCause();
         }
@@ -97,10 +95,12 @@ public class LDSigningServiceTest extends OID4VCTest {
                 .run(session ->
                         testSignLdCredential(
                                 session,
+                                getKeyIdFromSession(session),
                                 Map.of("id", String.format("uri:uuid:%s", UUID.randomUUID()),
                                         "test", "test",
                                         "arrayClaim", List.of("a", "b", "c")),
-                                Optional.empty()));
+                                null,
+                                Ed255192018Suite.PROOF_TYPE));
     }
 
     @Test
@@ -110,11 +110,13 @@ public class LDSigningServiceTest extends OID4VCTest {
                 .run(session ->
                         testSignLdCredential(
                                 session,
+                                getKeyIdFromSession(session),
                                 Map.of("id", String.format("uri:uuid:%s", UUID.randomUUID()),
                                         "test", "test",
                                         "arrayClaim", List.of("a", "b", "c"),
                                         "issuanceDate", Instant.ofEpochSecond(10)),
-                                Optional.empty()));
+                                null,
+                                Ed255192018Suite.PROOF_TYPE));
     }
 
     @Test
@@ -124,11 +126,13 @@ public class LDSigningServiceTest extends OID4VCTest {
                 .run(session ->
                         testSignLdCredential(
                                 session,
+                                getKeyIdFromSession(session),
                                 Map.of("id", String.format("uri:uuid:%s", UUID.randomUUID()),
                                         "test", "test",
                                         "arrayClaim", List.of("a", "b", "c"),
                                         "issuanceDate", Instant.ofEpochSecond(10)),
-                                Optional.of("did:web:test.org#the-key-id")));
+                                "did:web:test.org#the-key-id",
+                                Ed255192018Suite.PROOF_TYPE));
     }
 
     @Test
@@ -138,27 +142,31 @@ public class LDSigningServiceTest extends OID4VCTest {
                 .run(session ->
                         testSignLdCredential(
                                 session,
+                                getKeyIdFromSession(session),
                                 Map.of(),
-                                Optional.empty()));
+                                null,
+                                Ed255192018Suite.PROOF_TYPE));
     }
 
-    public static void testSignLdCredential(KeycloakSession session, Map<String, Object> claims, Optional<String> kid) {
-        KeyWrapper keyWrapper = getKeyFromSession(session);
+    public static void testSignLdCredential(
+            KeycloakSession session, String signingKeyId, Map<String, Object> claims,
+            String tokenJwsKid, String ldpProofType) {
+        CredentialBuildConfig credentialBuildConfig = new CredentialBuildConfig()
+                .setTokenJwsType("JWT")
+                .setSigningKeyId(signingKeyId)
+                .setSigningAlgorithm("EdDSA")
+                .setTokenJwsKid(tokenJwsKid)
+                .setLdpProofType(ldpProofType);
 
-        LDSigningService ldSigningService = new LDSigningService(
-                session,
-                keyWrapper.getKid(),
-                "EdDSA",
-                "Ed25519Signature2018",
-                new StaticTimeProvider(1000),
-                kid);
+        LDCredentialSigner ldCredentialSigner = new LDCredentialSigner(
+                session, new StaticTimeProvider(1000));
 
         VerifiableCredential testCredential = getTestCredential(claims);
         LDCredentialBody ldCredentialBody = new LDCredentialBuilder()
-                .buildCredentialBody(testCredential, new CredentialBuildConfig());
+                .buildCredentialBody(testCredential, credentialBuildConfig);
 
-        VCIssuanceContext context = new VCIssuanceContext().setCredentialBody(ldCredentialBody);
-        VerifiableCredential verifiableCredential = ldSigningService.signCredential(context);
+        VerifiableCredential verifiableCredential = ldCredentialSigner
+                .signCredential(ldCredentialBody, credentialBuildConfig);
 
         assertEquals("The types should be included", TEST_TYPES, verifiableCredential.getType());
         assertEquals("The issuer should be included", TEST_DID, verifiableCredential.getIssuer());
@@ -176,7 +184,8 @@ public class LDSigningServiceTest extends OID4VCTest {
         assertNotNull("The credential should contain a signed proof.", verifiableCredential.getAdditionalProperties().get("proof"));
 
         LdProof ldProof = (LdProof) verifiableCredential.getAdditionalProperties().get("proof");
-        String expectedKid = kid.orElse(keyWrapper.getKid());
+        KeyWrapper keyWrapper = getKeyFromSession(session);
+        String expectedKid = Optional.ofNullable(tokenJwsKid).orElse(keyWrapper.getKid());
         assertEquals("The verification method should be set to the key id.", expectedKid, ldProof.getVerificationMethod());
 
     }

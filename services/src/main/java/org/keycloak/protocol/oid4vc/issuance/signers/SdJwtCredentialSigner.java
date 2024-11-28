@@ -30,7 +30,7 @@ import org.keycloak.protocol.oid4vc.model.CredentialBuildConfig;
  * {@see https://drafts.oauth.net/oauth-sd-jwt-vc/draft-ietf-oauth-sd-jwt-vc.html}
  * {@see https://www.ietf.org/archive/id/draft-fett-oauth-selective-disclosure-jwt-02.html}
  */
-public class SdJwtCredentialSigner extends AbstractCredentialSigner {
+public class SdJwtCredentialSigner extends AbstractCredentialSigner<String> {
 
     private static final Logger LOGGER = Logger.getLogger(SdJwtCredentialSigner.class);
 

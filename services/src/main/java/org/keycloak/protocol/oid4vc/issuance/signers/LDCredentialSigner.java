@@ -30,20 +30,19 @@ import org.keycloak.protocol.oid4vc.issuance.signing.vcdm.LinkedDataCryptographi
 import org.keycloak.protocol.oid4vc.model.CredentialBuildConfig;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
 import org.keycloak.protocol.oid4vc.model.vcdm.LdProof;
-import org.keycloak.util.JsonSerialization;
 
 import java.io.IOException;
-import java.io.Serializable;
 import java.time.Instant;
 import java.util.Date;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * {@link CredentialSigner} implementing the JWT_VC format. It returns the signed JWT-Credential as a String.
  * <p></p>
  * {@see https://identity.foundation/jwt-vc-presentation-profile/}
  */
-public class LDCredentialSigner extends AbstractCredentialSigner {
+public class LDCredentialSigner extends AbstractCredentialSigner<VerifiableCredential> {
 
     private static final Logger LOGGER = Logger.getLogger(LDCredentialSigner.class);
 
@@ -58,7 +57,7 @@ public class LDCredentialSigner extends AbstractCredentialSigner {
     }
 
     @Override
-    public Serializable signCredential(CredentialBody credentialBody, CredentialBuildConfig credentialBuildConfig)
+    public VerifiableCredential signCredential(CredentialBody credentialBody, CredentialBuildConfig credentialBuildConfig)
             throws VCIssuerException {
         LOGGER.debugf("Sign credentials to ldp-vc format.");
 
@@ -66,16 +65,10 @@ public class LDCredentialSigner extends AbstractCredentialSigner {
             throw new VCIssuerException("Credential body unexpectedly not of type LDCredentialBody");
         }
 
-        VerifiableCredential verifiableCredential = addProof(
+        return addProof(
                 ldCredentialBody.getVerifiableCredential(),
                 credentialBuildConfig
         );
-
-        try {
-            return JsonSerialization.createObjectNode(verifiableCredential);
-        } catch (IOException e) {
-            throw new CredentialSignerException("Could not turn the verifiable credential into a seriazable object");
-        }
     }
 
     private LinkedDataCryptographicSuite getLinkedDataCryptographicSuite(CredentialBuildConfig credentialBuildConfig) {
@@ -93,6 +86,9 @@ public class LDCredentialSigner extends AbstractCredentialSigner {
     private VerifiableCredential addProof(
             VerifiableCredential verifiableCredential,
             CredentialBuildConfig credentialBuildConfig) {
+        String keyId = Optional.ofNullable(credentialBuildConfig.getTokenJwsKid())
+                .orElse(credentialBuildConfig.getSigningKeyId());
+
         LinkedDataCryptographicSuite suite = getLinkedDataCryptographicSuite(credentialBuildConfig);
         byte[] signature = suite.getSignature(verifiableCredential);
 
@@ -100,7 +96,7 @@ public class LDCredentialSigner extends AbstractCredentialSigner {
         ldProof.setProofPurpose(PROOF_PURPOSE_ASSERTION);
         ldProof.setType(suite.getProofType());
         ldProof.setCreated(Date.from(Instant.ofEpochSecond(timeProvider.currentTimeSeconds())));
-        ldProof.setVerificationMethod(credentialBuildConfig.getSigningKeyId());
+        ldProof.setVerificationMethod(keyId);
 
         try {
             var proofValue = Base64.encodeBytes(signature, Base64.URL_SAFE);

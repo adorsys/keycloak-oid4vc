@@ -26,7 +26,7 @@ import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
 import org.keycloak.protocol.oid4vc.model.CredentialBuildConfig;
 
-public abstract class AbstractCredentialSigner implements CredentialSigner {
+public abstract class AbstractCredentialSigner<T> implements CredentialSigner<T> {
 
     protected final KeycloakSession keycloakSession;
 

@@ -22,12 +22,10 @@ import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.CredentialBody;
 import org.keycloak.protocol.oid4vc.model.CredentialBuildConfig;
 import org.keycloak.provider.Provider;
 
-import java.io.Serializable;
-
 /**
  * Interface to be used for signing verifiable credentials.
  */
-public interface CredentialSigner extends Provider {
+public interface CredentialSigner<T> extends Provider {
 
     @Override
     default void close() {
@@ -42,6 +40,6 @@ public interface CredentialSigner extends Provider {
      * @param credentialBuildConfig additional configurations for building the credential
      * @return a signed representation
      */
-    Serializable signCredential(CredentialBody credentialBody, CredentialBuildConfig credentialBuildConfig)
+    T signCredential(CredentialBody credentialBody, CredentialBuildConfig credentialBuildConfig)
             throws VCIssuerException;
 }

@@ -17,6 +17,7 @@
 
 package org.keycloak.protocol.oid4vc.issuance.signers;
 
+import org.keycloak.provider.Provider;
 import org.keycloak.provider.Spi;
 
 /**
@@ -38,7 +39,7 @@ public class CredentialSignerSpi implements Spi {
     }
 
     @Override
-    public Class<CredentialSigner> getProviderClass() {
+    public Class<? extends Provider> getProviderClass() {
         return CredentialSigner.class;
     }
 

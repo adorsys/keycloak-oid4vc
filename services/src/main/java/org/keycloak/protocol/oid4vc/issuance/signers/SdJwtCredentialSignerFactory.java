@@ -28,7 +28,7 @@ public class SdJwtCredentialSignerFactory implements CredentialSignerFactory {
     }
 
     @Override
-    public CredentialSigner create(KeycloakSession session) {
+    public CredentialSigner<String> create(KeycloakSession session) {
         return new SdJwtCredentialSigner(session);
     }
 }

@@ -22,7 +22,8 @@ import org.keycloak.models.KeycloakSessionFactory;
 import org.keycloak.protocol.oid4vc.OID4VCEnvironmentProviderFactory;
 import org.keycloak.provider.ProviderFactory;
 
-public interface CredentialSignerFactory extends ProviderFactory<CredentialSigner>, OID4VCEnvironmentProviderFactory {
+public interface CredentialSignerFactory
+        extends ProviderFactory<CredentialSigner<?>>, OID4VCEnvironmentProviderFactory {
 
     /**
      * Returns the credential format supported by the credential signer.

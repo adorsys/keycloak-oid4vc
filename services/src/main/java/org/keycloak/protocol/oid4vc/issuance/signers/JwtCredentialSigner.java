@@ -29,7 +29,7 @@ import org.keycloak.protocol.oid4vc.model.CredentialBuildConfig;
  * <p></p>
  * {@see https://identity.foundation/jwt-vc-presentation-profile/}
  */
-public class JwtCredentialSigner extends AbstractCredentialSigner {
+public class JwtCredentialSigner extends AbstractCredentialSigner<String> {
 
     private static final Logger LOGGER = Logger.getLogger(JwtCredentialSigner.class);
 
