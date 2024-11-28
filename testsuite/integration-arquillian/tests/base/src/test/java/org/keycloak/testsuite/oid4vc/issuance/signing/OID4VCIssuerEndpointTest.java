@@ -325,7 +325,6 @@ public abstract class OID4VCIssuerEndpointTest extends OID4VCTest {
         }
 
         testRealm.getComponents().add("org.keycloak.keys.KeyProvider", getKeyProvider());
-        testRealm.getComponents().addAll("org.keycloak.protocol.oid4vc.issuance.signing.VerifiableCredentialsSigningService", getSigningProviders());
         testRealm.getComponents().addAll("org.keycloak.protocol.oid4vc.issuance.credentialbuilder.CredentialBuilder", getCredentialBuilderProviders());
 
         ClientRepresentation clientRepresentation = getTestClient("did:web:test.org");
@@ -368,10 +367,6 @@ public abstract class OID4VCIssuerEndpointTest extends OID4VCTest {
 
     protected ComponentExportRepresentation getKeyProvider() {
         return getRsaKeyProvider(RSA_KEY);
-    }
-
-    protected List<ComponentExportRepresentation> getSigningProviders() {
-        return List.of(getJwtSigningProvider(RSA_KEY));
     }
 
     protected List<ComponentExportRepresentation> getCredentialBuilderProviders() {

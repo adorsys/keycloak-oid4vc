@@ -301,21 +301,6 @@ public abstract class OID4VCTest extends AbstractTestRealmKeycloakTest {
         return kw;
     }
 
-    public static ComponentExportRepresentation getJwtSigningProvider(KeyWrapper keyWrapper) {
-        ComponentExportRepresentation componentExportRepresentation = new ComponentExportRepresentation();
-        componentExportRepresentation.setName("jwt-signing-service");
-        componentExportRepresentation.setId(UUID.randomUUID().toString());
-        componentExportRepresentation.setProviderId("jwt_vc");
-
-        componentExportRepresentation.setConfig(new MultivaluedHashMap<>(
-                Map.of(
-                        "keyId", List.of(keyWrapper.getKid()),
-                        "algorithmType", List.of(keyWrapper.getAlgorithm())
-                )
-        ));
-        return componentExportRepresentation;
-    }
-
     public static ComponentExportRepresentation getCredentialBuilderProvider(String vcFormat) {
         ComponentExportRepresentation componentExportRepresentation = new ComponentExportRepresentation();
         componentExportRepresentation.setName("credential-builder-" + vcFormat);
