@@ -181,7 +181,7 @@ public class SdJwtCredentialSignerTest extends OID4VCTest {
                                 List.of()));
     }
 
-    public static void testSignSDJwtCredential(KeycloakSession session, String signingKeyId, String tokenJwsKid, String
+    public static void testSignSDJwtCredential(KeycloakSession session, String signingKeyId, String overrideKeyId, String
             algorithm, Map<String, Object> claims, int decoys, List<String> visibleClaims) {
         CredentialBuildConfig credentialBuildConfig = new CredentialBuildConfig()
                 .setCredentialType("https://credentials.example.com/test-credential")
@@ -191,7 +191,7 @@ public class SdJwtCredentialSignerTest extends OID4VCTest {
                 .setVisibleClaims(visibleClaims)
                 .setSigningKeyId(signingKeyId)
                 .setSigningAlgorithm(algorithm)
-                .setTokenJwsKid(tokenJwsKid);
+                .setOverrideKeyId(overrideKeyId);
 
         SdJwtCredentialSigner sdJwtCredentialSigner = new SdJwtCredentialSigner(session);
 

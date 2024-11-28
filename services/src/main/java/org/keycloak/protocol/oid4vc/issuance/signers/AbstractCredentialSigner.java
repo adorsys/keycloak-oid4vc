@@ -52,7 +52,7 @@ public abstract class AbstractCredentialSigner<T> implements CredentialSigner<T>
         KeyWrapper signingKey = getKeyWithKidSubstitute(
                 credentialBuildConfig.getSigningKeyId(),
                 credentialBuildConfig.getSigningAlgorithm(),
-                credentialBuildConfig.getTokenJwsKid()
+                credentialBuildConfig.getOverrideKeyId()
         );
 
         SignatureProvider signatureProvider = keycloakSession

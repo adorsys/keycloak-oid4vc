@@ -42,7 +42,7 @@ public class CredentialBuildConfig {
     private static final String NUMBER_OF_DECOYS_KEY = "decoys";
 
     private static final String SIGNING_KEY_ID_KEY = "signing_key_id";
-    private static final String TOKEN_JWS_KID_KEY = "token_jws_kid";
+    private static final String OVERRIDE_KEY_ID_KEY = "override_key_id";
     private static final String SIGNING_ALGORITHM_KEY = "signing_algorithm";
     private static final String LDP_PROOF_TYPE_KEY = "ldp_proof_type";
 
@@ -73,10 +73,10 @@ public class CredentialBuildConfig {
     // The key needs to be provided as a realm key.
     private String signingKeyId;
 
-    // The kid to be set in the jwt-header.
+    // An alternative kid to take precedence.
     // Depending on the did-schema, the above signingKeyId
     // might not be enough and can be overwritten here.
-    private String tokenJwsKid;
+    private String overrideKeyId;
 
     // The type of the algorithm to be used for signing.
     // Needs to fit the provided signing key.
@@ -149,12 +149,12 @@ public class CredentialBuildConfig {
         return this;
     }
 
-    public String getTokenJwsKid() {
-        return tokenJwsKid;
+    public String getOverrideKeyId() {
+        return overrideKeyId;
     }
 
-    public CredentialBuildConfig setTokenJwsKid(String tokenJwsKid) {
-        this.tokenJwsKid = tokenJwsKid;
+    public CredentialBuildConfig setOverrideKeyId(String overrideKeyId) {
+        this.overrideKeyId = overrideKeyId;
         return this;
     }
 
@@ -198,8 +198,8 @@ public class CredentialBuildConfig {
 
         Optional.ofNullable(signingKeyId)
                 .ifPresent(signingKeyId -> dotNotation.put(prefix + SIGNING_KEY_ID_KEY, signingKeyId));
-        Optional.ofNullable(tokenJwsKid)
-                .ifPresent(tokenJwsKid -> dotNotation.put(prefix + TOKEN_JWS_KID_KEY, tokenJwsKid));
+        Optional.ofNullable(overrideKeyId)
+                .ifPresent(overrideKeyId -> dotNotation.put(prefix + OVERRIDE_KEY_ID_KEY, overrideKeyId));
         Optional.ofNullable(signingAlgorithm)
                 .ifPresent(signingAlgorithm -> dotNotation.put(prefix + SIGNING_ALGORITHM_KEY, signingAlgorithm));
         Optional.ofNullable(ldpProofType)
@@ -242,8 +242,8 @@ public class CredentialBuildConfig {
 
         Optional.ofNullable(dotNotated.get(prefix + SIGNING_KEY_ID_KEY))
                 .ifPresent(credentialBuildConfig::setSigningKeyId);
-        Optional.ofNullable(dotNotated.get(prefix + TOKEN_JWS_KID_KEY))
-                .ifPresent(credentialBuildConfig::setTokenJwsKid);
+        Optional.ofNullable(dotNotated.get(prefix + OVERRIDE_KEY_ID_KEY))
+                .ifPresent(credentialBuildConfig::setOverrideKeyId);
         Optional.ofNullable(dotNotated.get(prefix + SIGNING_ALGORITHM_KEY))
                 .ifPresent(credentialBuildConfig::setSigningAlgorithm);
         Optional.ofNullable(dotNotated.get(prefix + LDP_PROOF_TYPE_KEY))
@@ -261,11 +261,11 @@ public class CredentialBuildConfig {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         CredentialBuildConfig that = (CredentialBuildConfig) o;
-        return Objects.equals(credentialId, that.credentialId) && Objects.equals(credentialType, that.credentialType) && Objects.equals(tokenJwsType, that.tokenJwsType) && Objects.equals(hashAlgorithm, that.hashAlgorithm) && Objects.equals(visibleClaims, that.visibleClaims) && Objects.equals(numberOfDecoys, that.numberOfDecoys) && Objects.equals(signingKeyId, that.signingKeyId) && Objects.equals(tokenJwsKid, that.tokenJwsKid) && Objects.equals(signingAlgorithm, that.signingAlgorithm) && Objects.equals(ldpProofType, that.ldpProofType);
+        return Objects.equals(credentialId, that.credentialId) && Objects.equals(credentialType, that.credentialType) && Objects.equals(tokenJwsType, that.tokenJwsType) && Objects.equals(hashAlgorithm, that.hashAlgorithm) && Objects.equals(visibleClaims, that.visibleClaims) && Objects.equals(numberOfDecoys, that.numberOfDecoys) && Objects.equals(signingKeyId, that.signingKeyId) && Objects.equals(overrideKeyId, that.overrideKeyId) && Objects.equals(signingAlgorithm, that.signingAlgorithm) && Objects.equals(ldpProofType, that.ldpProofType);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(credentialId, credentialType, tokenJwsType, hashAlgorithm, visibleClaims, numberOfDecoys, signingKeyId, tokenJwsKid, signingAlgorithm, ldpProofType);
+        return Objects.hash(credentialId, credentialType, tokenJwsType, hashAlgorithm, visibleClaims, numberOfDecoys, signingKeyId, overrideKeyId, signingAlgorithm, ldpProofType);
     }
 }

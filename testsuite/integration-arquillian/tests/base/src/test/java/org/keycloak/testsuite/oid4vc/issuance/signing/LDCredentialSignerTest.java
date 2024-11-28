@@ -150,12 +150,12 @@ public class LDCredentialSignerTest extends OID4VCTest {
 
     public static void testSignLdCredential(
             KeycloakSession session, String signingKeyId, Map<String, Object> claims,
-            String tokenJwsKid, String ldpProofType) {
+            String overrideKeyId, String ldpProofType) {
         CredentialBuildConfig credentialBuildConfig = new CredentialBuildConfig()
                 .setTokenJwsType("JWT")
                 .setSigningKeyId(signingKeyId)
                 .setSigningAlgorithm("EdDSA")
-                .setTokenJwsKid(tokenJwsKid)
+                .setOverrideKeyId(overrideKeyId)
                 .setLdpProofType(ldpProofType);
 
         LDCredentialSigner ldCredentialSigner = new LDCredentialSigner(
@@ -185,7 +185,7 @@ public class LDCredentialSignerTest extends OID4VCTest {
 
         LdProof ldProof = (LdProof) verifiableCredential.getAdditionalProperties().get("proof");
         KeyWrapper keyWrapper = getKeyFromSession(session);
-        String expectedKid = Optional.ofNullable(tokenJwsKid).orElse(keyWrapper.getKid());
+        String expectedKid = Optional.ofNullable(overrideKeyId).orElse(keyWrapper.getKid());
         assertEquals("The verification method should be set to the key id.", expectedKid, ldProof.getVerificationMethod());
 
     }

@@ -86,7 +86,7 @@ public class LDCredentialSigner extends AbstractCredentialSigner<VerifiableCrede
     private VerifiableCredential addProof(
             VerifiableCredential verifiableCredential,
             CredentialBuildConfig credentialBuildConfig) {
-        String keyId = Optional.ofNullable(credentialBuildConfig.getTokenJwsKid())
+        String keyId = Optional.ofNullable(credentialBuildConfig.getOverrideKeyId())
                 .orElse(credentialBuildConfig.getSigningKeyId());
 
         LinkedDataCryptographicSuite suite = getLinkedDataCryptographicSuite(credentialBuildConfig);
