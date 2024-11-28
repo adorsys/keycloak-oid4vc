@@ -211,7 +211,8 @@ public abstract class OID4VCTest extends AbstractTestRealmKeycloakTest {
                 "vc.test-credential.scope", "VerifiableCredential",
                 "vc.test-credential.claims", "{ \"firstName\": {\"mandatory\": false, \"display\": [{\"name\": \"First Name\", \"locale\": \"en-US\"}, {\"name\": \"名前\", \"locale\": \"ja-JP\"}]}, \"lastName\": {\"mandatory\": false}, \"email\": {\"mandatory\": false} }",
                 "vc.test-credential.display.0","{\n  \"name\": \"Test Credential\"\n}",
-                "vc.test-credential.credential_build_config.token_jws_type", "JWT"
+                "vc.test-credential.credential_build_config.token_jws_type", "JWT",
+                "vc.test-credential.credential_build_config.signing_algorithm", "RS256"
                 // Moved sd-jwt specific attributes to: org.keycloak.testsuite.oid4vc.issuance.signing.OID4VCSdJwtIssuingEndpointTest.getTestCredentialSigningProvider
         );
     }

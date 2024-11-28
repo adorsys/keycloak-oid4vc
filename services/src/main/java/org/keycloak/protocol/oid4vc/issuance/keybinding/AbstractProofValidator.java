@@ -52,10 +52,12 @@ public abstract class AbstractProofValidator implements ProofValidator {
 
     protected SignatureVerifierContext getVerifier(JWK jwk, String jwsAlgorithm) throws VerificationException {
         SignatureProvider signatureProvider = keycloakSession.getProvider(SignatureProvider.class, jwsAlgorithm);
-        return signatureProvider.verifier(getKeyWrapper(jwk, jwsAlgorithm, KeyUse.SIG));
+        KeyWrapper keyWrapper = getKeyWrapper(jwk, jwsAlgorithm);
+        keyWrapper.setUse(KeyUse.SIG);
+        return signatureProvider.verifier(keyWrapper);
     }
 
-    private KeyWrapper getKeyWrapper(JWK jwk, String algorithm, KeyUse keyUse) {
+    private KeyWrapper getKeyWrapper(JWK jwk, String algorithm) {
         KeyWrapper keyWrapper = new KeyWrapper();
         keyWrapper.setType(jwk.getKeyType());
 
@@ -68,7 +70,6 @@ public abstract class AbstractProofValidator implements ProofValidator {
             keyWrapper.setCurve((String) jwk.getOtherClaims().get(OKPPublicJWK.CRV));
         }
 
-        keyWrapper.setUse(keyUse);
         JWKParser parser = JWKParser.create(jwk);
         keyWrapper.setPublicKey(parser.toPublicKey());
         return keyWrapper;

@@ -35,7 +35,7 @@ import static org.keycloak.protocol.oid4vc.issuance.signing.VCSigningServiceProv
 public class SdJwtCredentialBuilderFactory implements CredentialBuilderFactory {
 
     @Override
-    public String getId() {
+    public String getSupportedFormat() {
         return Format.SD_JWT_VC;
     }
 

@@ -58,7 +58,6 @@ import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.CredentialBuilder
 import org.keycloak.protocol.oid4vc.issuance.keybinding.ProofValidator;
 import org.keycloak.protocol.oid4vc.issuance.mappers.OID4VCMapper;
 import org.keycloak.protocol.oid4vc.issuance.signers.CredentialSigner;
-import org.keycloak.protocol.oid4vc.issuance.signing.VerifiableCredentialsSigningService;
 import org.keycloak.protocol.oid4vc.model.CredentialOfferURI;
 import org.keycloak.protocol.oid4vc.model.CredentialRequest;
 import org.keycloak.protocol.oid4vc.model.CredentialResponse;
@@ -139,26 +138,11 @@ public class OID4VCIssuerEndpoint {
      */
     private final Map<String, CredentialBuilder> credentialBuilders;
 
-    /**
-     * Key shall be strings, as configured credential of the same format can
-     * have different configs. Like decoy, visible claims,
-     * time requirements (iat, exp, nbf, ...).
-     * <p>
-     * Credentials with same configs can share a default entry with locator= format.
-     * <p>
-     * Credentials in need of special configuration can provide another signer with specific
-     * locator=format::type::vc_config_id
-     * <p>
-     * The providerId of the signing service factory is still the format.
-     */
-    private final Map<String, VerifiableCredentialsSigningService> signingServices;
-
     private final boolean isIgnoreScopeCheck;
 
     public OID4VCIssuerEndpoint(KeycloakSession session,
                                 String issuerDid,
                                 Map<String, CredentialBuilder> credentialBuilders,
-                                Map<String, VerifiableCredentialsSigningService> signingServices,
                                 AppAuthManager.BearerTokenAuthenticator authenticator,
                                 ObjectMapper objectMapper, TimeProvider timeProvider, int preAuthorizedCodeLifeSpan,
                                 boolean isIgnoreScopeCheck) {
@@ -168,7 +152,6 @@ public class OID4VCIssuerEndpoint {
         this.timeProvider = timeProvider;
         this.issuerDid = issuerDid;
         this.credentialBuilders = credentialBuilders;
-        this.signingServices = signingServices;
         this.preAuthorizedCodeLifeSpan = preAuthorizedCodeLifeSpan;
         this.isIgnoreScopeCheck = isIgnoreScopeCheck;
     }
@@ -180,7 +163,6 @@ public class OID4VCIssuerEndpoint {
         this.timeProvider = new OffsetTimeProvider();
 
         this.credentialBuilders = initSpiComponents(keycloakSession, CredentialBuilder.class);
-        this.signingServices = initSpiComponents(keycloakSession, VerifiableCredentialsSigningService.class);
 
         RealmModel realmModel = keycloakSession.getContext().getRealm();
         this.issuerDid = Optional.ofNullable(realmModel.getAttribute(ISSUER_DID_REALM_ATTRIBUTE_KEY))

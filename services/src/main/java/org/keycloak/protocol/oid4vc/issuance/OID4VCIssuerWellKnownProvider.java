@@ -23,7 +23,10 @@ import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
 import org.keycloak.protocol.oid4vc.OID4VCClientRegistrationProvider;
 import org.keycloak.protocol.oid4vc.OID4VCLoginProtocolFactory;
-import org.keycloak.protocol.oid4vc.issuance.signing.VCSigningServiceProviderFactory;
+import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.CredentialBuilder;
+import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.CredentialBuilderFactory;
+import org.keycloak.protocol.oid4vc.issuance.signers.CredentialSigner;
+import org.keycloak.protocol.oid4vc.issuance.signers.CredentialSignerFactory;
 import org.keycloak.protocol.oid4vc.issuance.signing.VerifiableCredentialsSigningService;
 import org.keycloak.protocol.oid4vc.model.CredentialIssuer;
 import org.keycloak.protocol.oid4vc.model.OID4VCClient;
@@ -32,6 +35,7 @@ import org.keycloak.services.Urls;
 import org.keycloak.urls.UrlType;
 import org.keycloak.wellknown.WellKnownProvider;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -76,16 +80,7 @@ public class OID4VCIssuerWellKnownProvider implements WellKnownProvider {
     public static Map<String, SupportedCredentialConfiguration> getSupportedCredentials(KeycloakSession keycloakSession) {
 
         RealmModel realm = keycloakSession.getContext().getRealm();
-        List<String> supportedFormats = realm.getComponentsStream(realm.getId(), VerifiableCredentialsSigningService.class.getName())
-                .map(cm ->
-                        keycloakSession
-                                .getKeycloakSessionFactory()
-                                .getProviderFactory(VerifiableCredentialsSigningService.class, cm.getProviderId())
-                )
-                .filter(VCSigningServiceProviderFactory.class::isInstance)
-                .map(VCSigningServiceProviderFactory.class::cast)
-                .map(VCSigningServiceProviderFactory::supportedFormat)
-                .toList();
+        List<String> supportedFormats = getSupportedFormats(keycloakSession);
 
         // Retrieving attributes from client definition.
         // This will be removed when token production is migrated.
@@ -150,5 +145,29 @@ public class OID4VCIssuerWellKnownProvider implements WellKnownProvider {
                 .stream()
                 .map(id -> SupportedCredentialConfiguration.fromDotNotation(id, attributes))
                 .toList();
+    }
+
+    private static List<String> getSupportedFormats(KeycloakSession keycloakSession) {
+        List<String> supportedFormatsByBuilders = keycloakSession
+                .getKeycloakSessionFactory()
+                .getProviderFactoriesStream(CredentialBuilder.class)
+                .filter(CredentialBuilderFactory.class::isInstance)
+                .map(CredentialBuilderFactory.class::cast)
+                .map(CredentialBuilderFactory::getSupportedFormat)
+                .toList();
+
+        List<String> supportedFormatsBySigners = keycloakSession
+                .getKeycloakSessionFactory()
+                .getProviderFactoriesStream(CredentialSigner.class)
+                .filter(CredentialSignerFactory.class::isInstance)
+                .map(CredentialSignerFactory.class::cast)
+                .map(CredentialSignerFactory::getSupportedFormat)
+                .toList();
+
+        // Supported formats must have a builder AND a signer
+        List<String> supportedFormats = new ArrayList<>(supportedFormatsByBuilders);
+        supportedFormats.retainAll(supportedFormatsBySigners);
+
+        return supportedFormats;
     }
 }

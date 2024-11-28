@@ -26,8 +26,6 @@ import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
 import org.keycloak.protocol.oid4vc.model.CredentialBuildConfig;
 
-import java.util.Objects;
-
 public abstract class AbstractCredentialSigner implements CredentialSigner {
 
     protected final KeycloakSession keycloakSession;
@@ -40,6 +38,13 @@ public abstract class AbstractCredentialSigner implements CredentialSigner {
      * Reconstruct a signer matching a credential build configuration.
      */
     protected SignatureSignerContext getSigner(CredentialBuildConfig credentialBuildConfig) {
+        if (credentialBuildConfig.getSigningAlgorithm() == null) {
+            throw new CredentialSignerException(String.format(
+                    "A signing algorithm must be configured for credential %s",
+                    credentialBuildConfig.getCredentialId()
+            ));
+        }
+
         // 1. Will return the active key if `signingKeyId` is null.
         // 2. `signingKeyId` as header can be confusing if there is any key rotation,
         //    as key ids have to be immutable. It can lead to different keys being exposed
@@ -53,7 +58,7 @@ public abstract class AbstractCredentialSigner implements CredentialSigner {
         SignatureProvider signatureProvider = keycloakSession
                 .getProvider(SignatureProvider.class, credentialBuildConfig.getSigningAlgorithm());
 
-        return  signatureProvider.signer(signingKey);
+        return signatureProvider.signer(signingKey);
     }
 
     /**
@@ -83,8 +88,6 @@ public abstract class AbstractCredentialSigner implements CredentialSigner {
      * Returns the key stored under keyId, or the active key for the given jws algorithm.
      */
     protected KeyWrapper getKey(String keyId, String algorithm) {
-        Objects.requireNonNull(algorithm);
-
         RealmModel realm = keycloakSession.getContext().getRealm();
         KeyManager keys = keycloakSession.keys();
 

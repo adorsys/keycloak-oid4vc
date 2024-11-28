@@ -35,15 +35,11 @@ import org.keycloak.OAuth2Constants;
 import org.keycloak.TokenVerifier;
 import org.keycloak.common.VerificationException;
 import org.keycloak.common.util.Base64Url;
-import org.keycloak.common.util.MultivaluedHashMap;
-import org.keycloak.crypto.Algorithm;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.protocol.oid4vc.OID4VCLoginProtocolFactory;
 import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerEndpoint;
 import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerWellKnownProvider;
 import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.SdJwtCredentialBuilder;
-import org.keycloak.protocol.oid4vc.issuance.signing.SdJwtSigningService;
-import org.keycloak.protocol.oid4vc.model.CredentialConfigId;
 import org.keycloak.protocol.oid4vc.model.CredentialIssuer;
 import org.keycloak.protocol.oid4vc.model.CredentialOfferURI;
 import org.keycloak.protocol.oid4vc.model.CredentialRequest;
@@ -52,7 +48,6 @@ import org.keycloak.protocol.oid4vc.model.CredentialsOffer;
 import org.keycloak.protocol.oid4vc.model.Format;
 import org.keycloak.protocol.oid4vc.model.Proof;
 import org.keycloak.protocol.oid4vc.model.ProofType;
-import org.keycloak.protocol.oid4vc.model.VerifiableCredentialType;
 import org.keycloak.protocol.oidc.grants.PreAuthorizedCodeGrantTypeFactory;
 import org.keycloak.protocol.oidc.representations.OIDCConfigurationRepresentation;
 import org.keycloak.representations.JsonWebToken;
@@ -69,8 +64,6 @@ import java.time.temporal.ChronoUnit;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
 import static org.junit.Assert.assertEquals;
@@ -231,7 +224,7 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
     public void getConfig() {
         String expectedIssuer = suiteContext.getAuthServerInfo().getContextRoot().toString() + "/auth/realms/" + TEST_REALM_NAME;
         String expectedCredentialsEndpoint = expectedIssuer + "/protocol/oid4vc/credential";
-        String expectedAuthorizationServer = expectedIssuer;
+        final String expectedAuthorizationServer = expectedIssuer;
         testingClient
                 .server(TEST_REALM_NAME)
                 .run((session -> {
@@ -266,71 +259,17 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
         String issuerDid = "did:web:issuer.org";
         SdJwtCredentialBuilder testSdJwtCredentialBuilder = new SdJwtCredentialBuilder(issuerDid);
 
-        SdJwtSigningService testCredentialSigningService = new SdJwtSigningService(
-                session,
-                getKeyFromSession(session).getKid(),
-                Algorithm.ES256,
-                issuerDid,
-                Optional.empty(),
-                VerifiableCredentialType.from("https://credentials.example.com/test-credential"),
-                CredentialConfigId.from("test-credential"));
-
-        SdJwtSigningService identityCredentialSigningService = new SdJwtSigningService(
-                session,
-                getKeyFromSession(session).getKid(),
-                Algorithm.ES256,
-                issuerDid,
-                Optional.empty(),
-                VerifiableCredentialType.from("https://credentials.example.com/identity_credential"),
-                CredentialConfigId.from("IdentityCredential"));
-
         return new OID4VCIssuerEndpoint(
                 session,
                 issuerDid,
                 Map.of(
                         testSdJwtCredentialBuilder.locator(), testSdJwtCredentialBuilder
                 ),
-                Map.of(
-                        testCredentialSigningService.locator(), testCredentialSigningService,
-                        identityCredentialSigningService.locator(), identityCredentialSigningService
-                ),
                 authenticator,
                 new ObjectMapper(),
                 TIME_PROVIDER,
                 30,
                 true);
-    }
-
-    private ComponentExportRepresentation getIdCredentialSigningProvider() {
-        ComponentExportRepresentation componentExportRepresentation = new ComponentExportRepresentation();
-        componentExportRepresentation.setName("sd-jwt-signing_identity_credential");
-        componentExportRepresentation.setId(UUID.randomUUID().toString());
-        componentExportRepresentation.setProviderId(Format.SD_JWT_VC);
-
-        componentExportRepresentation.setConfig(new MultivaluedHashMap<>(
-                Map.of(
-                        "algorithmType", List.of("ES256"),
-                        "vct", List.of("https://credentials.example.com/identity_credential"),
-                        "vcConfigId", List.of("IdentityCredential")
-                )
-        ));
-        return componentExportRepresentation;
-    }
-
-    private ComponentExportRepresentation getTestCredentialSigningProvider() {
-        ComponentExportRepresentation componentExportRepresentation = new ComponentExportRepresentation();
-        componentExportRepresentation.setName("sd-jwt-signing_test-credential");
-        componentExportRepresentation.setId(UUID.randomUUID().toString());
-        componentExportRepresentation.setProviderId(Format.SD_JWT_VC);
-
-        componentExportRepresentation.setConfig(new MultivaluedHashMap<>(
-                Map.of(
-                        "algorithmType", List.of("ES256"),
-                        "vct", List.of("https://credentials.example.com/test-credential"),
-                        "vcConfigId", List.of("test-credential")
-                )
-        ));
-        return componentExportRepresentation;
     }
 
     @Override
@@ -364,11 +303,6 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
     }
 
     @Override
-    protected List<ComponentExportRepresentation> getSigningProviders() {
-        return List.of(getIdCredentialSigningProvider(), getTestCredentialSigningProvider());
-    }
-
-    @Override
     protected List<ComponentExportRepresentation> getCredentialBuilderProviders() {
         return List.of(getCredentialBuilderProvider(Format.SD_JWT_VC));
     }
@@ -388,7 +322,8 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
                 Map.entry("vc.test-credential.credential_build_config.token_jws_type", "example+sd-jwt"),
                 Map.entry("vc.test-credential.credential_build_config.hash_algorithm", "sha-256"),
                 Map.entry("vc.test-credential.credential_build_config.visible_claims", "iat,nbf"),
-                Map.entry("vc.test-credential.credential_build_config.decoys", "2")
+                Map.entry("vc.test-credential.credential_build_config.decoys", "2"),
+                Map.entry("vc.test-credential.credential_build_config.signing_algorithm", "ES256")
         );
 
         Map<String, String> identityCredentialAttributes = Map.ofEntries(
@@ -404,7 +339,8 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
                 Map.entry("vc.IdentityCredential.credential_build_config.token_jws_type", "example+sd-jwt"),
                 Map.entry("vc.IdentityCredential.credential_build_config.hash_algorithm", "sha-256"),
                 Map.entry("vc.IdentityCredential.credential_build_config.visible_claims", "iat,nbf"),
-                Map.entry("vc.IdentityCredential.credential_build_config.decoys", "0")
+                Map.entry("vc.IdentityCredential.credential_build_config.decoys", "0"),
+                Map.entry("vc.IdentityCredential.credential_build_config.signing_algorithm", "ES256")
         );
 
         HashedMap<String, String> allAttributes = new HashedMap<>();
