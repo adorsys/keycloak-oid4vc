@@ -15,9 +15,8 @@
  * limitations under the License.
  */
 
-package org.keycloak.protocol.oid4vc.issuance.signers;
+package org.keycloak.protocol.oid4vc.issuance.signing;
 
-import org.keycloak.protocol.oid4vc.issuance.VCIssuerException;
 import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.CredentialBody;
 import org.keycloak.protocol.oid4vc.model.CredentialBuildConfig;
 import org.keycloak.provider.Provider;
@@ -41,5 +40,5 @@ public interface CredentialSigner<T> extends Provider {
      * @return a signed representation
      */
     T signCredential(CredentialBody credentialBody, CredentialBuildConfig credentialBuildConfig)
-            throws VCIssuerException;
+            throws CredentialSignerException;
 }

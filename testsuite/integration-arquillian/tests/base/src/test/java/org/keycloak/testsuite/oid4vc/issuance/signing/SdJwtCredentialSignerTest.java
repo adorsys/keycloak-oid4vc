@@ -29,10 +29,11 @@ import org.keycloak.crypto.ServerECDSASignatureVerifierContext;
 import org.keycloak.crypto.SignatureVerifierContext;
 import org.keycloak.jose.jws.crypto.HashUtils;
 import org.keycloak.models.KeycloakSession;
+import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.LDCredentialBody;
 import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.SdJwtCredentialBody;
 import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.SdJwtCredentialBuilder;
-import org.keycloak.protocol.oid4vc.issuance.signers.CredentialSignerException;
-import org.keycloak.protocol.oid4vc.issuance.signers.SdJwtCredentialSigner;
+import org.keycloak.protocol.oid4vc.issuance.signing.CredentialSignerException;
+import org.keycloak.protocol.oid4vc.issuance.signing.SdJwtCredentialSigner;
 import org.keycloak.protocol.oid4vc.model.CredentialBuildConfig;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
 import org.keycloak.representations.JsonWebToken;
@@ -57,7 +58,21 @@ public class SdJwtCredentialSignerTest extends OID4VCTest {
 
     private static final KeyWrapper rsaKey = getRsaKey();
 
-    // If an unsupported algorithm is provided, the JWT Signing Service should not be instantiated.
+    @Test(expected = CredentialSignerException.class)
+    public void testUnsupportedCredentialBody() throws Throwable {
+        try {
+            getTestingClient()
+                    .server(TEST_REALM_NAME)
+                    .run(session -> new SdJwtCredentialSigner(session).signCredential(
+                            new LDCredentialBody(getTestCredential(Map.of())),
+                            new CredentialBuildConfig()
+                    ));
+        } catch (RunOnServerException ros) {
+            throw ros.getCause();
+        }
+    }
+
+    // If an unsupported algorithm is provided, signing should reliably fail.
     @Test(expected = CredentialSignerException.class)
     public void testUnsupportedAlgorithm() throws Throwable {
         try {
@@ -77,7 +92,7 @@ public class SdJwtCredentialSignerTest extends OID4VCTest {
         }
     }
 
-    // If no key is provided, the JWT Signing Service should not be instantiated.
+    // If an unknown key is provided, signing should reliably fail.
     @Test(expected = CredentialSignerException.class)
     public void testFailIfNoKey() throws Throwable {
         try {
@@ -246,7 +261,7 @@ public class SdJwtCredentialSignerTest extends OID4VCTest {
             assertEquals("The credential ID should be set as the token ID.", testCredential.getId().toString(), theToken.getId());
             assertEquals("The type should be included", "https://credentials.example.com/test-credential", theToken.getOtherClaims().get("vct"));
             List<String> sds = (List<String>) theToken.getOtherClaims().get("_sd");
-            if (sds != null && !sds.isEmpty()){
+            if (sds != null && !sds.isEmpty()) {
                 assertEquals("The algorithm should be included", "sha-256", theToken.getOtherClaims().get("_sd_alg"));
             }
             List<String> disclosed = Arrays.asList(splittedSdToken).subList(1, splittedSdToken.length);
@@ -255,7 +270,7 @@ public class SdJwtCredentialSignerTest extends OID4VCTest {
             verifyDisclosures(sds, disclosed);
 
             visibleClaims
-                    .forEach(vc -> assertTrue("The visible claims should be present within the token.",theToken.getOtherClaims().containsKey(vc)));
+                    .forEach(vc -> assertTrue("The visible claims should be present within the token.", theToken.getOtherClaims().containsKey(vc)));
         } catch (VerificationException e) {
             fail("Was not able to extract the token.");
         }

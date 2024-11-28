@@ -15,11 +15,10 @@
  * limitations under the License.
  */
 
-package org.keycloak.protocol.oid4vc.issuance.signers;
+package org.keycloak.protocol.oid4vc.issuance.signing;
 
 import org.jboss.logging.Logger;
 import org.keycloak.models.KeycloakSession;
-import org.keycloak.protocol.oid4vc.issuance.VCIssuerException;
 import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.CredentialBody;
 import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.JwtCredentialBody;
 import org.keycloak.protocol.oid4vc.model.CredentialBuildConfig;
@@ -39,13 +38,12 @@ public class JwtCredentialSigner extends AbstractCredentialSigner<String> {
 
     @Override
     public String signCredential(CredentialBody credentialBody, CredentialBuildConfig credentialBuildConfig)
-            throws VCIssuerException {
-        LOGGER.debugf("Sign credentials to jwt-vc format.");
-
+            throws CredentialSignerException {
         if (!(credentialBody instanceof JwtCredentialBody jwtCredentialBody)) {
-            throw new VCIssuerException("Credential body unexpectedly not of type JwtCredentialBody");
+            throw new CredentialSignerException("Credential body unexpectedly not of type JwtCredentialBody");
         }
 
+        LOGGER.debugf("Sign credentials to jwt-vc format.");
         return jwtCredentialBody.sign(getSigner(credentialBuildConfig));
     }
 }

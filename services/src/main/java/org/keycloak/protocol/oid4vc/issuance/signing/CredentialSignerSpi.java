@@ -17,18 +17,35 @@
 
 package org.keycloak.protocol.oid4vc.issuance.signing;
 
+import org.keycloak.provider.Provider;
+import org.keycloak.provider.Spi;
+
 /**
- * Exception to be thrown if credentials signing does fail
+ * Spi implementation of the creation of {@link CredentialSigner}
  *
  * @author <a href="https://github.com/wistefan">Stefan Wiedemann</a>
  */
-public class SigningServiceException extends RuntimeException {
+public class CredentialSignerSpi implements Spi {
+    private static final String NAME = "credentialSigner";
 
-    public SigningServiceException(String message) {
-        super(message);
+    @Override
+    public boolean isInternal() {
+        return true;
     }
 
-    public SigningServiceException(String message, Throwable cause) {
-        super(message, cause);
+    @Override
+    public String getName() {
+        return NAME;
+    }
+
+    @Override
+    public Class<? extends Provider> getProviderClass() {
+        return CredentialSigner.class;
+    }
+
+    @Override
+    public Class<CredentialSignerFactory> getProviderFactoryClass() {
+        return CredentialSignerFactory.class;
     }
 }
+

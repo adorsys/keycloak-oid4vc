@@ -32,8 +32,9 @@ import org.keycloak.crypto.SignatureVerifierContext;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.CredentialBody;
 import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.JwtCredentialBuilder;
-import org.keycloak.protocol.oid4vc.issuance.signers.CredentialSignerException;
-import org.keycloak.protocol.oid4vc.issuance.signers.JwtCredentialSigner;
+import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.LDCredentialBody;
+import org.keycloak.protocol.oid4vc.issuance.signing.CredentialSignerException;
+import org.keycloak.protocol.oid4vc.issuance.signing.JwtCredentialSigner;
 import org.keycloak.protocol.oid4vc.model.CredentialBuildConfig;
 import org.keycloak.protocol.oid4vc.model.CredentialSubject;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
@@ -65,7 +66,21 @@ public class JwtCredentialSignerTest extends OID4VCTest {
         CryptoIntegration.init(this.getClass().getClassLoader());
     }
 
-    // If an unsupported algorithm is provided, the JWT Sigining Service should not be instantiated.
+    @Test(expected = CredentialSignerException.class)
+    public void testUnsupportedCredentialBody() throws Throwable {
+        try {
+            getTestingClient()
+                    .server(TEST_REALM_NAME)
+                    .run(session -> new JwtCredentialSigner(session).signCredential(
+                            new LDCredentialBody(getTestCredential(Map.of())),
+                            new CredentialBuildConfig()
+                    ));
+        } catch (RunOnServerException ros) {
+            throw ros.getCause();
+        }
+    }
+
+    // If an unsupported algorithm is provided, signing should reliably fail.
     @Test(expected = CredentialSignerException.class)
     public void testUnsupportedAlgorithm() throws Throwable {
         try {
@@ -83,7 +98,7 @@ public class JwtCredentialSignerTest extends OID4VCTest {
         }
     }
 
-    // If no key is provided, the JWT Sigining Service should not be instantiated.
+    // If an unknown key is provided, signing should reliably fail.
     @Test(expected = CredentialSignerException.class)
     public void testFailIfNoKey() throws Throwable {
         try {

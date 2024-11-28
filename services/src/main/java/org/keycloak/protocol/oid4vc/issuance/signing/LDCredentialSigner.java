@@ -15,14 +15,13 @@
  * limitations under the License.
  */
 
-package org.keycloak.protocol.oid4vc.issuance.signers;
+package org.keycloak.protocol.oid4vc.issuance.signing;
 
 import org.jboss.logging.Logger;
 import org.keycloak.common.util.Base64;
 import org.keycloak.crypto.SignatureSignerContext;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.protocol.oid4vc.issuance.TimeProvider;
-import org.keycloak.protocol.oid4vc.issuance.VCIssuerException;
 import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.CredentialBody;
 import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.LDCredentialBody;
 import org.keycloak.protocol.oid4vc.issuance.signing.vcdm.Ed255192018Suite;
@@ -58,13 +57,12 @@ public class LDCredentialSigner extends AbstractCredentialSigner<VerifiableCrede
 
     @Override
     public VerifiableCredential signCredential(CredentialBody credentialBody, CredentialBuildConfig credentialBuildConfig)
-            throws VCIssuerException {
-        LOGGER.debugf("Sign credentials to ldp-vc format.");
-
+            throws CredentialSignerException {
         if (!(credentialBody instanceof LDCredentialBody ldCredentialBody)) {
-            throw new VCIssuerException("Credential body unexpectedly not of type LDCredentialBody");
+            throw new CredentialSignerException("Credential body unexpectedly not of type LDCredentialBody");
         }
 
+        LOGGER.debugf("Sign credentials to ldp-vc format.");
         return addProof(
                 ldCredentialBody.getVerifiableCredential(),
                 credentialBuildConfig

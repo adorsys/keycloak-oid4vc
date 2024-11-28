@@ -15,20 +15,20 @@
  * limitations under the License.
  */
 
-package org.keycloak.protocol.oid4vc.issuance.signers;
+package org.keycloak.protocol.oid4vc.issuance.signing;
 
-/**
- * Exception to be thrown if credentials signing does fail
- *
- * @author <a href="https://github.com/wistefan">Stefan Wiedemann</a>
- */
-public class CredentialSignerException extends RuntimeException {
+import org.keycloak.models.KeycloakSession;
+import org.keycloak.protocol.oid4vc.model.Format;
 
-    public CredentialSignerException(String message) {
-        super(message);
+public class SdJwtCredentialSignerFactory implements CredentialSignerFactory {
+
+    @Override
+    public String getSupportedFormat() {
+        return Format.SD_JWT_VC;
     }
 
-    public CredentialSignerException(String message, Throwable cause) {
-        super(message, cause);
+    @Override
+    public CredentialSigner<String> create(KeycloakSession session) {
+        return new SdJwtCredentialSigner(session);
     }
 }

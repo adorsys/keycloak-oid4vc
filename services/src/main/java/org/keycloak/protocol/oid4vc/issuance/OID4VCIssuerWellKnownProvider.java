@@ -25,9 +25,8 @@ import org.keycloak.protocol.oid4vc.OID4VCClientRegistrationProvider;
 import org.keycloak.protocol.oid4vc.OID4VCLoginProtocolFactory;
 import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.CredentialBuilder;
 import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.CredentialBuilderFactory;
-import org.keycloak.protocol.oid4vc.issuance.signers.CredentialSigner;
-import org.keycloak.protocol.oid4vc.issuance.signers.CredentialSignerFactory;
-import org.keycloak.protocol.oid4vc.issuance.signing.VerifiableCredentialsSigningService;
+import org.keycloak.protocol.oid4vc.issuance.signing.CredentialSigner;
+import org.keycloak.protocol.oid4vc.issuance.signing.CredentialSignerFactory;
 import org.keycloak.protocol.oid4vc.model.CredentialIssuer;
 import org.keycloak.protocol.oid4vc.model.OID4VCClient;
 import org.keycloak.protocol.oid4vc.model.SupportedCredentialConfiguration;
@@ -74,7 +73,7 @@ public class OID4VCIssuerWellKnownProvider implements WellKnownProvider {
 
     /**
      * Return the supported credentials from the current session.
-     * It will take into account the configured {@link VerifiableCredentialsSigningService}'s and there supported format
+     * It will take into account the configured {@link CredentialBuilder}'s and there supported format
      * and the credentials supported by the clients available in the session.
      */
     public static Map<String, SupportedCredentialConfiguration> getSupportedCredentials(KeycloakSession keycloakSession) {

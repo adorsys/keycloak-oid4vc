@@ -22,11 +22,13 @@ import org.junit.Test;
 import org.keycloak.common.crypto.CryptoIntegration;
 import org.keycloak.common.util.MultivaluedHashMap;
 import org.keycloak.crypto.KeyWrapper;
+import org.keycloak.jose.jws.JWSBuilder;
 import org.keycloak.models.KeycloakSession;
+import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.JwtCredentialBody;
 import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.LDCredentialBody;
 import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.LDCredentialBuilder;
-import org.keycloak.protocol.oid4vc.issuance.signers.CredentialSignerException;
-import org.keycloak.protocol.oid4vc.issuance.signers.LDCredentialSigner;
+import org.keycloak.protocol.oid4vc.issuance.signing.CredentialSignerException;
+import org.keycloak.protocol.oid4vc.issuance.signing.LDCredentialSigner;
 import org.keycloak.protocol.oid4vc.issuance.signing.vcdm.Ed255192018Suite;
 import org.keycloak.protocol.oid4vc.model.CredentialBuildConfig;
 import org.keycloak.protocol.oid4vc.model.CredentialSubject;
@@ -51,7 +53,22 @@ public class LDCredentialSignerTest extends OID4VCTest {
         CryptoIntegration.init(this.getClass().getClassLoader());
     }
 
-    // If an unsupported algorithm is provided, the JWT Signing Service should not be instantiated.
+    @Test(expected = CredentialSignerException.class)
+    public void testUnsupportedCredentialBody() throws Throwable {
+        try {
+            getTestingClient()
+                    .server(TEST_REALM_NAME)
+                    .run(session -> new LDCredentialSigner(session, new StaticTimeProvider(1000))
+                            .signCredential(
+                                    new JwtCredentialBody(new JWSBuilder().jsonContent(Map.of())),
+                                    new CredentialBuildConfig()
+                            ));
+        } catch (RunOnServerException ros) {
+            throw ros.getCause();
+        }
+    }
+
+    // If an unsupported algorithm is provided, signing should reliably fail.
     @Test(expected = CredentialSignerException.class)
     public void testUnsupportedLdpType() throws Throwable {
         try {
@@ -69,7 +86,7 @@ public class LDCredentialSignerTest extends OID4VCTest {
         }
     }
 
-    // If no key is provided, the JWT Signing Service should not be instantiated.
+    // If an unknown key is provided, signing should reliably fail.
     @Test(expected = CredentialSignerException.class)
     public void testFailIfNoKey() throws Throwable {
         try {
