@@ -18,6 +18,9 @@
 package org.keycloak.protocol.oid4vc.issuance.credentialbuilder;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.keycloak.models.KeycloakSession;
+import org.keycloak.models.RealmModel;
+import org.keycloak.protocol.oid4vc.issuance.VCIssuerException;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
 
 import java.net.URI;
@@ -25,6 +28,12 @@ import java.util.Optional;
 import java.util.UUID;
 
 public class CredentialBuilderUtils {
+
+    /**
+     * Key for the realm attribute providing the issuerDid.
+     */
+    private static final String ISSUER_DID_REALM_ATTRIBUTE_KEY = "issuerDid";
+
 
     public static final ObjectMapper mapper = new ObjectMapper();
 
@@ -36,5 +45,11 @@ public class CredentialBuilderUtils {
                         verifiableCredential.getId())
                 .orElse(URI.create(String.format(ID_TEMPLATE, UUID.randomUUID())))
                 .toString();
+    }
+
+    public static String getIssuerDid(KeycloakSession keycloakSession) {
+        RealmModel realmModel = keycloakSession.getContext().getRealm();
+        return Optional.ofNullable(realmModel.getAttribute(ISSUER_DID_REALM_ATTRIBUTE_KEY))
+                .orElseThrow(() -> new VCIssuerException("No issuerDid configured."));
     }
 }

@@ -26,17 +26,9 @@ import org.keycloak.jose.jwk.JWK;
 import org.keycloak.jose.jwk.JWKParser;
 import org.keycloak.jose.jwk.OKPPublicJWK;
 import org.keycloak.models.KeycloakSession;
-import org.keycloak.models.RealmModel;
-import org.keycloak.protocol.oid4vc.issuance.VCIssuerException;
-
-import java.util.Optional;
+import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.CredentialBuilderUtils;
 
 public abstract class AbstractProofValidator implements ProofValidator {
-
-    /**
-     * Key for the realm attribute providing the issuerDid.
-     */
-    String ISSUER_DID_REALM_ATTRIBUTE_KEY = "issuerDid";
 
     private final KeycloakSession keycloakSession;
 
@@ -45,9 +37,7 @@ public abstract class AbstractProofValidator implements ProofValidator {
     }
 
     protected String getIssuerDid() {
-        RealmModel realmModel = keycloakSession.getContext().getRealm();
-        return Optional.ofNullable(realmModel.getAttribute(ISSUER_DID_REALM_ATTRIBUTE_KEY))
-                .orElseThrow(() -> new VCIssuerException("No issuerDid configured."));
+        return CredentialBuilderUtils.getIssuerDid(keycloakSession);
     }
 
     protected SignatureVerifierContext getVerifier(JWK jwk, String jwsAlgorithm) throws VerificationException {

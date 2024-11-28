@@ -19,15 +19,10 @@ package org.keycloak.protocol.oid4vc.issuance.credentialbuilder;
 
 import org.keycloak.component.ComponentModel;
 import org.keycloak.models.KeycloakSession;
-import org.keycloak.models.RealmModel;
-import org.keycloak.protocol.oid4vc.issuance.VCIssuerException;
 import org.keycloak.protocol.oid4vc.model.Format;
 import org.keycloak.provider.ProviderConfigProperty;
 
 import java.util.List;
-import java.util.Optional;
-
-import static org.keycloak.protocol.oid4vc.issuance.signing.VCSigningServiceProviderFactory.ISSUER_DID_REALM_ATTRIBUTE_KEY;
 
 /**
  * @author <a href="mailto:Ingrid.Kamga@adorsys.com">Ingrid Kamga</a>
@@ -51,10 +46,7 @@ public class SdJwtCredentialBuilderFactory implements CredentialBuilderFactory {
 
     @Override
     public CredentialBuilder create(KeycloakSession session, ComponentModel model) {
-        RealmModel realm = session.getContext().getRealm();
-        String issuerDid = Optional.ofNullable(realm.getAttribute(ISSUER_DID_REALM_ATTRIBUTE_KEY))
-                .orElseThrow(() -> new VCIssuerException("No issuerDid configured."));
-
+        String issuerDid = CredentialBuilderUtils.getIssuerDid(session);
         return new SdJwtCredentialBuilder(issuerDid);
     }
 }
