@@ -30,11 +30,10 @@ import org.keycloak.crypto.KeyWrapper;
 import org.keycloak.crypto.ServerECDSASignatureVerifierContext;
 import org.keycloak.crypto.SignatureVerifierContext;
 import org.keycloak.models.KeycloakSession;
-import org.keycloak.protocol.oid4vc.issuance.VCIssuanceContext;
 import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.CredentialBody;
 import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.JwtCredentialBuilder;
-import org.keycloak.protocol.oid4vc.issuance.signing.JwtSigningService;
-import org.keycloak.protocol.oid4vc.issuance.signing.SigningServiceException;
+import org.keycloak.protocol.oid4vc.issuance.signers.CredentialSignerException;
+import org.keycloak.protocol.oid4vc.issuance.signers.JwtCredentialSigner;
 import org.keycloak.protocol.oid4vc.model.CredentialBuildConfig;
 import org.keycloak.protocol.oid4vc.model.CredentialSubject;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
@@ -55,9 +54,9 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.fail;
 
 
-public class JwtSigningServiceTest extends OID4VCTest {
+public class JwtCredentialSignerTest extends OID4VCTest {
 
-    private static final Logger LOGGER = Logger.getLogger(JwtSigningServiceTest.class);
+    private static final Logger LOGGER = Logger.getLogger(JwtCredentialSignerTest.class);
 
     private static final KeyWrapper rsaKey = getRsaKey();
 
@@ -67,16 +66,17 @@ public class JwtSigningServiceTest extends OID4VCTest {
     }
 
     // If an unsupported algorithm is provided, the JWT Sigining Service should not be instantiated.
-    @Test(expected = SigningServiceException.class)
+    @Test(expected = CredentialSignerException.class)
     public void testUnsupportedAlgorithm() throws Throwable {
         try {
             getTestingClient()
                     .server(TEST_REALM_NAME)
                     .run(session ->
-                            new JwtSigningService(
+                            testSignJwtCredential(
                                     session,
-                                    getKeyFromSession(session).getKid(),
-                                    "unsupported-algorithm")
+                                    getKeyIdFromSession(session),
+                                    "unsupported-algorithm",
+                                    Map.of())
                     );
         } catch (RunOnServerException ros) {
             throw ros.getCause();
@@ -84,16 +84,17 @@ public class JwtSigningServiceTest extends OID4VCTest {
     }
 
     // If no key is provided, the JWT Sigining Service should not be instantiated.
-    @Test(expected = SigningServiceException.class)
+    @Test(expected = CredentialSignerException.class)
     public void testFailIfNoKey() throws Throwable {
         try {
             getTestingClient()
                     .server(TEST_REALM_NAME)
                     .run(session ->
-                            new JwtSigningService(
+                            testSignJwtCredential(
                                     session,
                                     "no-such-key",
-                                    Algorithm.RS256));
+                                    Algorithm.RS256,
+                                    Map.of()));
         } catch (RunOnServerException ros) {
             throw ros.getCause();
         }
@@ -107,6 +108,7 @@ public class JwtSigningServiceTest extends OID4VCTest {
                 .run(session ->
                         testSignJwtCredential(
                                 session,
+                                getKeyIdFromSession(session),
                                 Algorithm.RS256,
                                 Map.of("id", String.format("uri:uuid:%s", UUID.randomUUID()),
                                         "test", "test",
@@ -120,6 +122,7 @@ public class JwtSigningServiceTest extends OID4VCTest {
                 .run(session ->
                         testSignJwtCredential(
                                 session,
+                                getKeyIdFromSession(session),
                                 Algorithm.RS256,
                                 Map.of("id", String.format("uri:uuid:%s", UUID.randomUUID()),
                                         "test", "test",
@@ -134,29 +137,31 @@ public class JwtSigningServiceTest extends OID4VCTest {
                 .run(session ->
                         testSignJwtCredential(
                                 session,
+                                getKeyIdFromSession(session),
                                 Algorithm.RS256,
                                 Map.of()));
     }
 
 
-    public static void testSignJwtCredential(KeycloakSession session, String algorithm, Map<String, Object> claims) {
-        KeyWrapper keyWrapper = getKeyFromSession(session);
+    public static void testSignJwtCredential(
+            KeycloakSession session, String signingKeyId, String algorithm, Map<String, Object> claims) {
+        CredentialBuildConfig credentialBuildConfig = new CredentialBuildConfig()
+                .setTokenJwsType("JWT")
+                .setSigningKeyId(signingKeyId)
+                .setSigningAlgorithm(algorithm);
 
-        JwtSigningService jwtSigningService = new JwtSigningService(
-                session,
-                keyWrapper.getKid(),
-                algorithm);
+        JwtCredentialSigner jwtCredentialSigner = new JwtCredentialSigner(session);
 
         VerifiableCredential testCredential = getTestCredential(claims);
         JwtCredentialBuilder builder = new JwtCredentialBuilder(new StaticTimeProvider(1000));
         CredentialBody credentialBody = builder.buildCredentialBody(
                 testCredential,
-                new CredentialBuildConfig().setTokenJwsType("JWT")
+                credentialBuildConfig
         );
 
-        VCIssuanceContext context = new VCIssuanceContext().setCredentialBody(credentialBody);
-        String jwtCredential = jwtSigningService.signCredential(context);
+        String jwtCredential = jwtCredentialSigner.signCredential(credentialBody, credentialBuildConfig);
 
+        KeyWrapper keyWrapper = getKeyFromSession(session);
         SignatureVerifierContext verifierContext = null;
         switch (algorithm) {
             case Algorithm.ES256: {

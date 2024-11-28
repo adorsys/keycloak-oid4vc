@@ -52,7 +52,7 @@ public class LDCredentialSigner extends AbstractCredentialSigner {
 
     private final TimeProvider timeProvider;
 
-    protected LDCredentialSigner(KeycloakSession keycloakSession, TimeProvider timeProvider) {
+    public LDCredentialSigner(KeycloakSession keycloakSession, TimeProvider timeProvider) {
         super(keycloakSession);
         this.timeProvider = timeProvider;
     }

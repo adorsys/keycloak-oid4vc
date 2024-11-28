@@ -301,6 +301,10 @@ public abstract class OID4VCTest extends AbstractTestRealmKeycloakTest {
         return kw;
     }
 
+    public static String getKeyIdFromSession(KeycloakSession keycloakSession) {
+        return getKeyFromSession(keycloakSession).getKid();
+    }
+
     public static ComponentExportRepresentation getCredentialBuilderProvider(String vcFormat) {
         ComponentExportRepresentation componentExportRepresentation = new ComponentExportRepresentation();
         componentExportRepresentation.setName("credential-builder-" + vcFormat);

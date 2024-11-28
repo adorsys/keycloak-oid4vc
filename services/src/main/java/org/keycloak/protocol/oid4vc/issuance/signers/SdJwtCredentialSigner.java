@@ -34,7 +34,7 @@ public class SdJwtCredentialSigner extends AbstractCredentialSigner {
 
     private static final Logger LOGGER = Logger.getLogger(SdJwtCredentialSigner.class);
 
-    protected SdJwtCredentialSigner(KeycloakSession keycloakSession) {
+    public SdJwtCredentialSigner(KeycloakSession keycloakSession) {
         super(keycloakSession);
     }
 

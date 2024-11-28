@@ -144,32 +144,36 @@ public class CredentialBuildConfig {
         return signingKeyId;
     }
 
-    public void setSigningKeyId(String signingKeyId) {
+    public CredentialBuildConfig setSigningKeyId(String signingKeyId) {
         this.signingKeyId = signingKeyId;
+        return this;
     }
 
     public String getTokenJwsKid() {
         return tokenJwsKid;
     }
 
-    public void setTokenJwsKid(String tokenJwsKid) {
+    public CredentialBuildConfig setTokenJwsKid(String tokenJwsKid) {
         this.tokenJwsKid = tokenJwsKid;
+        return this;
     }
 
     public String getSigningAlgorithm() {
         return signingAlgorithm;
     }
 
-    public void setSigningAlgorithm(String signingAlgorithm) {
+    public CredentialBuildConfig setSigningAlgorithm(String signingAlgorithm) {
         this.signingAlgorithm = signingAlgorithm;
+        return this;
     }
 
     public String getLdpProofType() {
         return ldpProofType;
     }
 
-    public void setLdpProofType(String ldpProofType) {
+    public CredentialBuildConfig setLdpProofType(String ldpProofType) {
         this.ldpProofType = ldpProofType;
+        return this;
     }
 
     public Map<String, String> toDotNotation() {

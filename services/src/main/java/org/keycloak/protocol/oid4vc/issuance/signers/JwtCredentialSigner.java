@@ -33,7 +33,7 @@ public class JwtCredentialSigner extends AbstractCredentialSigner {
 
     private static final Logger LOGGER = Logger.getLogger(JwtCredentialSigner.class);
 
-    protected JwtCredentialSigner(KeycloakSession keycloakSession) {
+    public JwtCredentialSigner(KeycloakSession keycloakSession) {
         super(keycloakSession);
     }
 
