@@ -20,6 +20,7 @@ package org.keycloak.protocol.oid4vc.issuance;
 import jakarta.ws.rs.core.UriInfo;
 import org.keycloak.models.KeycloakContext;
 import org.keycloak.models.KeycloakSession;
+import org.keycloak.models.KeycloakSessionFactory;
 import org.keycloak.models.RealmModel;
 import org.keycloak.protocol.oid4vc.OID4VCClientRegistrationProvider;
 import org.keycloak.protocol.oid4vc.OID4VCLoginProtocolFactory;
@@ -147,9 +148,12 @@ public class OID4VCIssuerWellKnownProvider implements WellKnownProvider {
     }
 
     private static List<String> getSupportedFormats(KeycloakSession keycloakSession) {
-        List<String> supportedFormatsByBuilders = keycloakSession
-                .getKeycloakSessionFactory()
-                .getProviderFactoriesStream(CredentialBuilder.class)
+        RealmModel realm = keycloakSession.getContext().getRealm();
+        KeycloakSessionFactory keycloakSessionFactory = keycloakSession.getKeycloakSessionFactory();
+
+        List<String> supportedFormatsByBuilders = realm
+                .getComponentsStream(realm.getId(), CredentialBuilder.class.getName())
+                .map(cm -> keycloakSessionFactory.getProviderFactory(CredentialBuilder.class, cm.getProviderId()))
                 .filter(CredentialBuilderFactory.class::isInstance)
                 .map(CredentialBuilderFactory.class::cast)
                 .map(CredentialBuilderFactory::getSupportedFormat)
