@@ -17,7 +17,6 @@
 package org.keycloak.testsuite.oid4vc.issuance.signing;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.Response;
 import org.apache.commons.collections4.map.HashedMap;
@@ -251,7 +250,6 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
                         identityCredentialSigningService.locator(), identityCredentialSigningService
                 ),
                 authenticator,
-                new ObjectMapper(),
                 TIME_PROVIDER,
                 30,
                 true);

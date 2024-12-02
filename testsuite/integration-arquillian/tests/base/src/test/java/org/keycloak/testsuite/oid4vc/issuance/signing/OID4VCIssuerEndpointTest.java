@@ -295,7 +295,6 @@ public abstract class OID4VCIssuerEndpointTest extends OID4VCTest {
                 credentialBuilders,
                 signingServices,
                 authenticator,
-                JsonSerialization.mapper,
                 TIME_PROVIDER,
                 30,
                 true);

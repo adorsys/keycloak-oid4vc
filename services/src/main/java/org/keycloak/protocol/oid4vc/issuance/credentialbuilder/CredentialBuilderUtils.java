@@ -17,7 +17,6 @@
 
 package org.keycloak.protocol.oid4vc.issuance.credentialbuilder;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
 
 import java.net.URI;
@@ -26,14 +25,11 @@ import java.util.UUID;
 
 public class CredentialBuilderUtils {
 
-    public static final ObjectMapper mapper = new ObjectMapper();
-
     private static final String ID_TEMPLATE = "urn:uuid:%s";
 
     // retrieve the credential id from the given VC or generate one.
     public static String createCredentialId(VerifiableCredential verifiableCredential) {
-        return Optional.ofNullable(
-                        verifiableCredential.getId())
+        return Optional.ofNullable(verifiableCredential.getId())
                 .orElse(URI.create(String.format(ID_TEMPLATE, UUID.randomUUID())))
                 .toString();
     }
