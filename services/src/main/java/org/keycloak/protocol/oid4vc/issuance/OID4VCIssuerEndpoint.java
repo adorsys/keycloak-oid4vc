@@ -128,16 +128,7 @@ public class OID4VCIssuerEndpoint {
     private final int preAuthorizedCodeLifeSpan;
 
     /**
-     * Key shall be strings, as configured credential of the same format can
-     * have different configs. Like decoy, visible claims,
-     * time requirements (iat, exp, nbf, ...).
-     * <p>
-     * Credentials with same configs can share a default entry with locator= format.
-     * <p>
-     * Credentials in need of special configuration can provide another signer with specific
-     * locator=format::type::vc_config_id
-     * <p>
-     * The providerId of the signing service factory is still the format.
+     * Locatable credential builder map
      */
     private final Map<String, CredentialBuilder> credentialBuilders;
 
