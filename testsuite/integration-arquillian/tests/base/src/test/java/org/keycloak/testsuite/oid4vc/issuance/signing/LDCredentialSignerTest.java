@@ -179,7 +179,7 @@ public class LDCredentialSignerTest extends OID4VCTest {
                 session, new StaticTimeProvider(1000));
 
         VerifiableCredential testCredential = getTestCredential(claims);
-        LDCredentialBody ldCredentialBody = new LDCredentialBuilder()
+        LDCredentialBody ldCredentialBody = new LDCredentialBuilder(TEST_DID.toString())
                 .buildCredentialBody(testCredential, credentialBuildConfig);
 
         VerifiableCredential verifiableCredential = ldCredentialSigner

@@ -29,16 +29,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.IntStream;
 
-public class SdJwtCredentialBuilder extends AbstractCredentialBuilder {
+public class SdJwtCredentialBuilder implements CredentialBuilder {
 
     public static final String ISSUER_CLAIM = "iss";
     public static final String VERIFIABLE_CREDENTIAL_TYPE_CLAIM = "vct";
     public static final String CREDENTIAL_ID_CLAIM = "jti";
 
-    private final String issuerDid;
+    private final String credentialIssuer;
 
-    public SdJwtCredentialBuilder(String issuerDid) {
-        this.issuerDid = issuerDid;
+    public SdJwtCredentialBuilder(String credentialIssuer) {
+        this.credentialIssuer = credentialIssuer;
     }
 
     @Override
@@ -76,7 +76,7 @@ public class SdJwtCredentialBuilder extends AbstractCredentialBuilder {
                 });
 
         // Populate configured fields (necessarily visible)
-        claimSet.put(ISSUER_CLAIM, issuerDid);
+        claimSet.put(ISSUER_CLAIM, credentialIssuer);
         claimSet.put(VERIFIABLE_CREDENTIAL_TYPE_CLAIM, credentialBuildConfig.getCredentialType());
         claimSet.put(CREDENTIAL_ID_CLAIM, CredentialBuilderUtils.createCredentialId(verifiableCredential));
 

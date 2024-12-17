@@ -256,7 +256,7 @@ public abstract class OID4VCIssuerEndpointTest extends OID4VCTest {
         AuthenticatedClientSessionModel authenticatedClientSessionModel = userSessionModel.getAuthenticatedClientSessionByClient(authResult.getClient().getId());
         String codeId = SecretGenerator.getInstance().randomString();
         String nonce = SecretGenerator.getInstance().randomString();
-        OAuth2Code oAuth2Code = new OAuth2Code(codeId, Time.currentTime() + 6000, nonce, CREDENTIAL_OFFER_URI_CODE_SCOPE, null, null, null,
+        OAuth2Code oAuth2Code = new OAuth2Code(codeId, Time.currentTime() + 6000, nonce, CREDENTIAL_OFFER_URI_CODE_SCOPE, null, null, null, null,
                 authenticatedClientSessionModel.getUserSession().getId());
 
         String oauthCode = OAuth2CodeParser.persistCode(session, authenticatedClientSessionModel, oAuth2Code);
@@ -266,7 +266,10 @@ public abstract class OID4VCIssuerEndpointTest extends OID4VCTest {
     }
 
     protected static OID4VCIssuerEndpoint prepareIssuerEndpoint(KeycloakSession session, AppAuthManager.BearerTokenAuthenticator authenticator) {
-        JwtCredentialBuilder jwtCredentialBuilder = new JwtCredentialBuilder(new StaticTimeProvider(1000));
+        JwtCredentialBuilder jwtCredentialBuilder = new JwtCredentialBuilder(
+            TEST_DID.toString(), 
+            new StaticTimeProvider(1000)
+        );
 
         return prepareIssuerEndpoint(
                 session,
@@ -285,7 +288,6 @@ public abstract class OID4VCIssuerEndpointTest extends OID4VCTest {
                 "did:web:issuer.org",
                 credentialBuilders,
                 authenticator,
-                JsonSerialization.mapper,
                 TIME_PROVIDER,
                 30,
                 true);
@@ -367,6 +369,14 @@ public abstract class OID4VCIssuerEndpointTest extends OID4VCTest {
 
     protected ComponentExportRepresentation getKeyProvider() {
         return getRsaKeyProvider(RSA_KEY);
+    }
+
+    protected List<ComponentExportRepresentation> getCredentialBuilderProviders() {
+        return List.of(getCredentialBuilderProvider(Format.JWT_VC));
+    }
+
+    protected Map<String, String> getCredentialDefinitionAttributes() {
+        return getTestCredentialDefinitionAttributes();
     }
 
     protected List<ComponentExportRepresentation> getCredentialBuilderProviders() {

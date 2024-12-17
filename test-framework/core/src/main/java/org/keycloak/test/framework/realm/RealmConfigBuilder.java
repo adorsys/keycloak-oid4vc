@@ -4,6 +4,10 @@ import org.keycloak.representations.idm.RealmRepresentation;
 import org.keycloak.representations.idm.RolesRepresentation;
 
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
 
 public class RealmConfigBuilder {
 
@@ -28,6 +32,29 @@ public class RealmConfigBuilder {
         return this;
     }
 
+    public RealmConfigBuilder registrationEmailAsUsername(boolean registrationEmailAsUsername) {
+        rep.setRegistrationEmailAsUsername(registrationEmailAsUsername);
+        return this;
+    }
+
+    public RealmConfigBuilder editUsernameAllowed(boolean editUsernameAllowed) {
+        rep.setEditUsernameAllowed(editUsernameAllowed);
+        return this;
+    }
+
+    public RealmConfigBuilder defaultSignatureAlgorithm(String algorithm) {
+        rep.setDefaultSignatureAlgorithm(algorithm);
+        return this;
+    }
+
+    public RealmConfigBuilder eventsListeners(String... eventListeners) {
+        if (rep.getEventsListeners() == null) {
+            rep.setEventsListeners(new LinkedList<>());
+        }
+        rep.getEventsListeners().addAll(List.of(eventListeners));
+        return this;
+    }
+
     public RealmConfigBuilder roles(String... roleNames) {
         if (rep.getRoles() == null) {
             rep.setRoles(new RolesRepresentation());
@@ -38,6 +65,15 @@ public class RealmConfigBuilder {
 
     public RealmConfigBuilder groups(String... groupsNames) {
         rep.setGroups(Collections.combine(rep.getGroups(), Arrays.stream(groupsNames).map(Representations::toGroup)));
+        return this;
+    }
+
+    public RealmConfigBuilder smtp(String host, int port, String from) {
+        Map<String, String> config = new HashMap<>();
+        config.put("host", host);
+        config.put("port", Integer.toString(port));
+        config.put("from", from);
+        rep.setSmtpServer(config);
         return this;
     }
 

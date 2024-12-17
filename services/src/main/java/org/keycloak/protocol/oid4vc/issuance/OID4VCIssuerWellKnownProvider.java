@@ -18,6 +18,9 @@
 package org.keycloak.protocol.oid4vc.issuance;
 
 import jakarta.ws.rs.core.UriInfo;
+import org.keycloak.crypto.KeyUse;
+import org.keycloak.crypto.KeyWrapper;
+import org.keycloak.models.KeyManager;
 import org.keycloak.models.KeycloakContext;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.KeycloakSessionFactory;
@@ -70,6 +73,7 @@ public class OID4VCIssuerWellKnownProvider implements WellKnownProvider {
                 .setCredentialEndpoint(getCredentialsEndpoint(keycloakSession.getContext()))
                 .setCredentialsSupported(getSupportedCredentials(keycloakSession))
                 .setAuthorizationServers(List.of(getIssuer(keycloakSession.getContext())));
+
     }
 
     /**
@@ -81,6 +85,9 @@ public class OID4VCIssuerWellKnownProvider implements WellKnownProvider {
 
         RealmModel realm = keycloakSession.getContext().getRealm();
         List<String> supportedFormats = getSupportedFormats(keycloakSession);
+
+        // Retrieve signature algorithms
+        List<String> supportedAlgorithms = getSupportedSignatureAlgorithms(keycloakSession);
 
         // Retrieving attributes from client definition.
         // This will be removed when token production is migrated.
@@ -94,13 +101,16 @@ public class OID4VCIssuerWellKnownProvider implements WellKnownProvider {
                 .flatMap(List::stream)
                 .filter(sc -> supportedFormats.contains(sc.getFormat()))
                 .distinct()
+                .peek(sc -> sc.setCredentialSigningAlgValuesSupported(supportedAlgorithms))
                 .collect(Collectors.toMap(SupportedCredentialConfiguration::getId, sc -> sc, (sc1, sc2) -> sc1));
+
 
         // Retrieving attributes from the realm
         Map<String, SupportedCredentialConfiguration> realmAttr = fromRealmAttributes(realm.getAttributes())
                 .stream()
                 .filter(sc -> supportedFormats.contains(sc.getFormat()))
                 .distinct()
+                .peek(sc -> sc.setCredentialSigningAlgValuesSupported(supportedAlgorithms))
                 .collect(Collectors.toMap(SupportedCredentialConfiguration::getId, sc -> sc, (sc1, sc2) -> sc1));
 
         // Aggregating attributes. Having realm attributes take preference.
@@ -172,5 +182,17 @@ public class OID4VCIssuerWellKnownProvider implements WellKnownProvider {
         supportedFormats.retainAll(supportedFormatsBySigners);
 
         return supportedFormats;
+    }
+    
+    public static List<String> getSupportedSignatureAlgorithms(KeycloakSession session) {
+        RealmModel realm = session.getContext().getRealm();
+        KeyManager keyManager = session.keys();
+
+        return keyManager.getKeysStream(realm)
+                .filter(key -> KeyUse.SIG.equals(key.getUse()))
+                .map(KeyWrapper::getAlgorithm)
+                .filter(algorithm -> algorithm != null && !algorithm.isEmpty())
+                .distinct()
+                .collect(Collectors.toList());
     }
 }
