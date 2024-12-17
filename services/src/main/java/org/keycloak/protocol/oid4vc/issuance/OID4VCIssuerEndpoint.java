@@ -48,11 +48,11 @@ import org.keycloak.models.ProtocolMapperModel;
 import org.keycloak.models.RealmModel;
 import org.keycloak.models.UserSessionModel;
 import org.keycloak.protocol.ProtocolMapper;
-import org.keycloak.protocol.oid4vc.LocatableProvider;
 import org.keycloak.protocol.oid4vc.OID4VCClientRegistrationProvider;
 import org.keycloak.protocol.oid4vc.OID4VCLoginProtocolFactory;
 import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.CredentialBody;
 import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.CredentialBuilder;
+import org.keycloak.protocol.oid4vc.issuance.keybinding.ProofValidator;
 import org.keycloak.protocol.oid4vc.issuance.mappers.OID4VCMapper;
 import org.keycloak.protocol.oid4vc.issuance.signing.CredentialSigner;
 import org.keycloak.protocol.oid4vc.model.CredentialOfferURI;
@@ -163,22 +163,11 @@ public class OID4VCIssuerEndpoint {
 
         this.credentialBuilders = loadCredentialBuilders(session);
 
+        RealmModel realm = keycloakSession.getContext().getRealm();
         this.preAuthorizedCodeLifeSpan = Optional.ofNullable(realm.getAttribute(CODE_LIFESPAN_REALM_ATTRIBUTE_KEY))
                 .map(Integer::valueOf)
                 .orElse(DEFAULT_CODE_LIFESPAN_S);
         this.isIgnoreScopeCheck = false;
-    }
-
-    private void addServiceFromComponent(Map<String, VerifiableCredentialsSigningService> signingServices, KeycloakSession keycloakSession, ComponentModel componentModel) {
-        ProviderFactory<VerifiableCredentialsSigningService> factory = keycloakSession
-                .getKeycloakSessionFactory()
-                .getProviderFactory(VerifiableCredentialsSigningService.class, componentModel.getProviderId());
-        if (factory instanceof VCSigningServiceProviderFactory sspf) {
-            VerifiableCredentialsSigningService verifiableCredentialsSigningService = sspf.create(keycloakSession, componentModel);
-            signingServices.put(verifiableCredentialsSigningService.locator(), verifiableCredentialsSigningService);
-        } else {
-            throw new IllegalArgumentException(String.format("The component %s is not a VerifiableCredentialsSigningServiceProviderFactory", componentModel.getProviderId()));
-        }
     }
 
     /**
@@ -491,7 +480,7 @@ public class OID4VCIssuerEndpoint {
 
         // Retrieve matching credential signer
         String format = credentialRequestVO.getFormat();
-        CredentialSigner credentialSigner = session.getProvider(CredentialSigner.class, format);
+        CredentialSigner<?> credentialSigner = session.getProvider(CredentialSigner.class, format);
 
         return Optional.ofNullable(credentialSigner)
                 .map(signer -> signer.signCredential(

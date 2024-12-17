@@ -28,7 +28,7 @@ import org.keycloak.jose.jws.JWSBuilder;
 public class JwtCredentialBody implements CredentialBody {
 
     private static final Logger LOGGER = Logger.getLogger(JwtCredentialBody.class);
-    
+
     private final JWSBuilder.EncodingBuilder jwsEncodingBuilder;
 
     public JwtCredentialBody(JWSBuilder.EncodingBuilder jwsEncodingBuilder) {

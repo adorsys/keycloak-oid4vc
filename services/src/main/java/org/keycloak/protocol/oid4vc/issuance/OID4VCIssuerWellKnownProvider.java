@@ -183,7 +183,7 @@ public class OID4VCIssuerWellKnownProvider implements WellKnownProvider {
 
         return supportedFormats;
     }
-    
+
     public static List<String> getSupportedSignatureAlgorithms(KeycloakSession session) {
         RealmModel realm = session.getContext().getRealm();
         KeyManager keyManager = session.keys();

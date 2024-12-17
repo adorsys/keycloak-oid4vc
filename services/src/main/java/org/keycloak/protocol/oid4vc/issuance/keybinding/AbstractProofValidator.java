@@ -26,18 +26,13 @@ import org.keycloak.jose.jwk.JWK;
 import org.keycloak.jose.jwk.JWKParser;
 import org.keycloak.jose.jwk.OKPPublicJWK;
 import org.keycloak.models.KeycloakSession;
-import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.CredentialBuilderUtils;
 
 public abstract class AbstractProofValidator implements ProofValidator {
 
-    private final KeycloakSession keycloakSession;
+    protected final KeycloakSession keycloakSession;
 
     protected AbstractProofValidator(KeycloakSession keycloakSession) {
         this.keycloakSession = keycloakSession;
-    }
-
-    protected String getIssuerDid() {
-        return CredentialBuilderUtils.getIssuerDid(keycloakSession);
     }
 
     protected SignatureVerifierContext getVerifier(JWK jwk, String jwsAlgorithm) throws VerificationException {

@@ -43,12 +43,13 @@ import java.util.Optional;
 
 /**
  * Validates the conformance and authenticity of presented JWT proofs.
+ *
  * @see "https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#name-jwt-proof-type"
  */
 public class JwtProofValidator extends AbstractProofValidator {
 
-    private static final String CRYPTOGRAPHIC_BINDING_METHOD_JWK = "jwk";
     public static final String PROOF_JWT_TYP = "openid4vci-proof+jwt";
+    private static final String CRYPTOGRAPHIC_BINDING_METHOD_JWK = "jwk";
 
     protected JwtProofValidator(KeycloakSession keycloakSession) {
         super(keycloakSession);
@@ -110,7 +111,7 @@ public class JwtProofValidator extends AbstractProofValidator {
         return jwk;
     }
 
-    private void checkCryptographicKeyBinding(VCIssuanceContext vcIssuanceContext){
+    private void checkCryptographicKeyBinding(VCIssuanceContext vcIssuanceContext) {
         // Make sure we are dealing with a jwk proof.
         if (vcIssuanceContext.getCredentialConfig().getCryptographicBindingMethodsSupported() == null ||
                 !vcIssuanceContext.getCredentialConfig().getCryptographicBindingMethodsSupported().contains(CRYPTOGRAPHIC_BINDING_METHOD_JWK)) {

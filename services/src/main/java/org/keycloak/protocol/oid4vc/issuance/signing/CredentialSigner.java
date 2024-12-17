@@ -35,7 +35,7 @@ public interface CredentialSigner<T> extends Provider {
      * Depending on the type of the CredentialSigner, it will return a signed representation
      * of the credential that be returned at the credential request endpoint.
      *
-     * @param credentialBody a partially built credential representation, awaiting to be signed
+     * @param credentialBody        a partially built credential representation, awaiting to be signed
      * @param credentialBuildConfig additional configurations for building the credential
      * @return a signed representation
      */

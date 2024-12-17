@@ -274,7 +274,7 @@ public abstract class OID4VCIssuerEndpointTest extends OID4VCTest {
         return prepareIssuerEndpoint(
                 session,
                 authenticator,
-                Map.of(jwtCredentialBuilder.locator(), jwtCredentialBuilder)
+                Map.of(jwtCredentialBuilder.getSupportedFormat(), jwtCredentialBuilder)
         );
     }
 
@@ -285,7 +285,6 @@ public abstract class OID4VCIssuerEndpointTest extends OID4VCTest {
     ) {
         return new OID4VCIssuerEndpoint(
                 session,
-                "did:web:issuer.org",
                 credentialBuilders,
                 authenticator,
                 TIME_PROVIDER,
@@ -369,14 +368,6 @@ public abstract class OID4VCIssuerEndpointTest extends OID4VCTest {
 
     protected ComponentExportRepresentation getKeyProvider() {
         return getRsaKeyProvider(RSA_KEY);
-    }
-
-    protected List<ComponentExportRepresentation> getCredentialBuilderProviders() {
-        return List.of(getCredentialBuilderProvider(Format.JWT_VC));
-    }
-
-    protected Map<String, String> getCredentialDefinitionAttributes() {
-        return getTestCredentialDefinitionAttributes();
     }
 
     protected List<ComponentExportRepresentation> getCredentialBuilderProviders() {

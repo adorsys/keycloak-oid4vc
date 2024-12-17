@@ -87,7 +87,7 @@ public class SdJwtCredentialBuilderTest extends CredentialBuilderTest {
         );
     }
 
-    public static void testSignSDJwtCredential(Map<String, Object> claims, int decoys, List<String> visibleClaims)
+    private static void testSignSDJwtCredential(Map<String, Object> claims, int decoys, List<String> visibleClaims)
             throws VerificationException {
         String issuerDid = TEST_DID.toString();
         CredentialBuildConfig credentialBuildConfig = new CredentialBuildConfig()
