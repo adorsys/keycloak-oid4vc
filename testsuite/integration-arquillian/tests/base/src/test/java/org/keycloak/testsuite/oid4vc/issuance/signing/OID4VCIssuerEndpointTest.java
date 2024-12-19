@@ -377,14 +377,6 @@ public abstract class OID4VCIssuerEndpointTest extends OID4VCTest {
         return getTestCredentialDefinitionAttributes();
     }
 
-    protected List<ComponentExportRepresentation> getCredentialBuilderProviders() {
-        return List.of(getCredentialBuilderProvider(Format.JWT_VC));
-    }
-
-    protected Map<String, String> getCredentialDefinitionAttributes() {
-        return getTestCredentialDefinitionAttributes();
-    }
-
     protected static class CredentialResponseHandler {
         protected void handleCredentialResponse(CredentialResponse credentialResponse) throws VerificationException {
             assertNotNull("The credential should have been responded.", credentialResponse.getCredential());
