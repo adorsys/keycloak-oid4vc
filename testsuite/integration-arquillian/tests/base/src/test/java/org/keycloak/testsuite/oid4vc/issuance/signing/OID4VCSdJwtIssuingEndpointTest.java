@@ -39,6 +39,9 @@ import org.keycloak.protocol.oid4vc.OID4VCLoginProtocolFactory;
 import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerEndpoint;
 import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerWellKnownProvider;
 import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.SdJwtCredentialBuilder;
+import org.keycloak.protocol.oid4vc.issuance.mappers.OID4VCGeneratedIdMapper;
+import org.keycloak.protocol.oid4vc.issuance.signing.SdJwtSigningService;
+import org.keycloak.protocol.oid4vc.model.CredentialConfigId;
 import org.keycloak.protocol.oid4vc.model.CredentialIssuer;
 import org.keycloak.protocol.oid4vc.model.CredentialOfferURI;
 import org.keycloak.protocol.oid4vc.model.CredentialRequest;
@@ -52,6 +55,7 @@ import org.keycloak.protocol.oidc.representations.OIDCConfigurationRepresentatio
 import org.keycloak.representations.JsonWebToken;
 import org.keycloak.representations.idm.ClientRepresentation;
 import org.keycloak.representations.idm.ComponentExportRepresentation;
+import org.keycloak.representations.idm.ProtocolMapperRepresentation;
 import org.keycloak.sdjwt.vp.SdJwtVP;
 import org.keycloak.services.managers.AppAuthManager;
 import org.keycloak.testsuite.util.OAuthClient;
@@ -284,7 +288,7 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
                         getUserAttributeMapper("email", "email", "test-credential"),
                         getUserAttributeMapper("firstName", "firstName", "test-credential"),
                         getUserAttributeMapper("lastName", "lastName", "test-credential"),
-                        getIdMapper("test-credential"),
+                        getJtiGeneratedIdMapper("test-credential"),
                         getStaticClaimMapper("test-credential", "test-credential"),
                         getIssuedAtTimeMapper(null, ChronoUnit.HOURS.name(), "COMPUTE", "test-credential"),
                         getIssuedAtTimeMapper("nbf", null, "COMPUTE", "test-credential"),
@@ -296,6 +300,21 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
                 )
         );
         return clientRepresentation;
+    }
+
+    private static final String JTI_KEY = "jti";
+
+    public static ProtocolMapperRepresentation getJtiGeneratedIdMapper(String supportedCredentialTypes) {
+        ProtocolMapperRepresentation protocolMapperRepresentation = new ProtocolMapperRepresentation();
+        protocolMapperRepresentation.setName("generated-id-mapper");
+        protocolMapperRepresentation.setProtocol("oid4vc");
+        protocolMapperRepresentation.setId(UUID.randomUUID().toString());
+        protocolMapperRepresentation.setProtocolMapper("oid4vc-generated-id-mapper");
+        protocolMapperRepresentation.setConfig(Map.of(
+                OID4VCGeneratedIdMapper.SUBJECT_PROPERTY_CONFIG_KEY, JTI_KEY,
+                "supportedCredentialTypes", supportedCredentialTypes
+        ));
+        return protocolMapperRepresentation;
     }
 
     @Override
@@ -322,7 +341,7 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
                 Map.entry("vc.test-credential.proof_types_supported", "{\"jwt\":{\"proof_signing_alg_values_supported\":[\"ES256\"]}}"),
                 Map.entry("vc.test-credential.credential_build_config.token_jws_type", "example+sd-jwt"),
                 Map.entry("vc.test-credential.credential_build_config.hash_algorithm", "sha-256"),
-                Map.entry("vc.test-credential.credential_build_config.visible_claims", "iat,nbf"),
+                Map.entry("vc.test-credential.credential_build_config.visible_claims", "iat,nbf,jti"),
                 Map.entry("vc.test-credential.credential_build_config.decoys", "2"),
                 Map.entry("vc.test-credential.credential_build_config.signing_algorithm", "ES256")
         );
@@ -339,7 +358,7 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
                 Map.entry("vc.IdentityCredential.proof_types_supported", "{\"jwt\":{\"proof_signing_alg_values_supported\":[\"ES256\"]}}"),
                 Map.entry("vc.IdentityCredential.credential_build_config.token_jws_type", "example+sd-jwt"),
                 Map.entry("vc.IdentityCredential.credential_build_config.hash_algorithm", "sha-256"),
-                Map.entry("vc.IdentityCredential.credential_build_config.visible_claims", "iat,nbf"),
+                Map.entry("vc.IdentityCredential.credential_build_config.visible_claims", "iat,nbf,jti"),
                 Map.entry("vc.IdentityCredential.credential_build_config.decoys", "0"),
                 Map.entry("vc.IdentityCredential.credential_build_config.signing_algorithm", "ES256")
         );
@@ -365,6 +384,7 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
             JsonWebToken jsonWebToken = TokenVerifier.create(sdJwtVP.getIssuerSignedJWT().toJws(), JsonWebToken.class).getToken();
 
             assertNotNull("A valid credential string should have been responded", jsonWebToken);
+            assertNotNull("The credentials should include the id claim", jsonWebToken.getId());
             assertNotNull("The credentials should be included at the vct-claim.", jsonWebToken.getOtherClaims().get("vct"));
             assertEquals("The credentials should be included at the vct-claim.", vct, jsonWebToken.getOtherClaims().get("vct").toString());
 
@@ -384,7 +404,6 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
             assertTrue("The credentials should include the lastName claim.", disclosureMap.containsKey("lastName"));
             assertEquals("lastName claim incorrectly mapped.", disclosureMap.get("lastName").get(2).asText(), "Doe");
             assertTrue("The credentials should include the roles claim.", disclosureMap.containsKey("roles"));
-            assertTrue("The credentials should include the id claim", disclosureMap.containsKey("id"));
             assertTrue("The credentials should include the test-credential claim.", disclosureMap.containsKey("test-credential"));
             assertTrue("lastName claim incorrectly mapped.", disclosureMap.get("test-credential").get(2).asBoolean());
             assertTrue("The credentials should include the email claim.", disclosureMap.containsKey("email"));
