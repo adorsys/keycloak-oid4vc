@@ -40,8 +40,6 @@ import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerEndpoint;
 import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerWellKnownProvider;
 import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.SdJwtCredentialBuilder;
 import org.keycloak.protocol.oid4vc.issuance.mappers.OID4VCGeneratedIdMapper;
-import org.keycloak.protocol.oid4vc.issuance.signing.SdJwtSigningService;
-import org.keycloak.protocol.oid4vc.model.CredentialConfigId;
 import org.keycloak.protocol.oid4vc.model.CredentialIssuer;
 import org.keycloak.protocol.oid4vc.model.CredentialOfferURI;
 import org.keycloak.protocol.oid4vc.model.CredentialRequest;
@@ -67,6 +65,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 import static org.junit.Assert.assertEquals;
