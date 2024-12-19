@@ -34,7 +34,6 @@ import { toDashboard } from "../../dashboard/routes/Dashboard";
 import { toAddRealm } from "../../realm/routes/AddRealm";
 
 import "./realm-selector.css";
-import { environment } from "../../environment";
 
 const MAX_RESULTS = 10;
 
@@ -112,13 +111,12 @@ export const RealmSelector = () => {
     debounce((value: string) => {
       setFirst(0);
       setSearch(value);
-    }, 1000),
+    }, 300),
     [],
   );
 
   useFetch(
     async () => {
-      adminClient.realmName = environment.masterRealm;
       try {
         return await fetchAdminUI<RealmNameRepresentation[]>(
           adminClient,
@@ -138,15 +136,12 @@ export const RealmSelector = () => {
   );
 
   const sortedRealms = useMemo(
-    () =>
-      realms.length > MAX_RESULTS
-        ? [
-            ...(first === 0 && !search
-              ? (recentRealms || []).map((name) => ({ name }))
-              : []),
-            ...realms.filter((r) => !(recentRealms || []).includes(r.name)),
-          ]
-        : realms,
+    () => [
+      ...(first === 0 && !search
+        ? (recentRealms || []).map((name) => ({ name }))
+        : []),
+      ...realms.filter((r) => !(recentRealms || []).includes(r.name)),
+    ],
     [recentRealms, realms, first, search],
   );
 

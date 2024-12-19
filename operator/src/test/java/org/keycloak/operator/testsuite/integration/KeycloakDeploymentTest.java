@@ -17,6 +17,7 @@
 
 package org.keycloak.operator.testsuite.integration;
 
+import io.fabric8.kubernetes.api.model.EnvVar;
 import io.fabric8.kubernetes.api.model.EnvVarBuilder;
 import io.fabric8.kubernetes.api.model.LocalObjectReference;
 import io.fabric8.kubernetes.api.model.LocalObjectReferenceBuilder;
@@ -25,8 +26,6 @@ import io.fabric8.kubernetes.api.model.ResourceRequirements;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.api.model.SecretBuilder;
 import io.fabric8.kubernetes.api.model.SecretKeySelectorBuilder;
-import io.fabric8.kubernetes.api.model.Service;
-import io.fabric8.kubernetes.api.model.ServicePort;
 import io.fabric8.kubernetes.api.model.apps.StatefulSet;
 import io.fabric8.kubernetes.api.model.apps.StatefulSetBuilder;
 import io.fabric8.kubernetes.api.model.apps.StatefulSetSpecBuilder;
@@ -36,7 +35,6 @@ import io.quarkus.test.junit.QuarkusTest;
 
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.Assumptions;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.keycloak.operator.Config;
@@ -48,8 +46,8 @@ import org.keycloak.operator.crds.v2alpha1.deployment.Keycloak;
 import org.keycloak.operator.crds.v2alpha1.deployment.KeycloakStatusCondition;
 import org.keycloak.operator.crds.v2alpha1.deployment.ValueOrSecret;
 import org.keycloak.operator.crds.v2alpha1.deployment.spec.BootstrapAdminSpec;
-import org.keycloak.operator.crds.v2alpha1.deployment.spec.FeatureSpec;
 import org.keycloak.operator.crds.v2alpha1.deployment.spec.HostnameSpecBuilder;
+import org.keycloak.operator.crds.v2alpha1.deployment.spec.TracingSpecBuilder;
 import org.keycloak.operator.testsuite.unit.WatchedResourcesTest;
 import org.keycloak.operator.testsuite.utils.CRAssert;
 import org.keycloak.operator.testsuite.utils.K8sUtils;
@@ -60,6 +58,7 @@ import java.util.Base64;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -73,10 +72,10 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.keycloak.operator.controllers.KeycloakDeploymentDependentResource.KC_TRACING_RESOURCE_ATTRIBUTES;
-import static org.keycloak.operator.controllers.KeycloakDeploymentDependentResource.KC_TRACING_SERVICE_NAME;
 import static org.keycloak.operator.testsuite.utils.CRAssert.assertKeycloakStatusCondition;
 import static org.keycloak.operator.testsuite.utils.K8sUtils.deployKeycloak;
+import static org.keycloak.operator.testsuite.utils.K8sUtils.disableHttps;
+import static org.keycloak.operator.testsuite.utils.K8sUtils.enableHttp;
 import static org.keycloak.operator.testsuite.utils.K8sUtils.getResourceFromFile;
 import static org.keycloak.operator.testsuite.utils.K8sUtils.waitForKeycloakToBeReady;
 
@@ -180,9 +179,10 @@ public class KeycloakDeploymentTest extends BaseOperatorTest {
                 Constants.DEFAULT_DIST_CONFIG_LIST.stream()
                                                   .filter(oneValueOrSecret -> oneValueOrSecret.getName().equalsIgnoreCase(valueSecretHealthProp.getName()))
                                                   .findFirst()
-                                                  .get()
-                                                  .getValue()
-        ).isEqualTo("true"); // just a sanity check default values did not change
+                                                  .map(ValueOrSecret::getValue)
+                )
+                .isPresent()
+                .contains("true");
 
         Awaitility.await()
                 .ignoreExceptions()
@@ -290,24 +290,24 @@ public class KeycloakDeploymentTest extends BaseOperatorTest {
     @Test
     public void testTlsDisabled() {
         var kc = getTestKeycloakDeployment(true);
-        kc.getSpec().getHttpSpec().setTlsSecret(null);
-        kc.getSpec().getHttpSpec().setHttpEnabled(true);
+        disableHttps(kc);
+        enableHttp(kc, false);
         deployKeycloak(k8sclient, kc, true);
 
-        assertKeycloakAccessibleViaService(kc, false, Constants.KEYCLOAK_HTTP_PORT);
-        assertManagementInterfaceAccessibleViaService(kc, false);
+        CRAssert.assertKeycloakAccessibleViaService(k8sclient, kc, false, Constants.KEYCLOAK_HTTP_PORT);
+        CRAssert.assertManagementInterfaceAccessibleViaService(k8sclient, kc, false);
     }
 
     @Test
     public void testHttpEnabledWithTls() {
         var kc = getTestKeycloakDeployment(true);
-        kc.getSpec().getHttpSpec().setHttpEnabled(true);
+        enableHttp(kc, false);
         deployKeycloak(k8sclient, kc, true);
 
-        assertKeycloakAccessibleViaService(kc, false, Constants.KEYCLOAK_HTTP_PORT);
+        CRAssert.assertKeycloakAccessibleViaService(k8sclient, kc, false, Constants.KEYCLOAK_HTTP_PORT);
 
         // if TLS is enabled, management interface should use https
-        assertManagementInterfaceAccessibleViaService(kc, true);
+        CRAssert.assertManagementInterfaceAccessibleViaService(k8sclient, kc, true);
     }
 
     @Test
@@ -353,11 +353,9 @@ public class KeycloakDeploymentTest extends BaseOperatorTest {
 
     @Test
     public void testHttpsPort() {
-        final int httpsPort = 8543;
-        final int httpPort = 8180;
         var kc = getTestKeycloakDeployment(true);
-        kc.getSpec().getHttpSpec().setHttpsPort(httpsPort);
-        kc.getSpec().getHttpSpec().setHttpPort(httpPort);
+        var httpsPort = K8sUtils.configureHttps(kc, true);
+        enableHttp(kc, true);
 
         var hostnameSpec = new HostnameSpecBuilder()
                 .withStrict(false)
@@ -366,18 +364,15 @@ public class KeycloakDeploymentTest extends BaseOperatorTest {
 
         deployKeycloak(k8sclient, kc, true);
 
-        assertKeycloakAccessibleViaService(kc, true, httpsPort);
+        CRAssert.assertKeycloakAccessibleViaService(k8sclient, kc, true, httpsPort);
     }
 
     @Test
     public void testHttpPort() {
-        final int httpsPort = 8543;
-        final int httpPort = 8180;
         var kc = getTestKeycloakDeployment(true);
-        kc.getSpec().getHttpSpec().setHttpsPort(httpsPort);
-        kc.getSpec().getHttpSpec().setHttpPort(httpPort);
-        kc.getSpec().getHttpSpec().setTlsSecret(null);
-        kc.getSpec().getHttpSpec().setHttpEnabled(true);
+        K8sUtils.configureHttps(kc, true);
+        disableHttps(kc);
+        var httpPort = enableHttp(kc, true);
 
         var hostnameSpec = new HostnameSpecBuilder()
                 .withStrict(false)
@@ -386,54 +381,7 @@ public class KeycloakDeploymentTest extends BaseOperatorTest {
 
         deployKeycloak(k8sclient, kc, true);
 
-        assertKeycloakAccessibleViaService(kc, false, httpPort);
-    }
-
-    @Test
-    @Disabled
-    public void testPodNamePropagation() {
-        var kc = getTestKeycloakDeployment(true);
-        var featureSpec = new FeatureSpec();
-        featureSpec.setEnabledFeatures(List.of("opentelemetry"));
-        kc.getSpec().setFeatureSpec(featureSpec);
-        kc.getSpec().getAdditionalOptions().add(new ValueOrSecret("tracing-enabled", "true"));
-        kc.getSpec().getAdditionalOptions().add(new ValueOrSecret("log-level", "io.opentelemetry:fine"));
-        deployKeycloak(k8sclient, kc, true);
-
-        Awaitility.await()
-                .ignoreExceptions()
-                .untilAsserted(() ->
-                        assertThat(k8sclient
-                                .pods()
-                                .inNamespace(namespace)
-                                .withLabel("app", "keycloak")
-                                .list()
-                                .getItems()
-                                .size()).isNotZero());
-
-        var pods = k8sclient
-                .pods()
-                .inNamespace(namespace)
-                .withLabels(Constants.DEFAULT_LABELS)
-                .list()
-                .getItems();
-
-        var envVars = pods.get(0).getSpec().getContainers().get(0).getEnv();
-        assertThat(envVars).isNotNull();
-        assertThat(envVars).isNotEmpty();
-
-        var serviceNameEnv = envVars.stream().filter(f -> f.getName().equals(KC_TRACING_SERVICE_NAME)).findAny().orElse(null);
-        assertThat(serviceNameEnv).isNotNull();
-        assertThat(serviceNameEnv.getValue()).isEqualTo(kc.getMetadata().getName());
-
-        var resourceAttributesEnv = envVars.stream().filter(f -> f.getName().equals(KC_TRACING_RESOURCE_ATTRIBUTES)).findAny().orElse(null);
-        assertThat(resourceAttributesEnv).isNotNull();
-
-        var expectedAttributes = Map.of(
-                "k8s.namespace.name", kc.getMetadata().getNamespace()
-        ).entrySet().stream().map(e -> e.getKey() + "=" + e.getValue()).collect(Collectors.joining(","));
-
-        assertThat(resourceAttributesEnv.getValue()).isEqualTo(expectedAttributes);
+        CRAssert.assertKeycloakAccessibleViaService(k8sclient, kc, false, httpPort);
     }
 
     @Test
@@ -772,6 +720,82 @@ public class KeycloakDeploymentTest extends BaseOperatorTest {
         assertThat(limits.get("memory")).isEqualTo(config.keycloak().resources().limits().memory());
     }
 
+    @Test
+    public void testTracingSpec() {
+        var kc = getTestKeycloakDeployment(false);
+        kc.getSpec().setStartOptimized(false);
+
+        var tracingSpec = new TracingSpecBuilder()
+                .withEnabled()
+                .withEndpoint("http://0.0.0.0:4317")
+                .withServiceName("my-best-keycloak")
+                .withProtocol("http/protobuf")
+                .withSamplerType("parentbased_traceidratio")
+                .withSamplerRatio(0.01)
+                .withCompression("gzip")
+                .withResourceAttributes(Map.of(
+                        "something.a", "keycloak-rocks",
+                        "something.b", "keycloak-rocks2"))
+                .build();
+
+        kc.getSpec().setTracingSpec(tracingSpec);
+
+        deployKeycloak(k8sclient, kc, true);
+
+        var pods = k8sclient
+                .pods()
+                .inNamespace(namespace)
+                .withLabels(Constants.DEFAULT_LABELS)
+                .list()
+                .getItems();
+
+        assertThat(pods).isNotNull();
+        assertThat(pods).isNotEmpty();
+
+        var map = pods.get(0).getSpec().getContainers().get(0).getEnv().stream()
+                .filter(Objects::nonNull).filter(f -> f.getName().startsWith("KC_TRACING_"))
+                .collect(Collectors.toMap(EnvVar::getName, EnvVar::getValue));
+
+        assertThat(map).isNotNull();
+        assertThat(map).isNotEmpty();
+
+        // assertions
+
+        var enabled = map.get("KC_TRACING_ENABLED");
+        assertThat(enabled).isNotNull();
+        assertThat(enabled).isEqualTo("true");
+
+        var endpoint = map.get("KC_TRACING_ENDPOINT");
+        assertThat(endpoint).isNotNull();
+        assertThat(endpoint).isEqualTo("http://0.0.0.0:4317");
+
+        var serviceName = map.get("KC_TRACING_SERVICE_NAME");
+        assertThat(serviceName).isNotNull();
+        assertThat(serviceName).isEqualTo("my-best-keycloak");
+
+        var protocol = map.get("KC_TRACING_PROTOCOL");
+        assertThat(protocol).isNotNull();
+        assertThat(protocol).isEqualTo("http/protobuf");
+
+        var samplerType = map.get("KC_TRACING_SAMPLER_TYPE");
+        assertThat(samplerType).isNotNull();
+        assertThat(samplerType).isEqualTo("parentbased_traceidratio");
+
+        var samplerRatio = map.get("KC_TRACING_SAMPLER_RATIO");
+        assertThat(samplerRatio).isNotNull();
+        assertThat(samplerRatio).isEqualTo("0.01");
+
+        var compression = map.get("KC_TRACING_COMPRESSION");
+        assertThat(compression).isNotNull();
+        assertThat(compression).isEqualTo("gzip");
+
+        var resourceAttributes = map.get("KC_TRACING_RESOURCE_ATTRIBUTES");
+        assertThat(resourceAttributes).isNotNull();
+        assertThat(resourceAttributes).contains("something.a=keycloak-rocks");
+        assertThat(resourceAttributes).contains("something.b=keycloak-rocks2");
+        assertThat(resourceAttributes).contains(String.format("k8s.namespace.name=%s", namespace));
+    }
+
     private void handleFakeImagePullSecretCreation(Keycloak keycloakCR,
                                                    String secretDescriptorFilename) {
 
@@ -779,44 +803,5 @@ public class KeycloakDeploymentTest extends BaseOperatorTest {
         K8sUtils.set(k8sclient, imagePullSecret);
         LocalObjectReference localObjRefAsSecretTmp = new LocalObjectReferenceBuilder().withName(imagePullSecret.getMetadata().getName()).build();
         keycloakCR.getSpec().setImagePullSecrets(Collections.singletonList(localObjRefAsSecretTmp));
-    }
-
-    private void assertKeycloakAccessibleViaService(Keycloak kc, boolean https, int port) {
-        Awaitility.await()
-                .ignoreExceptions()
-                .untilAsserted(() -> {
-                    String protocol = https ? "https" : "http";
-
-                    String serviceName = KeycloakServiceDependentResource.getServiceName(kc);
-                    assertThat(k8sclient.resources(Service.class).withName(serviceName).require().getSpec().getPorts()
-                            .stream().map(ServicePort::getName).anyMatch(protocol::equals)).isTrue();
-
-                    String url = protocol + "://" + serviceName + "." + namespace + ":" + port + "/admin/master/console/";
-                    Log.info("Checking url: " + url);
-
-                    var curlOutput = K8sUtils.inClusterCurl(k8sclient, namespace, url);
-                    Log.info("Curl Output: " + curlOutput);
-
-                    assertEquals("200", curlOutput);
-                });
-    }
-
-    private void assertManagementInterfaceAccessibleViaService(Keycloak kc, boolean https) {
-        Awaitility.await()
-                .ignoreExceptions()
-                .untilAsserted(() -> {
-                    String serviceName = KeycloakServiceDependentResource.getServiceName(kc);
-                    assertThat(k8sclient.resources(Service.class).withName(serviceName).require().getSpec().getPorts()
-                            .stream().map(ServicePort::getName).anyMatch(Constants.KEYCLOAK_MANAGEMENT_PORT_NAME::equals)).isTrue();
-
-                    String protocol = https ? "https" : "http";
-                    String url = protocol + "://" + serviceName + "." + namespace + ":" + Constants.KEYCLOAK_MANAGEMENT_PORT;
-                    Log.info("Checking url: " + url);
-
-                    var curlOutput = K8sUtils.inClusterCurl(k8sclient, namespace, url);
-                    Log.info("Curl Output: " + curlOutput);
-
-                    assertEquals("200", curlOutput);
-                });
     }
 }

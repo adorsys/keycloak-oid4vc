@@ -22,6 +22,7 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.keycloak.quarkus.runtime.Environment.isWindows;
 
+import java.nio.file.FileSystem;
 import java.nio.file.FileSystems;
 import java.nio.file.Path;
 import java.util.Arrays;
@@ -500,7 +501,7 @@ public class ConfigurationTest extends AbstractConfigurationTest {
         ConfigArgsConfigSource.setCliArgs("--https-certificates-reload-period=2h");
         assertEquals("2h", createConfig().getConfigValue("quarkus.http.ssl.certificate.reload-period").getValue());
     }
-    
+
     @Test
     public void testHttpsPaths() {
         ConfigArgsConfigSource.setCliArgs("--https-certificate-file=\\some\\file");
@@ -511,7 +512,7 @@ public class ConfigurationTest extends AbstractConfigurationTest {
         }
         assertEquals(expected, createConfig().getConfigValue("quarkus.http.ssl.certificate.files").getValue());
     }
-    
+
     @Test
     public void testCacheMaxCount() {
         int maxCount = 500;
@@ -531,5 +532,36 @@ public class ConfigurationTest extends AbstractConfigurationTest {
             String prop = "kc." + CachingOptions.cacheMaxCountProperty(cache);
             assertEquals(Integer.toString(maxCount), config.getConfigValue(prop).getValue());
         }
+    }
+
+    @Test
+    public void testWildcardCliOptionCanBeMappedToQuarkusOption() {
+        ConfigArgsConfigSource.setCliArgs("--log-level-org.keycloak=trace");
+        SmallRyeConfig config = createConfig();
+        assertEquals("TRACE", config.getConfigValue("quarkus.log.category.\"org.keycloak\".level").getValue());
+        assertEquals("INFO", config.getConfigValue("quarkus.log.category.\"io.quarkus\".level").getValue());
+        assertEquals("INFO", config.getConfigValue("quarkus.log.category.\"foo.bar\".level").getValue());
+    }
+
+    @Test
+    public void testWildcardEnvVarOptionCanBeMappedToQuarkusOption() {
+        putEnvVar("KC_LOG_LEVEL_IO_QUARKUS", "trace");
+        SmallRyeConfig config = createConfig();
+        assertEquals("INFO", config.getConfigValue("quarkus.log.category.\"org.keycloak\".level").getValue());
+        assertEquals("TRACE", config.getConfigValue("quarkus.log.category.\"io.quarkus\".level").getValue());
+        assertEquals("INFO", config.getConfigValue("quarkus.log.category.\"foo.bar\".level").getValue());
+    }
+
+    @Test
+    public void testWildcardOptionFromConfigFile() {
+        putEnvVar("SOME_CATEGORY_LOG_LEVEL", "debug");
+        SmallRyeConfig config = createConfig();
+        assertEquals("DEBUG", config.getConfigValue("quarkus.log.category.\"io.k8s\".level").getValue());
+    }
+
+    @Test
+    public void testWildcardPropertiesDontMatchEnvVarsFormat() {
+        SmallRyeConfig config = createConfig();
+        assertEquals("INFO", config.getConfigValue("quarkus.log.category.\"io.quarkus\".level").getValue());
     }
 }

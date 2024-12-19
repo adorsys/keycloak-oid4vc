@@ -65,6 +65,8 @@ public class Profile {
 
         LOGIN_V1("Legacy Login Theme", Type.DEPRECATED, 1),
 
+        QUICK_THEME("WYSIWYG theme configuration tool", Type.EXPERIMENTAL, 1),
+
         DOCKER("Docker Registry protocol", Type.DISABLED_BY_DEFAULT),
 
         IMPERSONATION("Ability for admins to impersonate users", Type.DEFAULT),
@@ -114,7 +116,7 @@ public class Profile {
 
         OID4VC_VCI("Support for the OID4VCI protocol as part of OID4VC.", Type.EXPERIMENTAL),
 
-        OPENTELEMETRY("OpenTelemetry Tracing", Type.PREVIEW),
+        OPENTELEMETRY("OpenTelemetry Tracing", Type.DEFAULT),
 
         DECLARATIVE_UI("declarative ui spi", Type.EXPERIMENTAL),
 
@@ -125,6 +127,8 @@ public class Profile {
         CACHE_EMBEDDED_REMOTE_STORE("Support for remote-store in embedded Infinispan caches", Type.EXPERIMENTAL),
 
         USER_EVENT_METRICS("Collect metrics based on user events", Type.PREVIEW),
+
+        IPA_TUURA_FEDERATION("IPA-Tuura user federation provider", Type.EXPERIMENTAL)
         ;
 
         private final Type type;

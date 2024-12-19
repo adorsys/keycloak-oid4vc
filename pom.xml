@@ -281,7 +281,6 @@
         <module>core</module>
         <module>crypto</module>
         <module>dependencies</module>
-        <module>docs</module>
         <module>server-spi</module>
         <module>server-spi-private</module>
         <module>saml-core-api</module>
@@ -293,7 +292,6 @@
         <module>util</module>
         <module>rest</module>
         <module>integration</module>
-        <module>adapters</module>
         <module>authz</module>
         <module>js</module>
         <module>test-framework</module>
@@ -919,6 +917,11 @@
             </dependency>
             <dependency>
                 <groupId>org.keycloak</groupId>
+                <artifactId>keycloak-ipatuura-federation</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.keycloak</groupId>
                 <artifactId>keycloak-dependencies-server-min</artifactId>
                 <version>${project.version}</version>
                 <type>pom</type>
@@ -1501,6 +1504,28 @@
             </activation>
             <modules>
                 <module>testsuite</module>
+            </modules>
+        </profile>
+        <profile>
+            <id>adapters</id>
+            <activation>
+                <property>
+                    <name>!skipAdapters</name>
+                </property>
+            </activation>
+            <modules>
+                <module>adapters</module>
+            </modules>
+        </profile>
+        <profile>
+            <id>docs</id>
+            <activation>
+                <property>
+                    <name>!skipDocs</name>
+                </property>
+            </activation>
+            <modules>
+                <module>docs</module>
             </modules>
         </profile>
 

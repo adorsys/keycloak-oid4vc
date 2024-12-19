@@ -83,6 +83,7 @@ public class LDAPStorageProviderFactory implements UserStorageProviderFactory<LD
 
     private static final Logger logger = Logger.getLogger(LDAPStorageProviderFactory.class);
     public static final String PROVIDER_NAME = LDAPConstants.LDAP_PROVIDER;
+    private static final String LDAP_CONNECTION_POOL_PROTOCOL = "com.sun.jndi.ldap.connect.pool.protocol";
 
     private LDAPIdentityStoreRegistry ldapStoreRegistry;
 
@@ -172,27 +173,6 @@ public class LDAPStorageProviderFactory implements UserStorageProviderFactory<LD
                 .property().name(LDAPConstants.CONNECTION_POOLING)
                 .type(ProviderConfigProperty.BOOLEAN_TYPE)
                 .defaultValue("true")
-                .add()
-                .property().name(LDAPConstants.CONNECTION_POOLING_AUTHENTICATION)
-                .type(ProviderConfigProperty.STRING_TYPE)
-                .add()
-                .property().name(LDAPConstants.CONNECTION_POOLING_DEBUG)
-                .type(ProviderConfigProperty.STRING_TYPE)
-                .add()
-                .property().name(LDAPConstants.CONNECTION_POOLING_INITSIZE)
-                .type(ProviderConfigProperty.STRING_TYPE)
-                .add()
-                .property().name(LDAPConstants.CONNECTION_POOLING_MAXSIZE)
-                .type(ProviderConfigProperty.STRING_TYPE)
-                .add()
-                .property().name(LDAPConstants.CONNECTION_POOLING_PREFSIZE)
-                .type(ProviderConfigProperty.STRING_TYPE)
-                .add()
-                .property().name(LDAPConstants.CONNECTION_POOLING_PROTOCOL)
-                .type(ProviderConfigProperty.STRING_TYPE)
-                .add()
-                .property().name(LDAPConstants.CONNECTION_POOLING_TIMEOUT)
-                .type(ProviderConfigProperty.STRING_TYPE)
                 .add()
                 .property().name(LDAPConstants.CONNECTION_TIMEOUT)
                 .type(ProviderConfigProperty.STRING_TYPE)
@@ -313,6 +293,10 @@ public class LDAPStorageProviderFactory implements UserStorageProviderFactory<LD
 
     @Override
     public void init(Config.Scope config) {
+        // set connection pooling for plain and tls protocols by default
+        if (System.getProperty(LDAP_CONNECTION_POOL_PROTOCOL) == null) {
+            System.setProperty(LDAP_CONNECTION_POOL_PROTOCOL, "plain ssl");
+        }
         this.ldapStoreRegistry = new LDAPIdentityStoreRegistry();
     }
 

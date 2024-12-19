@@ -10,7 +10,7 @@ import org.keycloak.test.framework.injection.RequestedInstance;
 import org.keycloak.test.framework.injection.Supplier;
 import org.keycloak.test.framework.injection.SupplierHelpers;
 import org.keycloak.test.framework.injection.SupplierOrder;
-import org.keycloak.test.framework.server.AbstractInterceptorHelper;
+import org.keycloak.test.framework.injection.AbstractInterceptorHelper;
 import org.keycloak.test.framework.server.KeycloakServer;
 
 public class RealmSupplier implements Supplier<ManagedRealm, InjectRealm> {
@@ -30,7 +30,7 @@ public class RealmSupplier implements Supplier<ManagedRealm, InjectRealm> {
     @Override
     public ManagedRealm getValue(InstanceContext<ManagedRealm, InjectRealm> instanceContext) {
         KeycloakServer server = instanceContext.getDependency(KeycloakServer.class);
-        Keycloak adminClient = instanceContext.getDependency(Keycloak.class);
+        Keycloak adminClient = instanceContext.getDependency(Keycloak.class, "bootstrap-client");
 
         RealmConfig config = SupplierHelpers.getInstance(instanceContext.getAnnotation().config());
 
