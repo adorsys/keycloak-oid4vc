@@ -125,6 +125,8 @@ public abstract class OID4VCIssuerEndpointTest extends OID4VCTest {
         String scopeId = ApiUtil.getCreatedId(res);
         getCleanup().addClientScopeId(scopeId); // automatically removed when a test method is finished.
         res.close();
+        // Add protocol mappers to the ClientScope
+        addProtocolMappersToClientScope(scopeId, scopeName);
         return scopeId;
     }
 
@@ -140,15 +142,6 @@ public abstract class OID4VCIssuerEndpointTest extends OID4VCTest {
         clientRepresentation.setAttributes(Map.of(
                 "vc." + credentialConfigurationId + ".format", format,
                 "vc." + credentialConfigurationId + ".scope", scope));
-        clientRepresentation.setProtocolMappers(
-                List.of(
-                        getRoleMapper(clientId, "VerifiableCredential"),
-                        getUserAttributeMapper("email", "email", "VerifiableCredential"),
-                        getIdMapper("VerifiableCredential"),
-                        getStaticClaimMapper(scope, "VerifiableCredential"),
-                        getStaticClaimMapper("AnotherCredentialType", "VerifiableCredential")
-                )
-        );
 
         clientResource.update(clientRepresentation);
     }

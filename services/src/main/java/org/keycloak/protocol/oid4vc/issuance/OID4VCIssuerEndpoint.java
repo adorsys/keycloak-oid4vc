@@ -41,6 +41,7 @@ import org.keycloak.component.ComponentModel;
 import org.keycloak.events.EventBuilder;
 import org.keycloak.models.AuthenticatedClientSessionModel;
 import org.keycloak.models.ClientModel;
+import org.keycloak.models.ClientScopeModel;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.KeycloakSessionFactory;
 import org.keycloak.models.ProtocolMapperContainerModel;
@@ -454,10 +455,11 @@ public class OID4VCIssuerEndpoint {
      */
     private Object getCredential(AuthenticationManager.AuthResult authResult, SupportedCredentialConfiguration credentialConfig, CredentialRequest credentialRequestVO) {
 
-        List<OID4VCClient> clients = getClientsOfScope(credentialConfig.getScope(), credentialConfig.getFormat());
+        // Get the current client from the session
+        ClientScopeModel clientScopeModel = getClientScopeModel(credentialConfig);
 
-        List<OID4VCMapper> protocolMappers = getProtocolMappers(clients)
-                .stream()
+        // Get the protocol mappers from the client scope
+        List<OID4VCMapper> protocolMappers = clientScopeModel.getProtocolMappersStream()
                 .map(pm -> {
                     if (session.getProvider(ProtocolMapper.class, pm.getProtocolMapper()) instanceof OID4VCMapper mapperFactory) {
                         ProtocolMapper protocolMapper = mapperFactory.create(session);
@@ -489,6 +491,19 @@ public class OID4VCIssuerEndpoint {
                 .orElseThrow(() -> new BadRequestException(
                         String.format("No signer found for format '%s'.", format)
                 ));
+    }
+
+    private ClientScopeModel getClientScopeModel(SupportedCredentialConfiguration credentialConfig) {
+        ClientModel clientModel = session.getContext().getClient();
+
+        // Get the client scope that matches the credentialConfig scope
+        Map<String, ClientScopeModel> clientScopes = clientModel.getClientScopes(false);
+        ClientScopeModel clientScopeModel = clientScopes.get(credentialConfig.getScope());
+
+        if (clientScopeModel == null){
+            throw new BadRequestException("Client scope not found for the specified scope: " + credentialConfig.getScope());
+        }
+        return clientScopeModel;
     }
 
     private List<ProtocolMapperModel> getProtocolMappers(List<OID4VCClient> oid4VCClients) {

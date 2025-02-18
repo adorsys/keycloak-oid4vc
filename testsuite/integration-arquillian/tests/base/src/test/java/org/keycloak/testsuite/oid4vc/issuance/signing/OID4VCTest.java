@@ -19,6 +19,8 @@ package org.keycloak.testsuite.oid4vc.issuance.signing;
 
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.jboss.logging.Logger;
+import org.keycloak.admin.client.resource.ClientScopeResource;
+import org.keycloak.admin.client.resource.ProtocolMappersResource;
 import org.keycloak.common.Profile;
 import org.keycloak.common.util.CertificateUtils;
 import org.keycloak.common.util.KeyUtils;
@@ -191,16 +193,6 @@ public abstract class OID4VCTest extends AbstractTestRealmKeycloakTest {
         clientRepresentation.setClientId(clientId);
         clientRepresentation.setProtocol(OID4VCLoginProtocolFactory.PROTOCOL_ID);
         clientRepresentation.setEnabled(true);
-        clientRepresentation.setProtocolMappers(
-                List.of(
-                        getRoleMapper(clientId, "VerifiableCredential"),
-                        getUserAttributeMapper("email", "email", "VerifiableCredential"),
-                        getIdMapper("VerifiableCredential"),
-                        getStaticClaimMapper("VerifiableCredential", "VerifiableCredential"),
-                        // This is used for negative test. Shall not land into the credential
-                        getStaticClaimMapper("AnotherCredentialType", "AnotherCredentialType")
-                )
-        );
         return clientRepresentation;
     }
 
@@ -243,6 +235,26 @@ public abstract class OID4VCTest extends AbstractTestRealmKeycloakTest {
         );
         return componentExportRepresentation;
     }
+
+    public void addProtocolMappersToClientScope(String scopeId, String scope) {
+        List<ProtocolMapperRepresentation> protocolMappers = List.of(
+                getRoleMapper(scope, "VerifiableCredential"),
+                getUserAttributeMapper("email", "email", "VerifiableCredential"),
+                getIdMapper("VerifiableCredential"),
+                getStaticClaimMapper(scope, "VerifiableCredential"),
+                getStaticClaimMapper("AnotherCredentialType", "VerifiableCredential")
+        );
+
+        // Get the ProtocolMappersResource
+        ClientScopeResource clientScopeResource = testRealm().clientScopes().get(scopeId);
+        ProtocolMappersResource protocolMappersResource = clientScopeResource.getProtocolMappers();
+
+        // Add the protocol mappers to the ClientScope
+        for (ProtocolMapperRepresentation protocolMapper : protocolMappers) {
+            protocolMappersResource.createMapper(protocolMapper);
+        }
+    }
+
 
     public static ProtocolMapperRepresentation getRoleMapper(String clientId, String supportedCredentialTypes) {
         ProtocolMapperRepresentation protocolMapperRepresentation = new ProtocolMapperRepresentation();
