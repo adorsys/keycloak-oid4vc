@@ -455,7 +455,7 @@ public class OID4VCIssuerEndpoint {
      */
     private Object getCredential(AuthenticationManager.AuthResult authResult, SupportedCredentialConfiguration credentialConfig, CredentialRequest credentialRequestVO) {
 
-        // Get the current client from the session
+        // Get the client scope model from the credential configuration
         ClientScopeModel clientScopeModel = getClientScopeModel(credentialConfig);
 
         // Get the protocol mappers from the client scope
@@ -494,6 +494,7 @@ public class OID4VCIssuerEndpoint {
     }
 
     private ClientScopeModel getClientScopeModel(SupportedCredentialConfiguration credentialConfig) {
+        // Get the current client from the session
         ClientModel clientModel = session.getContext().getClient();
 
         // Get the client scope that matches the credentialConfig scope
@@ -503,6 +504,7 @@ public class OID4VCIssuerEndpoint {
         if (clientScopeModel == null){
             throw new BadRequestException("Client scope not found for the specified scope: " + credentialConfig.getScope());
         }
+
         return clientScopeModel;
     }
 

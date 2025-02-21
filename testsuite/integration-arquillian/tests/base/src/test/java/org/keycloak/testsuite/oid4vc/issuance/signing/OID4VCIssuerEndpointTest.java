@@ -94,12 +94,34 @@ public abstract class OID4VCIssuerEndpointTest extends OID4VCTest {
 
     protected static final TimeProvider TIME_PROVIDER = new OID4VCTest.StaticTimeProvider(1000);
     protected CloseableHttpClient httpClient;
+    public static String clientId = "did:web:test.org";
 
 
     @Before
     public void setup() {
         CryptoIntegration.init(this.getClass().getClassLoader());
         httpClient = HttpClientBuilder.create().build();
+        ClientRepresentation client = testRealm().clients().findByClientId(clientId).get(0);
+
+        // Register the optional client scopes
+        String verifiableCredentialScopeId1 = registerOptionalClientScope("VerifiableCredential", client.getClientId());
+        String testCredentialScopeId1 = registerOptionalClientScope("test-credential", client.getClientId());
+
+        // Assign the registered optional client scopes to the client
+        assignOptionalClientScopeToClient(verifiableCredentialScopeId1, client.getClientId());
+        assignOptionalClientScopeToClient(testCredentialScopeId1, client.getClientId());
+
+        updateTestClient(client.getClientId(), "VerifiableCredential");
+        System.out.println("Client ID Test Context: " + client.getClientId());
+
+        // Retrieve and print optional client scopes
+        List<String> optionalScopes = client.getOptionalClientScopes();
+        System.out.println("Optional Client Scopes in Test Context:");
+        if (optionalScopes == null || optionalScopes.isEmpty()) {
+            System.out.println(" - None");
+        } else {
+            optionalScopes.forEach(scope -> System.out.println(" - " + scope));
+        }
     }
 
 
@@ -117,16 +139,30 @@ public abstract class OID4VCIssuerEndpointTest extends OID4VCTest {
         return null;
     }
 
-    private String registerOptionalClientScope(String scopeName) {
+    private String registerOptionalClientScope(String scopeName, String clientId) {
+        // Check if the client scope already exists
+        List<ClientScopeRepresentation> existingScopes = testRealm().clientScopes().findAll();
+        for (ClientScopeRepresentation existingScope : existingScopes) {
+            if (existingScope.getName().equals(scopeName)) {
+                String existingScopeId = existingScope.getId();
+                addProtocolMappersToClientScope(existingScopeId, scopeName, clientId); // Ensure mappers are added
+                return existingScopeId; // Reuse existing scope
+            }
+        }
+
+        // Create a new ClientScope if not found
         ClientScopeRepresentation clientScope = new ClientScopeRepresentation();
         clientScope.setName(scopeName);
         clientScope.setProtocol(OIDCLoginProtocol.LOGIN_PROTOCOL);
+
         Response res = testRealm().clientScopes().create(clientScope);
         String scopeId = ApiUtil.getCreatedId(res);
-        getCleanup().addClientScopeId(scopeId); // automatically removed when a test method is finished.
+        getCleanup().addClientScopeId(scopeId); // Automatically removed when a test method is finished.
         res.close();
+
         // Add protocol mappers to the ClientScope
-        addProtocolMappersToClientScope(scopeId, scopeName);
+        addProtocolMappersToClientScope(scopeId, scopeName, clientId);
+
         return scopeId;
     }
 
@@ -144,6 +180,41 @@ public abstract class OID4VCIssuerEndpointTest extends OID4VCTest {
                 "vc." + credentialConfigurationId + ".scope", scope));
 
         clientResource.update(clientRepresentation);
+    }
+
+    private void updateTestClient(String clientId, String scope) {
+        // Fetch the client representation by client ID
+        ClientRepresentation clientRepresentation = adminClient.realm(TEST_REALM_NAME)
+                .clients().findByClientId(clientId).get(0);
+        ClientResource clientResource = adminClient.realm(TEST_REALM_NAME)
+                .clients().get(clientRepresentation.getId());
+
+        // Retrieve all available scopes from the realm
+        List<ClientScopeRepresentation> allScopes = adminClient.realm(TEST_REALM_NAME)
+                .clientScopes().findAll();
+
+        if (allScopes == null || allScopes.isEmpty()) {
+            System.out.println("No client scopes found in the realm: " + TEST_REALM_NAME);
+            return; // Exit early
+        }
+
+        // Extract the scope names
+        List<String> availableScopes = allScopes.stream()
+                .map(ClientScopeRepresentation::getName)
+                .toList();
+
+        // Print all retrieved scopes
+        System.out.println("Available scopes in realm: " + TEST_REALM_NAME);
+        availableScopes.forEach(s -> System.out.println(" - " + s));
+
+        // Check if the provided scope exists
+        if (availableScopes.contains(scope)) {
+            clientRepresentation.setOptionalClientScopes(List.of(scope));
+            System.out.println("Scope '" + scope + "' found and set for client: " + clientId);
+            clientResource.update(clientRepresentation);
+        } else {
+            System.out.println("Scope '" + scope + "' not found in realm: " + TEST_REALM_NAME);
+        }
     }
 
     private void removeCredentialConfigurationIdToClient(String clientId) {
@@ -168,7 +239,7 @@ public abstract class OID4VCIssuerEndpointTest extends OID4VCTest {
         String testFormat = Format.JWT_VC;
 
         // register optional client scope
-        String scopeId = registerOptionalClientScope(testScope);
+        String scopeId = registerOptionalClientScope(testScope, testClientId);
 
         // assign registered optional client scope
         assignOptionalClientScopeToClient(scopeId, testClientId); // pre-registered client for this test class

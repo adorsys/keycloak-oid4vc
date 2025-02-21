@@ -17,6 +17,7 @@
 
 package org.keycloak.testsuite.oid4vc.issuance.signing;
 
+import jakarta.ws.rs.core.Response;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.jboss.logging.Logger;
 import org.keycloak.admin.client.resource.ClientScopeResource;
@@ -61,11 +62,14 @@ import java.security.PublicKey;
 import java.security.Security;
 import java.security.cert.Certificate;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+
+import static org.keycloak.testsuite.oid4vc.issuance.signing.OID4VCSdJwtIssuingEndpointTest.getJtiGeneratedIdMapper;
 
 /**
  * Super class for all OID4VC tests. Provides convenience methods to ease the testing.
@@ -236,22 +240,34 @@ public abstract class OID4VCTest extends AbstractTestRealmKeycloakTest {
         return componentExportRepresentation;
     }
 
-    public void addProtocolMappersToClientScope(String scopeId, String scope) {
-        List<ProtocolMapperRepresentation> protocolMappers = List.of(
-                getRoleMapper(scope, "VerifiableCredential"),
-                getUserAttributeMapper("email", "email", "VerifiableCredential"),
-                getIdMapper("VerifiableCredential"),
-                getStaticClaimMapper(scope, "VerifiableCredential"),
-                getStaticClaimMapper("AnotherCredentialType", "VerifiableCredential")
-        );
+    public void addProtocolMappersToClientScope(String scopeId, String scopeName, String clientId) {
+        List<ProtocolMapperRepresentation> protocolMappers = switch (scopeName) {
+            case "test-credential" -> List.of(
+                    getRoleMapper(clientId, "test-credential"),
+                    getUserAttributeMapper("email", "email", "test-credential"),
+                    getUserAttributeMapper("firstName", "firstName", "test-credential"),
+                    getUserAttributeMapper("lastName", "lastName", "test-credential"),
+                    getJtiGeneratedIdMapper("test-credential"),
+                    getStaticClaimMapper("test-credential", "test-credential"),
+                    getIssuedAtTimeMapper(null, ChronoUnit.HOURS.name(), "COMPUTE", "test-credential"),
+                    getIssuedAtTimeMapper("nbf", null, "COMPUTE", "test-credential")
+            );
+            case "VerifiableCredential" -> List.of(
+                    getRoleMapper(clientId, "VerifiableCredential"),
+                    getUserAttributeMapper("email", "email", "VerifiableCredential"),
+                    getIdMapper("VerifiableCredential"),
+                    getStaticClaimMapper(scopeName, "VerifiableCredential")
+            );
+            default -> List.of(); // No mappers for unknown scopes
+        };
 
-        // Get the ProtocolMappersResource
-        ClientScopeResource clientScopeResource = testRealm().clientScopes().get(scopeId);
-        ProtocolMappersResource protocolMappersResource = clientScopeResource.getProtocolMappers();
+        if (!protocolMappers.isEmpty()) {
+            ClientScopeResource clientScopeResource = testRealm().clientScopes().get(scopeId);
+            ProtocolMappersResource protocolMappersResource = clientScopeResource.getProtocolMappers();
 
-        // Add the protocol mappers to the ClientScope
-        for (ProtocolMapperRepresentation protocolMapper : protocolMappers) {
-            protocolMappersResource.createMapper(protocolMapper);
+            for (ProtocolMapperRepresentation protocolMapper : protocolMappers) {
+                Response response = protocolMappersResource.createMapper(protocolMapper);
+            }
         }
     }
 
@@ -373,7 +389,7 @@ public abstract class OID4VCTest extends AbstractTestRealmKeycloakTest {
         }
     }
 
-    protected ProtocolMapperRepresentation getUserAttributeMapper(String subjectProperty, String attributeName, String supportedCredentialTypes) {
+    public static ProtocolMapperRepresentation getUserAttributeMapper(String subjectProperty, String attributeName, String supportedCredentialTypes) {
         ProtocolMapperRepresentation protocolMapperRepresentation = new ProtocolMapperRepresentation();
         protocolMapperRepresentation.setName(supportedCredentialTypes + "-" + attributeName + "-mapper");
         protocolMapperRepresentation.setProtocol("oid4vc");
