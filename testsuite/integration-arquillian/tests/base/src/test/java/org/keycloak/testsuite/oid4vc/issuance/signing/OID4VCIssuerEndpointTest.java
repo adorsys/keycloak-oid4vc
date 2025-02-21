@@ -30,6 +30,7 @@ import org.apache.http.entity.ContentType;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClientBuilder;
+import org.jboss.logging.Logger;
 import org.junit.Before;
 import org.keycloak.TokenVerifier;
 import org.keycloak.admin.client.resource.ClientResource;
@@ -93,8 +94,11 @@ import static org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerEndpoint.CREDENT
 public abstract class OID4VCIssuerEndpointTest extends OID4VCTest {
 
     protected static final TimeProvider TIME_PROVIDER = new OID4VCTest.StaticTimeProvider(1000);
+    private static final Logger LOGGER = Logger.getLogger(OID4VCIssuerEndpointTest.class);
     protected CloseableHttpClient httpClient;
     public static String clientId = "did:web:test.org";
+    public static String verifiableCredentialScopeName = "VerifiableCredential";
+    public static String testCredentialScopeName = "test-credential";
 
 
     @Before
@@ -104,24 +108,15 @@ public abstract class OID4VCIssuerEndpointTest extends OID4VCTest {
         ClientRepresentation client = testRealm().clients().findByClientId(clientId).get(0);
 
         // Register the optional client scopes
-        String verifiableCredentialScopeId1 = registerOptionalClientScope("VerifiableCredential", client.getClientId());
-        String testCredentialScopeId1 = registerOptionalClientScope("test-credential", client.getClientId());
+        String verifiableCredentialScopeId = registerOptionalClientScope(verifiableCredentialScopeName, client.getClientId());
+        String testCredentialScopeId = registerOptionalClientScope(testCredentialScopeName, client.getClientId());
 
         // Assign the registered optional client scopes to the client
-        assignOptionalClientScopeToClient(verifiableCredentialScopeId1, client.getClientId());
-        assignOptionalClientScopeToClient(testCredentialScopeId1, client.getClientId());
+        assignOptionalClientScopeToClient(verifiableCredentialScopeId, client.getClientId());
+        assignOptionalClientScopeToClient(testCredentialScopeId, client.getClientId());
 
-        updateTestClient(client.getClientId(), "VerifiableCredential");
-        System.out.println("Client ID Test Context: " + client.getClientId());
-
-        // Retrieve and print optional client scopes
-        List<String> optionalScopes = client.getOptionalClientScopes();
-        System.out.println("Optional Client Scopes in Test Context:");
-        if (optionalScopes == null || optionalScopes.isEmpty()) {
-            System.out.println(" - None");
-        } else {
-            optionalScopes.forEach(scope -> System.out.println(" - " + scope));
-        }
+        updateTestClient(client.getClientId(), verifiableCredentialScopeName);
+        updateTestClient(client.getClientId(), testCredentialScopeName);
     }
 
 
@@ -194,7 +189,6 @@ public abstract class OID4VCIssuerEndpointTest extends OID4VCTest {
                 .clientScopes().findAll();
 
         if (allScopes == null || allScopes.isEmpty()) {
-            System.out.println("No client scopes found in the realm: " + TEST_REALM_NAME);
             return; // Exit early
         }
 
@@ -203,17 +197,12 @@ public abstract class OID4VCIssuerEndpointTest extends OID4VCTest {
                 .map(ClientScopeRepresentation::getName)
                 .toList();
 
-        // Print all retrieved scopes
-        System.out.println("Available scopes in realm: " + TEST_REALM_NAME);
-        availableScopes.forEach(s -> System.out.println(" - " + s));
-
         // Check if the provided scope exists
         if (availableScopes.contains(scope)) {
             clientRepresentation.setOptionalClientScopes(List.of(scope));
-            System.out.println("Scope '" + scope + "' found and set for client: " + clientId);
             clientResource.update(clientRepresentation);
         } else {
-            System.out.println("Scope '" + scope + "' not found in realm: " + TEST_REALM_NAME);
+            LOGGER.warnf("Scope '" + scope + "' not found in realm: " + TEST_REALM_NAME);
         }
     }
 

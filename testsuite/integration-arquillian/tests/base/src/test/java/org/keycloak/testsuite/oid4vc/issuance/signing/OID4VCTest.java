@@ -389,7 +389,7 @@ public abstract class OID4VCTest extends AbstractTestRealmKeycloakTest {
         }
     }
 
-    public static ProtocolMapperRepresentation getUserAttributeMapper(String subjectProperty, String attributeName, String supportedCredentialTypes) {
+    protected static ProtocolMapperRepresentation getUserAttributeMapper(String subjectProperty, String attributeName, String supportedCredentialTypes) {
         ProtocolMapperRepresentation protocolMapperRepresentation = new ProtocolMapperRepresentation();
         protocolMapperRepresentation.setName(supportedCredentialTypes + "-" + attributeName + "-mapper");
         protocolMapperRepresentation.setProtocol("oid4vc");
