@@ -23,12 +23,15 @@ import org.keycloak.protocol.oid4vc.issuance.OffsetTimeProvider;
 import org.keycloak.protocol.oid4vc.model.Format;
 import org.keycloak.provider.ProviderConfigProperty;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
  * @author <a href="mailto:Ingrid.Kamga@adorsys.com">Ingrid Kamga</a>
  */
 public class JwtCredentialBuilderFactory implements CredentialBuilderFactory {
+
+    protected static final List<ProviderConfigProperty> configProperties = new ArrayList<>();
 
     @Override
     public String getSupportedFormat() {
@@ -42,7 +45,7 @@ public class JwtCredentialBuilderFactory implements CredentialBuilderFactory {
 
     @Override
     public List<ProviderConfigProperty> getConfigProperties() {
-        return null;
+        return configProperties;
     }
 
     @Override

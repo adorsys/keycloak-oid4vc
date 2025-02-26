@@ -22,6 +22,7 @@ import org.keycloak.models.KeycloakSession;
 import org.keycloak.protocol.oid4vc.model.Format;
 import org.keycloak.provider.ProviderConfigProperty;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -29,6 +30,7 @@ import java.util.List;
  */
 public class LDCredentialBuilderFactory implements CredentialBuilderFactory {
 
+    protected static final List<ProviderConfigProperty> configProperties = new ArrayList<>();
     @Override
     public String getSupportedFormat() {
         return Format.LDP_VC;
@@ -41,7 +43,7 @@ public class LDCredentialBuilderFactory implements CredentialBuilderFactory {
 
     @Override
     public List<ProviderConfigProperty> getConfigProperties() {
-        return null;
+        return configProperties;
     }
 
     @Override

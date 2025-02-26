@@ -23,6 +23,7 @@ import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerWellKnownProvider;
 import org.keycloak.protocol.oid4vc.model.Format;
 import org.keycloak.provider.ProviderConfigProperty;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -30,6 +31,7 @@ import java.util.List;
  */
 public class SdJwtCredentialBuilderFactory implements CredentialBuilderFactory {
 
+    protected static final List<ProviderConfigProperty> configProperties = new ArrayList<>();
     @Override
     public String getSupportedFormat() {
         return Format.SD_JWT_VC;
@@ -42,7 +44,7 @@ public class SdJwtCredentialBuilderFactory implements CredentialBuilderFactory {
 
     @Override
     public List<ProviderConfigProperty> getConfigProperties() {
-        return null;
+        return configProperties;
     }
 
     @Override
