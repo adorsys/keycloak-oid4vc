@@ -217,13 +217,13 @@ public class OID4VCIssuerEndpoint {
         }
         SupportedCredentialConfiguration supportedCredentialConfiguration = credentialsMap.get(vcId);
 
-        // Ensure that the requested credential type is supported
-        try {
-            getClientScopeModel(supportedCredentialConfiguration);
-        } catch (BadRequestException e) {
-            LOGGER.debugf("No OID4VP-Client supporting type %s registered.", supportedCredentialConfiguration.getScope());
-            throw new BadRequestException(getErrorResponse(ErrorType.UNSUPPORTED_CREDENTIAL_TYPE));
-        }
+//        // Ensure that the requested credential type is supported
+//        try {
+//            getClientScopeModel(supportedCredentialConfiguration);
+//        } catch (BadRequestException e) {
+//            LOGGER.debugf("No OID4VP-Client supporting type %s registered.", supportedCredentialConfiguration.getScope());
+//            throw new BadRequestException(getErrorResponse(ErrorType.UNSUPPORTED_CREDENTIAL_TYPE));
+//        }
 
         // calculate the expiration of the preAuthorizedCode. The sessionCode will also expire at that time.
         int expiration = timeProvider.currentTimeSeconds() + preAuthorizedCodeLifeSpan;
