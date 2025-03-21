@@ -341,6 +341,11 @@
                 <version>${jboss.dmr.version}</version>
             </dependency>
             <dependency>
+                <groupId>org.keycloak</groupId>
+                <artifactId>statuslist-keycloak-provider</artifactId>
+                <version>statuslist-keycloak-provider.version</version>
+            </dependency>
+            <dependency>
                 <groupId>com.sun.istack</groupId>
                 <artifactId>istack-commons-runtime</artifactId>
                 <version>${sun.istack.version}</version>
