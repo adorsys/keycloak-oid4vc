@@ -5,7 +5,6 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import org.keycloak.models.*;
 import org.keycloak.services.resource.RealmResourceProvider;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import org.keycloak.sessions.AuthenticationSessionModel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
