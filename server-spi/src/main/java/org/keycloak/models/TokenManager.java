@@ -70,7 +70,7 @@ public interface TokenManager {
     <T> T decodeClientJWT(String token, ClientModel client, BiConsumer<JOSE, ClientModel> jwtValidator,
             Class<T> clazz);
 
-    String encodeAndEncrypt(Token token);
+    String encodeAndEncrypt(KeycloakSession session, Token token);
     String cekManagementAlgorithm(TokenCategory category);
     String encryptAlgorithm(TokenCategory category);
 

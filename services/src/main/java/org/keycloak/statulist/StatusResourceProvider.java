@@ -4,14 +4,21 @@ import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import org.keycloak.models.*;
+import org.keycloak.representations.AccessToken;
 import org.keycloak.services.resource.RealmResourceProvider;
 import org.keycloak.sessions.AuthenticationSessionModel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @Path("/token-status")
 public class StatusResourceProvider implements RealmResourceProvider {
@@ -209,6 +216,92 @@ public class StatusResourceProvider implements RealmResourceProvider {
         } catch (Exception e) {
             logger.error("Unexpected error in getTokenStatus", e);
             return createErrorResponse(Response.Status.INTERNAL_SERVER_ERROR, "Unexpected error: " + e.getMessage());
+        }
+    }
+
+    @GET
+    @Path("/generate-reference-tokens")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response generateReferenceTokens() {
+        try {
+            validateAdminAccess();
+
+            UserSessionProvider userSessionProvider = session.getProvider(UserSessionProvider.class);
+            RealmModel realm = session.getContext().getRealm();
+
+            // Retrieve all active user sessions
+            List<UserSessionModel> userSessions = userSessionProvider.getUserSessionsStream(realm, (UserModel) null)
+                    .filter(this::isValidSessionForReferenceToken)
+                    .toList();
+
+            if (userSessions.isEmpty()) {
+                return Response.ok("{\"message\": \"No active sessions found.\"}").build();
+            }
+
+            List<String> referenceTokens = new ArrayList<>();
+            for (UserSessionModel userSession : userSessions) {
+                String referenceToken = generateReferenceTokenForSession(userSession);
+                if (referenceToken != null) {
+                    referenceTokens.add(referenceToken);
+                }
+            }
+
+            return Response.ok(referenceTokens).build();
+        } catch (NotAuthorizedException e) {
+            return createErrorResponse(Response.Status.UNAUTHORIZED, e.getMessage());
+        } catch (Exception e) {
+            logger.error("Unexpected error in generateReferenceTokens", e);
+            return createErrorResponse(Response.Status.INTERNAL_SERVER_ERROR, "Unexpected error: " + e.getMessage());
+        }
+    }
+
+    private boolean isValidSessionForReferenceToken(UserSessionModel userSession) {
+        if (userSession == null) return false;
+
+        long currentTime = System.currentTimeMillis() / 1000;
+        long sessionMaxLifespan = userSession.getRealm().getSsoSessionMaxLifespan();
+
+        return !userSession.getNotes().containsKey("suspended") &&
+                (userSession.getLastSessionRefresh() + sessionMaxLifespan > currentTime);
+    }
+
+    private String generateReferenceTokenForSession(UserSessionModel userSession) {
+        try {
+            // Get the user associated with the session
+            UserModel user = userSession.getUser();
+            if (user == null) {
+                logger.warn("No user found for session: {}", userSession.getId());
+                return null;
+            }
+
+            // Create an access token directly
+            AccessToken accessToken = new AccessToken();
+
+            // Set basic token information
+            accessToken.subject(user.getId())
+                    .issuer(session.getContext().getRealm().getName())
+                    .audience(session.getContext().getRealm().getName());
+
+            // Add realm roles if needed
+            if (user.getRoleMappingsStream() != null) {
+                AccessToken.Access realmAccess = new AccessToken.Access();
+                user.getRoleMappingsStream()
+                        .map(RoleModel::getName)
+                        .forEach(realmAccess::addRole);
+                accessToken.setRealmAccess(realmAccess);
+            }
+
+            // Optional: Add client-specific information if needed
+            ClientModel client = session.getContext().getClient();
+            if (client != null) {
+                AccessToken.Access resourceAccess = new AccessToken.Access();
+                accessToken.setResourceAccess(Map.of(client.getClientId(), resourceAccess));
+            }
+
+            return session.tokens().encode(accessToken);
+        } catch (Exception e) {
+            logger.error("Error generating reference token for session: {}", userSession.getId(), e);
+            return null;
         }
     }
 
