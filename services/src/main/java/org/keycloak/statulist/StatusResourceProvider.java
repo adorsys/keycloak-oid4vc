@@ -175,7 +175,6 @@ public class StatusResourceProvider implements RealmResourceProvider {
             return false;
         }
     }
-
     @GET
     @Produces(MediaType.APPLICATION_JSON)
     public Response getTokenStatus(@QueryParam("token") String tokenId) {
