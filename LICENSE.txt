@@ -200,13 +200,3 @@
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
-
-
-
-  public void testGetTokenStatus_ValidToken()
-  public void testGetTokenStatus_SuspendedToken()
-   public void testGetTokenStatus_NonExistentToken()
-       public void testPublishTokenStatus_ValidToken()
-        public void testPublishTokenStatus_NonExistentToken()
-            public void testUpdateTokenState_RevokeAction()
-                public void testUpdateTokenState_SuspendAction()

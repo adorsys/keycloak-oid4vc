@@ -1,7 +1,7 @@
 package org.keycloak.services.Statuslist;
 
+import org.junit.Assert;
 import org.junit.Test;
-import org.junit.jupiter.api.Assertions;
 import org.keycloak.component.ComponentModel;
 import org.keycloak.models.ClientProvider;
 import org.keycloak.models.ClientScopeProvider;
@@ -33,8 +33,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-
 
 public class StatusResourceProviderFactoryTest {
 
@@ -43,14 +41,14 @@ public class StatusResourceProviderFactoryTest {
         StatusResourceProviderFactory factory = new StatusResourceProviderFactory();
 
         // Test ID
-        Assertions.assertEquals("token-status", factory.getId());
+        Assert.assertEquals("token-status", factory.getId());
 
         // Test resource provider creation
         KeycloakSession mockSession = createMockSession();
         RealmResourceProvider provider = factory.create(mockSession);
 
-        Assertions.assertNotNull(provider);
-        assertInstanceOf(StatusResourceProvider.class, provider);
+        Assert.assertNotNull(provider);
+        Assert.assertTrue(provider instanceof StatusResourceProvider);
     }
 
    // mock session helper

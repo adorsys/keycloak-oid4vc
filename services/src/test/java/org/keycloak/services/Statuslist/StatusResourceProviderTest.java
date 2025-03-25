@@ -3,8 +3,7 @@ package org.keycloak.services.Statuslist;
 import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.Response;
 import org.junit.Test;
-import org.junit.Test;
-import org.junit.jupiter.api.Assertions;
+import org.junit.Assert;
 import org.keycloak.Token;
 import org.keycloak.common.ClientConnection;
 import org.keycloak.common.enums.SslRequired;
@@ -86,8 +85,8 @@ public class StatusResourceProviderTest {
         Response response = provider.publishTokenStatus(null);
 
         // Assert
-        Assertions.assertEquals(Response.Status.BAD_REQUEST.getStatusCode(), response.getStatus());
-        Assertions.assertTrue(response.getEntity().toString().contains("Token ID is required"));
+        Assert.assertEquals(Response.Status.BAD_REQUEST.getStatusCode(), response.getStatus());
+        Assert.assertTrue(response.getEntity().toString().contains("Token ID is required"));
     }
 
     @Test
@@ -102,8 +101,8 @@ public class StatusResourceProviderTest {
         Response response = provider.publishTokenStatus(request);
 
         // Assert
-        Assertions.assertEquals(Response.Status.BAD_REQUEST.getStatusCode(), response.getStatus());
-        Assertions.assertTrue(response.getEntity().toString().contains("Token ID is required"));
+        Assert.assertEquals(Response.Status.BAD_REQUEST.getStatusCode(), response.getStatus());
+        Assert.assertTrue(response.getEntity().toString().contains("Token ID is required"));
     }
 
     @Test
@@ -119,8 +118,8 @@ public class StatusResourceProviderTest {
         Response response = provider.updateTokenState(request);
 
         // Assert
-        Assertions.assertEquals(Response.Status.BAD_REQUEST.getStatusCode(), response.getStatus());
-        Assertions.assertTrue(response.getEntity().toString().contains("Invalid action"));
+        Assert.assertEquals(Response.Status.BAD_REQUEST.getStatusCode(), response.getStatus());
+        Assert.assertTrue(response.getEntity().toString().contains("Invalid action"));
     }
 
     @Test
@@ -133,8 +132,8 @@ public class StatusResourceProviderTest {
         Response response = provider.getTokenStatus(null);
 
         // Assert
-        Assertions.assertEquals(Response.Status.BAD_REQUEST.getStatusCode(), response.getStatus());
-        Assertions.assertTrue(response.getEntity().toString().contains("Token ID is required"));
+        Assert.assertEquals(Response.Status.BAD_REQUEST.getStatusCode(), response.getStatus());
+        Assert.assertTrue(response.getEntity().toString().contains("Token ID is required"));
     }
 
     @Test
@@ -149,8 +148,8 @@ public class StatusResourceProviderTest {
         Response response = provider.getTokenStatus(String.valueOf(request));
 
         // Assert
-        Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
-        Assertions.assertNotNull(response.getEntity());
+        Assert.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
+        Assert.assertNotNull(response.getEntity());
     }
 
     @Test
@@ -167,8 +166,8 @@ public class StatusResourceProviderTest {
         Response response = provider.publishTokenStatus(request);
 
         // Assert
-        Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
-        Assertions.assertNotNull(response.getEntity());
+        Assert.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
+        Assert.assertNotNull(response.getEntity());
     }
 
     // Helper method to create a basic mock session
