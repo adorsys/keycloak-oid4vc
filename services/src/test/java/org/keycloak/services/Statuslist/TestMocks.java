@@ -1644,6 +1644,16 @@ public class TestMocks {
         }
 
         @Override
+        public UserModel getAuthenticatedUser() {
+            return null;
+        }
+
+        @Override
+        public void setAuthenticatedUser(UserModel user) {
+
+        }
+
+        @Override
         public Map<String, AuthenticationSessionModel.ExecutionStatus> getExecutionStatus() {
             return executionStatuses;
         }
@@ -1670,13 +1680,6 @@ public class TestMocks {
 
         @Override
         public void setProtocol(String method) {
-
-        }
-
-        @Override public UserModel getAuthenticatedUser() { return null; }
-
-        @Override
-        public void setAuthenticatedUser(UserModel user) {
 
         }
 
@@ -1775,7 +1778,7 @@ public class TestMocks {
 
         }
     }
-    public class MockClientModel implements ClientModel {
+    public static class MockClientModel implements ClientModel {
         @Override
         public void updateClient() {
 
@@ -2237,7 +2240,5 @@ public class TestMocks {
             return false;
         }
 
-        // Implement other required methods
-        // ...
     }
 }

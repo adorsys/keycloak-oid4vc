@@ -14,12 +14,16 @@ public class MockUserSessionModel implements UserSessionModel {
     private final long lastSessionRefresh;
     private final Map<String, String> notes;
     private final RealmModel realm;
+    private long sessionMaxLifespan;
 
     public MockUserSessionModel(String id, long lastSessionRefresh, Map<String, String> notes, RealmModel realm) {
         this.id = id;
         this.lastSessionRefresh = lastSessionRefresh;
         this.notes = notes != null ? notes : new HashMap<>();
         this.realm = realm;
+
+        // Default session max lifespan to 1 hour
+        this.sessionMaxLifespan = 3600;
     }
 
     @Override
@@ -33,6 +37,11 @@ public class MockUserSessionModel implements UserSessionModel {
     }
 
     @Override
+    public int getLastSessionRefresh() {
+        return (int) lastSessionRefresh;
+    }
+
+    @Override
     public String getBrokerSessionId() {
         return "";
     }
@@ -43,13 +52,8 @@ public class MockUserSessionModel implements UserSessionModel {
     }
 
     @Override
-    public int getLastSessionRefresh() {
-        return (int) lastSessionRefresh;
-    }
-
-    @Override
     public void setLastSessionRefresh(int seconds) {
-
+        // No-op for mock
     }
 
     @Override
@@ -64,22 +68,22 @@ public class MockUserSessionModel implements UserSessionModel {
 
     @Override
     public void removeAuthenticatedClientSessions(Collection<String> removedClientUUIDS) {
-
+        // No-op for mock
     }
 
     @Override
     public String getNote(String name) {
-        return "";
+        return notes.getOrDefault(name, "");
     }
 
     @Override
     public void setNote(String name, String value) {
-
+        notes.put(name, value);
     }
 
     @Override
     public void removeNote(String name) {
-
+        notes.remove(name);
     }
 
     @Override
@@ -94,12 +98,12 @@ public class MockUserSessionModel implements UserSessionModel {
 
     @Override
     public void setState(State state) {
-
+        // No-op for mock
     }
 
     @Override
     public void restartSession(RealmModel realm, UserModel user, String loginUsername, String ipAddress, String authMethod, boolean rememberMe, String brokerSessionId, String brokerUserId) {
-
+        // No-op for mock
     }
 
     @Override
@@ -130,5 +134,10 @@ public class MockUserSessionModel implements UserSessionModel {
     @Override
     public int getStarted() {
         return 0;
+    }
+
+    // Add a method to set custom session max lifespan for testing
+    public void setSessionMaxLifespan(long seconds) {
+        this.sessionMaxLifespan = seconds;
     }
 }
