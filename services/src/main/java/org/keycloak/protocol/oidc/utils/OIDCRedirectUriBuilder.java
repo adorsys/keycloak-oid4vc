@@ -240,14 +240,14 @@ public abstract class OIDCRedirectUriBuilder {
         }
 
         private Response buildQueryResponse() {
-            uriBuilder.queryParam("response", session.tokens().encodeAndEncrypt(responseJWT));
+            uriBuilder.queryParam("response", session.tokens().encodeAndEncrypt(session, responseJWT));
             URI redirectUri = uriBuilder.build();
             Response.ResponseBuilder location = Response.status(302).location(redirectUri);
             return location.build();
         }
 
         private Response buildFragmentResponse() {
-            uriBuilder.encodedFragment("response=" + Encode.encodeQueryParamAsIs(session.tokens().encodeAndEncrypt(responseJWT)));
+            uriBuilder.encodedFragment("response=" + Encode.encodeQueryParamAsIs(session.tokens().encodeAndEncrypt(session, responseJWT)));
             URI redirectUri = uriBuilder.build();
             Response.ResponseBuilder location = Response.status(302).location(redirectUri);
             return location.build();
@@ -268,7 +268,7 @@ public abstract class OIDCRedirectUriBuilder {
                     .append("\">");
 
             builder.append("  <INPUT TYPE=\"HIDDEN\" NAME=\"response\" VALUE=\"")
-                    .append(HtmlUtils.escapeAttribute(session.tokens().encodeAndEncrypt(responseJWT)))
+                    .append(HtmlUtils.escapeAttribute(session.tokens().encodeAndEncrypt(session, responseJWT)))
                     .append("\" />");
 
             builder.append("      <NOSCRIPT>");

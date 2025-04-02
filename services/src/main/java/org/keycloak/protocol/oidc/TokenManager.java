@@ -1316,7 +1316,7 @@ public class TokenManager {
                 idToken.setStateHash(stateHash);
             }
             if (idToken != null) {
-                String encodedToken = session.tokens().encodeAndEncrypt(idToken);
+                String encodedToken = session.tokens().encodeAndEncrypt(session, idToken);
                 res.setIdToken(encodedToken);
             }
             if (refreshToken != null) {

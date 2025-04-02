@@ -42,7 +42,6 @@ import org.keycloak.models.ClientModel;
 import org.keycloak.models.ClientSessionContext;
 import org.keycloak.models.Constants;
 import org.keycloak.models.KeycloakSession;
-import org.keycloak.models.ProtocolMapperModel;
 import org.keycloak.models.RealmModel;
 import org.keycloak.models.TokenManager;
 import org.keycloak.models.UserModel;
@@ -51,7 +50,6 @@ import org.keycloak.protocol.ProtocolMapperUtils;
 import org.keycloak.protocol.oidc.OIDCAdvancedConfigWrapper;
 import org.keycloak.protocol.oidc.OIDCConfigAttributes;
 import org.keycloak.protocol.oidc.OIDCLoginProtocol;
-import org.keycloak.protocol.oidc.mappers.AbstractPairwiseSubMapper;
 import org.keycloak.protocol.oidc.mappers.LogoutTokenMapper;
 import org.keycloak.representations.LogoutToken;
 import org.keycloak.services.util.DefaultClientSessionContext;
@@ -234,7 +232,7 @@ public class DefaultTokenManager implements TokenManager {
     }
 
     @Override
-    public String encodeAndEncrypt(Token token) {
+    public String encodeAndEncrypt(KeycloakSession session, Token token) {
         String encodedToken = encode(token);
         if (isTokenEncryptRequired(token.getCategory())) {
             encodedToken = getEncryptedToken(token.getCategory(), encodedToken);
