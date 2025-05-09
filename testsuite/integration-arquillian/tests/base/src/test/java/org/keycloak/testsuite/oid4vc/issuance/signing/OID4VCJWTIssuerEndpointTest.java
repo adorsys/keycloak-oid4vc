@@ -30,9 +30,11 @@ import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.message.BasicNameValuePair;
+import org.junit.Assert;
 import org.junit.Test;
 import org.keycloak.OAuth2Constants;
 import org.keycloak.TokenVerifier;
+import org.keycloak.admin.client.resource.RealmResource;
 import org.keycloak.common.VerificationException;
 import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerEndpoint;
 import org.keycloak.protocol.oid4vc.model.BatchCredentialRequest;
@@ -50,12 +52,14 @@ import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
 import org.keycloak.protocol.oidc.grants.PreAuthorizedCodeGrantTypeFactory;
 import org.keycloak.protocol.oidc.representations.OIDCConfigurationRepresentation;
 import org.keycloak.representations.JsonWebToken;
+import org.keycloak.representations.idm.RealmRepresentation;
 import org.keycloak.services.managers.AppAuthManager;
 import org.keycloak.testsuite.util.oauth.AccessTokenResponse;
 import org.keycloak.util.JsonSerialization;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -615,11 +619,21 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
 
     @Test
     public void testCredentialIssuanceWithAuthZCodeWithScopeMatched() throws Exception {
-        testCredentialIssuanceWithAuthZCodeFlow((testClientId, testScope) -> getBearerToken(oauth.clientId(testClientId).openid(false).scope(testScope)),
+        // Set the realm attribute for the required scope
+        RealmResource realm = adminClient.realm(TEST_REALM_NAME);
+        RealmRepresentation rep = realm.toRepresentation();
+        Map<String, String> attributes = rep.getAttributes() != null ? new HashMap<>(rep.getAttributes()) : new HashMap<>();
+        attributes.put("vc.test-credential.scope", "VerifiableCredential");
+        rep.setAttributes(attributes);
+        realm.update(rep);
+
+        testCredentialIssuanceWithAuthZCodeFlow(
+                (testClientId, testScope) -> getBearerToken(oauth.clientId(testClientId).openid(false).scope("VerifiableCredential")),
                 m -> {
                     String accessToken = (String) m.get("accessToken");
                     WebTarget credentialTarget = (WebTarget) m.get("credentialTarget");
                     CredentialRequest credentialRequest = (CredentialRequest) m.get("credentialRequest");
+                    assertEquals("Credential identifier should match", "test-credential", credentialRequest.getCredentialIdentifier());
 
                     try (Response response = credentialTarget.request()
                             .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
@@ -637,7 +651,6 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
                         assertEquals("john@email.cz", credential.getCredentialSubject().getClaims().get("email"));
                     } catch (IOException | VerificationException e) {
                         fail("Failed to process credential response: " + e.getMessage());
-                    }
                 });
     }
 
@@ -665,6 +678,63 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
 
                     try (Response response = credentialTarget.request().header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken).post(Entity.json(credentialRequest))) {
                         assertEquals(400, response.getStatus());
+                    }
+                });
+    }
+
+    @Test
+    public void testCredentialIssuanceWithRealmScopeUnmatched() throws Exception {
+        // Set the realm attribute for the required scope
+        RealmResource realm = adminClient.realm(TEST_REALM_NAME);
+        RealmRepresentation rep = realm.toRepresentation();
+        Map<String, String> attributes = rep.getAttributes() != null ? new HashMap<>(rep.getAttributes()) : new HashMap<>();
+        attributes.put("vc.test-credential.scope", "VerifiableCredential");
+        rep.setAttributes(attributes);
+        realm.update(rep);
+
+        // Run the flow with a non-matching scope
+        testCredentialIssuanceWithAuthZCodeFlow((testClientId, testScope) -> getBearerToken(oauth.clientId(testClientId).openid(false).scope("email")),
+                m -> {
+                    String accessToken = (String) m.get("accessToken");
+                    WebTarget credentialTarget = (WebTarget) m.get("credentialTarget");
+                    CredentialRequest credentialRequest = (CredentialRequest) m.get("credentialRequest");
+
+                    try (Response response = credentialTarget.request().header(HttpHeaders.AUTHORIZATION, "bearer " + accessToken).post(Entity.json(credentialRequest))) {
+                        assertEquals(400, response.getStatus());
+                        String errorJson = response.readEntity(String.class);
+                        assertNotNull("Error response should not be null", errorJson);
+                        assertTrue("Error response should mention UNSUPPORTED_CREDENTIAL_TYPE or scope",
+                                errorJson.contains("UNSUPPORTED_CREDENTIAL_TYPE") || errorJson.contains("scope"));
+                    }
+                });
+    }
+
+    @Test
+    public void testCredentialIssuanceWithRealmScopeMissing() throws Exception {
+        // Remove the realm attribute for the required scope
+        RealmResource realm = adminClient.realm(TEST_REALM_NAME);
+        RealmRepresentation rep = realm.toRepresentation();
+        Map<String, String> attributes = rep.getAttributes() != null ? new HashMap<>(rep.getAttributes()) : new HashMap<>();
+        attributes.remove("vc.test-credential.scope");
+        rep.setAttributes(attributes);
+        realm.update(rep);
+
+        // Run the flow with a scope in the access token, but no realm attribute
+        testCredentialIssuanceWithAuthZCodeFlow((testClientId, testScope) -> getBearerToken(oauth.clientId(testClientId).openid(false).scope("VerifiableCredential")),
+                m -> {
+                    String accessToken = (String) m.get("accessToken");
+                    WebTarget credentialTarget = (WebTarget) m.get("credentialTarget");
+                    CredentialRequest credentialRequest = (CredentialRequest) m.get("credentialRequest");
+
+                    try (Response response = credentialTarget.request().header(HttpHeaders.AUTHORIZATION, "bearer " + accessToken).post(Entity.json(credentialRequest))) {
+                        assertEquals(400, response.getStatus());
+                        String errorJson = response.readEntity(String.class);
+                        Map<String, Object> errorMap = JsonSerialization.readValue(errorJson, Map.class);
+                        assertTrue("Error should contain 'error' field", errorMap.containsKey("error"));
+                        assertEquals("UNSUPPORTED_CREDENTIAL_TYPE", errorMap.get("error"));
+                        assertEquals("Scope check failure", errorMap.get("error_description"));
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
                     }
                 });
     }
