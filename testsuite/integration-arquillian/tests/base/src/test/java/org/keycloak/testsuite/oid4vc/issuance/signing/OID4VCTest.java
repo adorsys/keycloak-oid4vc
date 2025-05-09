@@ -201,16 +201,29 @@ public abstract class OID4VCTest extends AbstractTestRealmKeycloakTest {
     }
 
     public static Map<String, String> getTestCredentialDefinitionAttributes() {
-        return Map.of(
-                "vc.test-credential.expiry_in_s", "100",
-                "vc.test-credential.format", Format.JWT_VC,
-                "vc.test-credential.scope", "VerifiableCredential",
-                "vc.test-credential.claims", "{ \"firstName\": {\"mandatory\": false, \"display\": [{\"name\": \"First Name\", \"locale\": \"en-US\"}, {\"name\": \"名前\", \"locale\": \"ja-JP\"}]}, \"lastName\": {\"mandatory\": false}, \"email\": {\"mandatory\": false} }",
-                "vc.test-credential.display.0","{\n  \"name\": \"Test Credential\"\n}",
-                "vc.test-credential.credential_build_config.token_jws_type", "JWT",
-                "vc.test-credential.credential_build_config.signing_algorithm", "RS256"
-                // Moved sd-jwt specific attributes to: org.keycloak.testsuite.oid4vc.issuance.signing.OID4VCSdJwtIssuingEndpointTest.getTestCredentialSigningProvider
-        );
+        Map<String, String> attributes = new HashMap<>();
+
+        // Attributes for test-credential
+        attributes.put("vc.test-credential.expiry_in_s", "100");
+        attributes.put("vc.test-credential.format", Format.JWT_VC);
+        attributes.put("vc.test-credential.scope", "VerifiableCredential");
+        attributes.put("vc.test-credential.claims", "{ \"firstName\": {\"mandatory\": false, \"display\": [{\"name\": \"First Name\", \"locale\": \"en-US\"}, {\"name\": \"名前\", \"locale\": \"ja-JP\"}]}, \"lastName\": {\"mandatory\": false}, \"email\": {\"mandatory\": false} }");
+        attributes.put("vc.test-credential.display.0", "{\n  \"name\": \"Test Credential\"\n}");
+        attributes.put("vc.test-credential.credential_build_config.token_jws_type", "JWT");
+        attributes.put("vc.test-credential.credential_build_config.signing_algorithm", "RS256");
+        attributes.put("vc.test-credential.deferred_issuance", "false");
+
+        // Attributes for test-credential-2
+        attributes.put("vc.test-credential-2.expiry_in_s", "100");
+        attributes.put("vc.test-credential-2.format", Format.JWT_VC);
+        attributes.put("vc.test-credential-2.scope", "test-credential-2");
+        attributes.put("vc.test-credential-2.claims", "{ \"firstName\": {\"mandatory\": false, \"display\": [{\"name\": \"First Name\", \"locale\": \"en-US\"}, {\"name\": \"名前\", \"locale\": \"ja-JP\"}]}, \"lastName\": {\"mandatory\": false}, \"email\": {\"mandatory\": false} }");
+        attributes.put("vc.test-credential-2.display.0", "{\n  \"name\": \"Test Credential 2\"\n}");
+        attributes.put("vc.test-credential-2.credential_build_config.token_jws_type", "JWT");
+        attributes.put("vc.test-credential-2.credential_build_config.signing_algorithm", "RS256");
+        attributes.put("vc.test-credential-2.deferred_issuance", "false");
+
+        return attributes;
     }
 
     protected ComponentExportRepresentation getEdDSAKeyProvider() {
@@ -277,7 +290,7 @@ public abstract class OID4VCTest extends AbstractTestRealmKeycloakTest {
                     getIdMapper(VERIFIABLE_CREDENTIAL),
                     getStaticClaimMapper(scopeName, VERIFIABLE_CREDENTIAL)
             );
-            default -> List.of(); // No mappers for unknown scopes
+            default -> List.of();
         };
     }
 

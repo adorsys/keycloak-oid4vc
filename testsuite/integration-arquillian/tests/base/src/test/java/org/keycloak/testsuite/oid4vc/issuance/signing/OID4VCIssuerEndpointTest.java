@@ -48,6 +48,7 @@ import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerWellKnownProviderFactor
 import org.keycloak.protocol.oid4vc.issuance.TimeProvider;
 import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.CredentialBuilder;
 import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.JwtCredentialBuilder;
+import org.keycloak.protocol.oid4vc.model.BatchCredentialResponse;
 import org.keycloak.protocol.oid4vc.model.CredentialIssuer;
 import org.keycloak.protocol.oid4vc.model.CredentialRequest;
 import org.keycloak.protocol.oid4vc.model.CredentialResponse;
@@ -78,6 +79,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -99,8 +101,11 @@ public abstract class OID4VCIssuerEndpointTest extends OID4VCTest {
     protected static final TimeProvider TIME_PROVIDER = new OID4VCTest.StaticTimeProvider(1000);
     protected CloseableHttpClient httpClient;
     public static String verifiableCredentialScopeName = "VerifiableCredential";
-    public static String testCredentialScopeName = "test-credential";
-
+    public static List<String> testCredentialScopeName = new ArrayList<>(Arrays.asList(
+            "test-credential",
+            "test-credential-2"
+    ));
+    public static String anotherCredentialScopeName = "AnotherCredential";
 
     @Before
     public void setup() {
@@ -110,13 +115,18 @@ public abstract class OID4VCIssuerEndpointTest extends OID4VCTest {
 
         // Register the optional client scopes
         String verifiableCredentialScopeId = registerOptionalClientScope(verifiableCredentialScopeName, client.getClientId());
-        String testCredentialScopeId = registerOptionalClientScope(testCredentialScopeName, client.getClientId());
+        String anotherCredentialScopeId = registerOptionalClientScope(anotherCredentialScopeName, client.getClientId());
 
-        // Assign the registered optional client scopes to the client
+        // Register all test credentials from the list
+        for (String scopeName : testCredentialScopeName) {
+            String scopeId = registerOptionalClientScope(scopeName, client.getClientId());
+            assignOptionalClientScopeToClient(scopeId, client.getClientId());
+        }
+
+        // Assign the standard scopes
         assignOptionalClientScopeToClient(verifiableCredentialScopeId, client.getClientId());
-        assignOptionalClientScopeToClient(testCredentialScopeId, client.getClientId());
+        assignOptionalClientScopeToClient(anotherCredentialScopeId, client.getClientId());
     }
-
 
     protected String getBearerToken(OAuthClient oAuthClient) {
         AuthorizationEndpointResponse authorizationEndpointResponse = oAuthClient.doLogin("john", "password");
@@ -287,8 +297,8 @@ public abstract class OID4VCIssuerEndpointTest extends OID4VCTest {
 
     protected static OID4VCIssuerEndpoint prepareIssuerEndpoint(KeycloakSession session, AppAuthManager.BearerTokenAuthenticator authenticator) {
         JwtCredentialBuilder jwtCredentialBuilder = new JwtCredentialBuilder(
-            TEST_DID.toString(), 
-            new StaticTimeProvider(1000));
+                TEST_DID.toString(),
+                new StaticTimeProvider(1000));
 
         return prepareIssuerEndpoint(
                 session,
@@ -332,7 +342,10 @@ public abstract class OID4VCIssuerEndpointTest extends OID4VCTest {
         CloseableHttpResponse credentialRequestResponse = httpClient.execute(postCredential);
         assertEquals(HttpStatus.SC_OK, credentialRequestResponse.getStatusLine().getStatusCode());
         String s = IOUtils.toString(credentialRequestResponse.getEntity().getContent(), StandardCharsets.UTF_8);
-        CredentialResponse credentialResponse = JsonSerialization.readValue(s, CredentialResponse.class);
+        BatchCredentialResponse batchResponse = JsonSerialization.readValue(s, BatchCredentialResponse.class);
+        assertNotNull("Credentials should be returned.", batchResponse.getCredentials());
+        assertEquals("One credential should be returned.", 1, batchResponse.getCredentials().size());
+        CredentialResponse credentialResponse = batchResponse.getCredentials().get(0);
 
         // Use response handler to customize checks based on formats.
         responseHandler.handleCredentialResponse(credentialResponse);

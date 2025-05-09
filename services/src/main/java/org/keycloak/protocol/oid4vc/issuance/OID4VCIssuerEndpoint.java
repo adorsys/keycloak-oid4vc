@@ -58,6 +58,7 @@ import org.keycloak.protocol.oid4vc.issuance.mappers.OID4VCMapper;
 import org.keycloak.protocol.oid4vc.issuance.signing.CredentialSigner;
 import org.keycloak.protocol.oid4vc.model.BatchCredentialRequest;
 import org.keycloak.protocol.oid4vc.model.BatchCredentialResponse;
+import org.keycloak.protocol.oid4vc.model.CredentialBuildConfig;
 import org.keycloak.protocol.oid4vc.model.CredentialOfferURI;
 import org.keycloak.protocol.oid4vc.model.CredentialRequest;
 import org.keycloak.protocol.oid4vc.model.CredentialResponse;
@@ -325,80 +326,75 @@ public class OID4VCIssuerEndpoint {
         LOGGER.debugf("Received credential request: %s", requestBody);
         cors = Cors.builder().auth().allowedMethods("POST").auth().exposedHeaders(Cors.ACCESS_CONTROL_ALLOW_METHODS);
 
-        // Authenticate client
-        AuthenticationManager.AuthResult authResult = getAuthResult();
-        Map<String, SupportedCredentialConfiguration> supportedCredentials = OID4VCIssuerWellKnownProvider.getSupportedCredentials(session);
-
         try {
-            // Try parsing as BatchCredentialRequest
-            BatchCredentialRequest batchRequest;
-            try {
-                batchRequest = JsonSerialization.mapper.readValue(requestBody, BatchCredentialRequest.class);
-            } catch (JsonProcessingException e) {
-                // Fallback to single CredentialRequest for backward compatibility
-                CredentialRequest singleRequest = JsonSerialization.mapper.readValue(requestBody, CredentialRequest.class);
-                batchRequest = new BatchCredentialRequest().setCredentialRequests(List.of(singleRequest));
-            }
+            // Parse request as either single or batch
+            BatchCredentialRequest batchRequest = parseRequest(requestBody);
 
-            List<CredentialRequest> credentialRequests = batchRequest.getCredentialRequests();
-            if (credentialRequests == null || credentialRequests.isEmpty()) {
-                throw new BadRequestException(getErrorResponse(ErrorType.INVALID_CREDENTIAL_REQUEST));
-            }
+            // Authenticate client
+            AuthenticationManager.AuthResult authResult = getAuthResult();
+            Map<String, SupportedCredentialConfiguration> supportedCredentials =
+                    OID4VCIssuerWellKnownProvider.getSupportedCredentials(session);
 
             List<CredentialResponse> credentialResponses = new ArrayList<>();
             boolean isDeferred = false;
-
-            // Extract nonce from access token for reuse
-            String cNonce = Optional.ofNullable(authResult.getToken().getNonce()).orElse(null);
-            String cNonceExpiresIn = cNonce != null ? String.valueOf(DEFAULT_NONCE_LIFESPAN_S) : null;
+            String transactionId = null;
 
             // Process each credential request
-            for (CredentialRequest request : credentialRequests) {
+            for (CredentialRequest request : batchRequest.getCredentialRequests()) {
                 if (!isIgnoreScopeCheck) {
                     checkScope(request);
                 }
 
-                // Resolve credential configuration
                 SupportedCredentialConfiguration config = resolveCredentialConfiguration(request, supportedCredentials);
                 if (config == null) {
                     throw new BadRequestException(getErrorResponse(ErrorType.UNSUPPORTED_CREDENTIAL_TYPE));
                 }
 
-                // Check for deferred issuance
                 if (isDeferredIssuance(config)) {
                     isDeferred = true;
-                    break;
+                    transactionId = generateTransactionId();
+                    continue;
                 }
 
-                // Issue credential
-                Object credential = getCredential(authResult, config, request);
-                CredentialResponse response = new CredentialResponse()
-                        .setCredential(credential)
-                        .setcNonce(cNonce)
-                        .setcNonceExpiresIn(cNonceExpiresIn);
-                credentialResponses.add(response);
+                // Only issue credential if not deferred
+                if (!isDeferred) {
+                    Object credential = getCredential(authResult, config, request);
+                    CredentialResponse response = new CredentialResponse()
+                            .setCredential(credential)
+                            .setcNonce(authResult.getToken().getNonce())
+                            .setcNonceExpiresIn(String.valueOf(DEFAULT_NONCE_LIFESPAN_S));
+                    credentialResponses.add(response);
+                }
             }
 
             // Build response
+            BatchCredentialResponse batchResponse = new BatchCredentialResponse();
             if (isDeferred) {
-                return Response.ok(new BatchCredentialResponse().setTransactionId(generateTransactionId())).build();
-            }
-
-            BatchCredentialResponse batchResponse = new BatchCredentialResponse()
-                    .setCredentials(credentialResponses);
-            if (credentialResponses.size() > 1) {
-                batchResponse.setNotificationId(generateNotificationId());
+                batchResponse.setTransactionId(transactionId);
+            } else {
+                batchResponse.setCredentials(credentialResponses);
+                if (credentialResponses.size() > 1) {
+                    batchResponse.setNotificationId(generateNotificationId());
+                }
             }
 
             return Response.ok(batchResponse).build();
         } catch (JsonProcessingException e) {
-            LOGGER.errorf("Failed to parse credential request: %s", e.getMessage());
             throw new BadRequestException(getErrorResponse(ErrorType.INVALID_CREDENTIAL_REQUEST));
         } catch (BadRequestException e) {
             throw e;
         } catch (Exception e) {
-            LOGGER.errorf("Error processing credential request: %s", e.getMessage());
             throw new BadRequestException(getErrorResponse(ErrorType.INVALID_CREDENTIAL_REQUEST));
+        }
+    }
+
+    private BatchCredentialRequest parseRequest(String requestBody) throws JsonProcessingException {
+        try {
+            return JsonSerialization.mapper.readValue(requestBody, BatchCredentialRequest.class);
+        } catch (JsonProcessingException e) {
+            // Fallback to single CredentialRequest for backward compatibility
+            CredentialRequest singleRequest = JsonSerialization.mapper.readValue(requestBody, CredentialRequest.class);
+            return new BatchCredentialRequest().setCredentialRequests(List.of(singleRequest));
         }
     }
 
@@ -694,12 +690,7 @@ public class OID4VCIssuerEndpoint {
 
     private boolean isDeferredIssuance(SupportedCredentialConfiguration config) {
         return Optional.ofNullable(config.getCredentialBuildConfig())
-                .map(buildConfig -> {
-                    String prefix = config.getId() + "." + SupportedCredentialConfiguration.CREDENTIAL_BUILD_CONFIG_KEY + ".";
-                    Map<String, String> configMap = buildConfig.toDotNotation();
-                    return configMap.get(prefix + "deferred_issuance") != null &&
-                            Boolean.parseBoolean(configMap.get(prefix + "deferred_issuance"));
-                })
+                .map(CredentialBuildConfig::getDeferredIssuance)
                 .orElse(false);
     }
 
