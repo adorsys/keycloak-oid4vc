@@ -37,6 +37,8 @@ import org.keycloak.TokenVerifier;
 import org.keycloak.admin.client.resource.RealmResource;
 import org.keycloak.common.VerificationException;
 import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerEndpoint;
+import org.keycloak.protocol.oid4vc.model.BatchCredentialRequest;
+import org.keycloak.protocol.oid4vc.model.BatchCredentialResponse;
 import org.keycloak.protocol.oid4vc.model.CredentialIssuer;
 import org.keycloak.protocol.oid4vc.model.CredentialOfferURI;
 import org.keycloak.protocol.oid4vc.model.CredentialRequest;
@@ -65,11 +67,12 @@ import java.util.Map;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 /**
- * Test from org.keycloak.testsuite.oid4vc.issuance.signing.OID4VCIssuerEndpointTest
+ * Test for OID4VCIssuerEndpoint with JWT credentials
  */
 public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
 
@@ -86,7 +89,6 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
                     OID4VCIssuerEndpoint oid4VCIssuerEndpoint = prepareIssuerEndpoint(session, authenticator);
                     oid4VCIssuerEndpoint.getCredentialOfferURI("inexistent-id", OfferUriType.URI, 0, 0);
                 })));
-
     }
 
     @Test(expected = BadRequestException.class)
@@ -134,7 +136,6 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
                         throw new RuntimeException(e);
                     }
                 });
-
     }
 
     // ----- getCredentialOffer
@@ -214,7 +215,7 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
                             .setCredentialConfigurationIds(List.of("credential-configuration-id"));
 
                     String sessionCode = prepareSessionCode(session, authenticator, JsonSerialization.writeValueAsString(credentialsOffer));
-                    // the cache transactions need to be commited explicitly in the test. Without that, the OAuth2Code will only be commited to
+                    // the cache transactions need to be committed explicitly in the test. Without that, the OAuth2Code will only be committed to
                     // the cache after .run((session)-> ...)
                     session.getTransactionManager().commit();
                     OID4VCIssuerEndpoint issuerEndpoint = prepareIssuerEndpoint(session, authenticator);
@@ -239,9 +240,10 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
                         AppAuthManager.BearerTokenAuthenticator authenticator = new AppAuthManager.BearerTokenAuthenticator(session);
                         authenticator.setTokenString(null);
                         OID4VCIssuerEndpoint issuerEndpoint = prepareIssuerEndpoint(session, authenticator);
-                        Response response = issuerEndpoint.requestCredential(new CredentialRequest()
+                        CredentialRequest credentialRequest = new CredentialRequest()
                                 .setFormat(Format.JWT_VC)
-                                .setCredentialIdentifier("test-credential"));
+                                .setCredentialIdentifier("test-credential");
+                        Response response = issuerEndpoint.requestCredential(JsonSerialization.writeValueAsString(credentialRequest));
                         assertEquals(MediaType.APPLICATION_JSON_TYPE, response.getMediaType());
                     }));
         });
@@ -256,9 +258,10 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
                         AppAuthManager.BearerTokenAuthenticator authenticator = new AppAuthManager.BearerTokenAuthenticator(session);
                         authenticator.setTokenString("token");
                         OID4VCIssuerEndpoint issuerEndpoint = prepareIssuerEndpoint(session, authenticator);
-                        issuerEndpoint.requestCredential(new CredentialRequest()
+                        CredentialRequest credentialRequest = new CredentialRequest()
                                 .setFormat(Format.JWT_VC)
-                                .setCredentialIdentifier("test-credential"));
+                                .setCredentialIdentifier("test-credential");
+                        issuerEndpoint.requestCredential(JsonSerialization.writeValueAsString(credentialRequest));
                     }));
         });
     }
@@ -273,9 +276,10 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
                         AppAuthManager.BearerTokenAuthenticator authenticator = new AppAuthManager.BearerTokenAuthenticator(session);
                         authenticator.setTokenString(token);
                         OID4VCIssuerEndpoint issuerEndpoint = prepareIssuerEndpoint(session, authenticator);
-                        issuerEndpoint.requestCredential(new CredentialRequest()
+                        CredentialRequest credentialRequest = new CredentialRequest()
                                 .setFormat(Format.SD_JWT_VC)
-                                .setCredentialIdentifier("test-credential"));
+                                .setCredentialIdentifier("test-credential");
+                        issuerEndpoint.requestCredential(JsonSerialization.writeValueAsString(credentialRequest));
                     }));
         });
     }
@@ -284,19 +288,20 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
     public void testRequestCredentialNoMatchingCredentialBuilder() throws Throwable {
         String token = getBearerToken(oauth);
         withCausePropagation(() ->
-            testingClient
-                    .server(TEST_REALM_NAME)
-                    .run((session -> {
-                        AppAuthManager.BearerTokenAuthenticator authenticator = new AppAuthManager.BearerTokenAuthenticator(session);
-                        authenticator.setTokenString(token);
+                testingClient
+                        .server(TEST_REALM_NAME)
+                        .run((session -> {
+                            AppAuthManager.BearerTokenAuthenticator authenticator = new AppAuthManager.BearerTokenAuthenticator(session);
+                            authenticator.setTokenString(token);
 
-                        // Prepare the issue endpoint with no credential builders.
-                        OID4VCIssuerEndpoint issuerEndpoint = prepareIssuerEndpoint(session, authenticator, Map.of());
+                            // Prepare the issue endpoint with no credential builders.
+                            OID4VCIssuerEndpoint issuerEndpoint = prepareIssuerEndpoint(session, authenticator, Map.of());
 
-                        issuerEndpoint.requestCredential(new CredentialRequest()
-                                .setFormat(Format.JWT_VC)
-                                .setCredentialIdentifier("test-credential"));
-                    }))
+                            CredentialRequest credentialRequest = new CredentialRequest()
+                                    .setFormat(Format.JWT_VC)
+                                    .setCredentialIdentifier("test-credential");
+                            issuerEndpoint.requestCredential(JsonSerialization.writeValueAsString(credentialRequest));
+                        }))
         );
     }
 
@@ -310,9 +315,10 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
                         AppAuthManager.BearerTokenAuthenticator authenticator = new AppAuthManager.BearerTokenAuthenticator(session);
                         authenticator.setTokenString(token);
                         OID4VCIssuerEndpoint issuerEndpoint = prepareIssuerEndpoint(session, authenticator);
-                        issuerEndpoint.requestCredential(new CredentialRequest()
+                        CredentialRequest credentialRequest = new CredentialRequest()
                                 .setFormat(Format.JWT_VC)
-                                .setCredentialIdentifier("no-such-credential"));
+                                .setCredentialIdentifier("no-such-credential");
+                        issuerEndpoint.requestCredential(JsonSerialization.writeValueAsString(credentialRequest));
                     }));
         });
     }
@@ -329,11 +335,14 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
                     CredentialRequest credentialRequest = new CredentialRequest()
                             .setFormat(Format.JWT_VC)
                             .setCredentialIdentifier("test-credential");
-                    Response credentialResponse = issuerEndpoint.requestCredential(credentialRequest);
-                    assertEquals("The credential request should be answered successfully.", HttpStatus.SC_OK, credentialResponse.getStatus());
-                    assertNotNull("A credential should be responded.", credentialResponse.getEntity());
-                    CredentialResponse credentialResponseVO = JsonSerialization.mapper.convertValue(credentialResponse.getEntity(), CredentialResponse.class);
-                    JsonWebToken jsonWebToken = TokenVerifier.create((String) credentialResponseVO.getCredential(), JsonWebToken.class).getToken();
+                    Response response = issuerEndpoint.requestCredential(JsonSerialization.writeValueAsString(credentialRequest));
+                    assertEquals("The credential request should be answered successfully.", HttpStatus.SC_OK, response.getStatus());
+                    assertNotNull("A response should be returned.", response.getEntity());
+                    BatchCredentialResponse batchResponse = JsonSerialization.mapper.convertValue(response.getEntity(), BatchCredentialResponse.class);
+                    assertNotNull("Credentials should be returned.", batchResponse.getCredentials());
+                    assertEquals("One credential should be returned.", 1, batchResponse.getCredentials().size());
+                    CredentialResponse credentialResponse = batchResponse.getCredentials().get(0);
+                    JsonWebToken jsonWebToken = TokenVerifier.create((String) credentialResponse.getCredential(), JsonWebToken.class).getToken();
 
                     assertNotNull("A valid credential string should have been responded", jsonWebToken);
                     assertNotNull("The credentials should be included at the vc-claim.", jsonWebToken.getOtherClaims().get("vc"));
@@ -341,6 +350,189 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
                     assertTrue("The static claim should be set.", credential.getCredentialSubject().getClaims().containsKey("VerifiableCredential"));
                     assertFalse("Only mappers supported for the requested type should have been evaluated.", credential.getCredentialSubject().getClaims().containsKey("AnotherCredentialType"));
                 }));
+    }
+
+    @Test
+    public void testRequestCredentialDeferredIssuance() {
+        String token = getBearerToken(oauth);
+        testingClient
+                .server(TEST_REALM_NAME)
+                .run((session) -> {
+                    // Configure realm to enable deferred issuance for test-credential
+                    session.getContext().getRealm().setAttribute("vc.test-credential.format", "jwt_vc");
+                    session.getContext().getRealm().setAttribute("vc.test-credential.scope", "VerifiableCredential");
+                    session.getContext().getRealm().setAttribute("vc.test-credential.credential_build_config.deferred_issuance", "true");
+                    session.getContext().getRealm().setAttribute("vc.test-credential.credential_signing_alg_values_supported", "ES256");
+
+                    // Log attributes for debugging
+                    System.out.println("Deferred issuance: " + session.getContext().getRealm().getAttribute("vc.test-credential.credential_build_config.deferred_issuance"));
+
+                    AppAuthManager.BearerTokenAuthenticator authenticator = new AppAuthManager.BearerTokenAuthenticator(session);
+                    authenticator.setTokenString(token);
+                    OID4VCIssuerEndpoint issuerEndpoint = prepareIssuerEndpoint(session, authenticator);
+
+                    CredentialRequest credentialRequest = new CredentialRequest()
+                            .setFormat(Format.JWT_VC)
+                            .setCredentialIdentifier("test-credential");
+                    BatchCredentialRequest batchRequest = new BatchCredentialRequest()
+                            .setCredentialRequests(List.of(credentialRequest));
+
+                    Response response = issuerEndpoint.requestCredential(JsonSerialization.writeValueAsString(batchRequest));
+                    assertEquals("The credential request should be answered successfully.", HttpStatus.SC_OK, response.getStatus());
+                    BatchCredentialResponse batchResponse = JsonSerialization.mapper.convertValue(response.getEntity(), BatchCredentialResponse.class);
+                    System.out.println("Batch response: " + JsonSerialization.writeValueAsString(batchResponse));
+                    assertNotNull("A transaction ID should be returned for deferred issuance.", batchResponse.getTransactionId());
+                    assertNull("No credentials should be returned for deferred issuance.", batchResponse.getCredentials());
+                    assertNull("No notification ID should be returned for single credential.", batchResponse.getNotificationId());
+
+                    // Clean up realm attributes
+                    session.getContext().getRealm().removeAttribute("vc.test-credential.format");
+                    session.getContext().getRealm().removeAttribute("vc.test-credential.scope");
+                    session.getContext().getRealm().removeAttribute("vc.test-credential.credential_build_config.deferred_issuance");
+                    session.getContext().getRealm().removeAttribute("vc.test-credential.credential_signing_alg_values_supported");
+                    session.getTransactionManager().commit();
+                });
+    }
+
+    @Test
+    public void testRequestCredentialNonDeferredIssuance() {
+        String token = getBearerToken(oauth);
+        testingClient
+                .server(TEST_REALM_NAME)
+                .run((session) -> {
+                    // Configure realm to disable deferred issuance for test-credential
+                    session.getContext().getRealm().setAttribute("vc.test-credential.format", "jwt_vc");
+                    session.getContext().getRealm().setAttribute("vc.test-credential.scope", "VerifiableCredential");
+                    session.getContext().getRealm().setAttribute("vc.test-credential.credential_build_config.deferred_issuance", false);
+                    session.getContext().getRealm().setAttribute("vc.test-credential.credential_signing_alg_values_supported", "ES256");
+
+                    AppAuthManager.BearerTokenAuthenticator authenticator = new AppAuthManager.BearerTokenAuthenticator(session);
+                    authenticator.setTokenString(token);
+                    OID4VCIssuerEndpoint issuerEndpoint = prepareIssuerEndpoint(session, authenticator);
+
+                    CredentialRequest credentialRequest = new CredentialRequest()
+                            .setFormat(Format.JWT_VC)
+                            .setCredentialIdentifier("test-credential");
+                    BatchCredentialRequest batchRequest = new BatchCredentialRequest()
+                            .setCredentialRequests(List.of(credentialRequest));
+
+                    Response response = issuerEndpoint.requestCredential(JsonSerialization.writeValueAsString(batchRequest));
+                    assertEquals("The credential request should be answered successfully.", HttpStatus.SC_OK, response.getStatus());
+                    BatchCredentialResponse batchResponse = JsonSerialization.mapper.convertValue(response.getEntity(), BatchCredentialResponse.class);
+                    assertNotNull("Credentials should be returned for non-deferred issuance.", batchResponse.getCredentials());
+                    assertEquals("One credential should be returned.", 1, batchResponse.getCredentials().size());
+                    assertNotNull("The credential should be included.", batchResponse.getCredentials().get(0).getCredential());
+                    assertNull("No transaction ID should be returned for non-deferred issuance.", batchResponse.getTransactionId());
+                    assertNull("No notification ID should be returned for single credential.", batchResponse.getNotificationId());
+
+                    // Clean up realm attributes
+                    session.getContext().getRealm().removeAttribute("vc.test-credential.format");
+                    session.getContext().getRealm().removeAttribute("vc.test-credential.scope");
+                    session.getContext().getRealm().removeAttribute("vc.test-credential.credential_build_config.deferred_issuance");
+                    session.getContext().getRealm().removeAttribute("vc.test-credential.credential_signing_alg_values_supported");
+                    session.getTransactionManager().commit();
+                });
+    }
+
+    @Test
+    public void testRequestMultipleCredentialsNonDeferred() {
+        String token = getBearerToken(oauth);
+        testingClient
+                .server(TEST_REALM_NAME)
+                .run((session) -> {
+                    // Configure realm for two credentials, both non-deferred
+                    session.getContext().getRealm().setAttribute("vc.test-credential.format", "jwt_vc");
+                    session.getContext().getRealm().setAttribute("vc.test-credential.scope", "VerifiableCredential");
+                    session.getContext().getRealm().setAttribute("vc.test-credential.credential_build_config.deferred_issuance", false);
+                    session.getContext().getRealm().setAttribute("vc.test-credential.credential_signing_alg_values_supported", "ES256");
+                    session.getContext().getRealm().setAttribute("vc.test-credential-2.format", "jwt_vc");
+                    session.getContext().getRealm().setAttribute("vc.test-credential-2.scope", "AnotherCredential");
+                    session.getContext().getRealm().setAttribute("vc.test-credential-2.credential_build_config.deferred_issuance", false);
+                    session.getContext().getRealm().setAttribute("vc.test-credential-2.credential_signing_alg_values_supported", "ES256");
+
+                    AppAuthManager.BearerTokenAuthenticator authenticator = new AppAuthManager.BearerTokenAuthenticator(session);
+                    authenticator.setTokenString(token);
+                    OID4VCIssuerEndpoint issuerEndpoint = prepareIssuerEndpoint(session, authenticator);
+
+                    CredentialRequest credentialRequest1 = new CredentialRequest()
+                            .setFormat(Format.JWT_VC)
+                            .setCredentialIdentifier("test-credential");
+                    CredentialRequest credentialRequest2 = new CredentialRequest()
+                            .setFormat(Format.JWT_VC)
+                            .setCredentialIdentifier("test-credential-2");
+                    BatchCredentialRequest batchRequest = new BatchCredentialRequest()
+                            .setCredentialRequests(List.of(credentialRequest1, credentialRequest2));
+
+                    Response response = issuerEndpoint.requestCredential(JsonSerialization.writeValueAsString(batchRequest));
+                    assertEquals("The batch credential request should be answered successfully.", HttpStatus.SC_OK, response.getStatus());
+                    BatchCredentialResponse batchResponse = JsonSerialization.mapper.convertValue(response.getEntity(), BatchCredentialResponse.class);
+                    assertNotNull("Credentials should be returned for non-deferred issuance.", batchResponse.getCredentials());
+                    assertEquals("Two credentials should be returned.", 2, batchResponse.getCredentials().size());
+                    assertNotNull("The first credential should be included.", batchResponse.getCredentials().get(0).getCredential());
+                    assertNotNull("The second credential should be included.", batchResponse.getCredentials().get(1).getCredential());
+                    assertNotNull("A notification ID should be returned for multiple credentials.", batchResponse.getNotificationId());
+                    assertNull("No transaction ID should be returned for non-deferred issuance.", batchResponse.getTransactionId());
+
+                    // Clean up realm attributes
+                    session.getContext().getRealm().removeAttribute("vc.test-credential.format");
+                    session.getContext().getRealm().removeAttribute("vc.test-credential.scope");
+                    session.getContext().getRealm().removeAttribute("vc.test-credential.credential_build_config.deferred_issuance");
+                    session.getContext().getRealm().removeAttribute("vc.test-credential.credential_signing_alg_values_supported");
+                    session.getContext().getRealm().removeAttribute("vc.test-credential-2.format");
+                    session.getContext().getRealm().removeAttribute("vc.test-credential-2.scope");
+                    session.getContext().getRealm().removeAttribute("vc.test-credential-2.credential_build_config.deferred_issuance");
+                    session.getContext().getRealm().removeAttribute("vc.test-credential-2.credential_signing_alg_values_supported");
+                    session.getTransactionManager().commit();
+                });
+    }
+
+    @Test
+    public void testRequestMultipleCredentialsDeferred() {
+        String token = getBearerToken(oauth);
+        testingClient
+                .server(TEST_REALM_NAME)
+                .run((session) -> {
+                    // Configure realm for two credentials, one deferred
+                    session.getContext().getRealm().setAttribute("vc.test-credential.format", "jwt_vc");
+                    session.getContext().getRealm().setAttribute("vc.test-credential.scope", "VerifiableCredential");
+                    session.getContext().getRealm().setAttribute("vc.test-credential.credential_build_config.deferred_issuance", "true");
+                    session.getContext().getRealm().setAttribute("vc.test-credential.credential_signing_alg_values_supported", "ES256");
+                    session.getContext().getRealm().setAttribute("vc.test-credential-2.format", "jwt_vc");
+                    session.getContext().getRealm().setAttribute("vc.test-credential-2.scope", "AnotherCredential");
+                    session.getContext().getRealm().setAttribute("vc.test-credential-2.credential_build_config.deferred_issuance", "false");
+                    session.getContext().getRealm().setAttribute("vc.test-credential-2.credential_signing_alg_values_supported", "ES256");
+
+                    AppAuthManager.BearerTokenAuthenticator authenticator = new AppAuthManager.BearerTokenAuthenticator(session);
+                    authenticator.setTokenString(token);
+                    OID4VCIssuerEndpoint issuerEndpoint = prepareIssuerEndpoint(session, authenticator);
+
+                    CredentialRequest credentialRequest1 = new CredentialRequest()
+                            .setFormat(Format.JWT_VC)
+                            .setCredentialIdentifier("test-credential");
+                    CredentialRequest credentialRequest2 = new CredentialRequest()
+                            .setFormat(Format.JWT_VC)
+                            .setCredentialIdentifier("test-credential-2");
+                    BatchCredentialRequest batchRequest = new BatchCredentialRequest()
+                            .setCredentialRequests(List.of(credentialRequest1, credentialRequest2));
+
+                    Response response = issuerEndpoint.requestCredential(JsonSerialization.writeValueAsString(batchRequest));
+                    assertEquals("The batch credential request should be answered successfully.", HttpStatus.SC_OK, response.getStatus());
+                    BatchCredentialResponse batchResponse = JsonSerialization.mapper.convertValue(response.getEntity(), BatchCredentialResponse.class);
+                    assertNotNull("A transaction ID should be returned for deferred issuance.", batchResponse.getTransactionId());
+                    assertNull("No credentials should be returned when any credential is deferred.", batchResponse.getCredentials());
+                    assertNull("No notification ID should be returned when no credentials are issued.", batchResponse.getNotificationId());
+
+                    // Clean up realm attributes
+                    session.getContext().getRealm().removeAttribute("vc.test-credential.format");
+                    session.getContext().getRealm().removeAttribute("vc.test-credential.scope");
+                    session.getContext().getRealm().removeAttribute("vc.test-credential.credential_build_config.deferred_issuance");
+                    session.getContext().getRealm().removeAttribute("vc.test-credential.credential_signing_alg_values_supported");
+                    session.getContext().getRealm().removeAttribute("vc.test-credential-2.format");
+                    session.getContext().getRealm().removeAttribute("vc.test-credential-2.scope");
+                    session.getContext().getRealm().removeAttribute("vc.test-credential-2.credential_build_config.deferred_issuance");
+                    session.getContext().getRealm().removeAttribute("vc.test-credential-2.credential_signing_alg_values_supported");
+                    session.getTransactionManager().commit();
+                });
     }
 
     // Tests the complete flow from
@@ -352,7 +544,6 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
     // 6. Get the credential
     @Test
     public void testCredentialIssuance() throws Exception {
-
         String token = getBearerToken(oauth);
 
         // 1. Retrieving the credential-offer-uri
@@ -407,11 +598,21 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
                 .map(offeredCredentialId -> credentialIssuer.getCredentialsSupported().get(offeredCredentialId))
                 .forEach(supportedCredential -> {
                     try {
-                        requestOffer(theToken, credentialIssuer.getCredentialEndpoint(), supportedCredential, new CredentialResponseHandler());
-                    } catch (IOException e) {
-                        fail("Was not able to get the credential.");
-                    } catch (VerificationException e) {
-                        throw new RuntimeException(e);
+                        requestOffer(theToken, credentialIssuer.getCredentialEndpoint(), supportedCredential, new CredentialResponseHandler() {
+                            @Override
+                            protected void handleCredentialResponse(CredentialResponse credentialResponse) throws VerificationException {
+                                assertNotNull("The credential should have been responded.", credentialResponse.getCredential());
+                                JsonWebToken jsonWebToken = TokenVerifier.create((String) credentialResponse.getCredential(), JsonWebToken.class).getToken();
+                                assertEquals("did:web:test.org", jsonWebToken.getIssuer());
+                                VerifiableCredential credential = JsonSerialization.mapper.convertValue(jsonWebToken.getOtherClaims().get("vc"), VerifiableCredential.class);
+                                assertEquals(List.of("VerifiableCredential"), credential.getType());
+                                assertEquals("john@email.cz", credential.getCredentialSubject().getClaims().get("email"));
+                                assertTrue("The static claim should be set.", credential.getCredentialSubject().getClaims().containsKey("VerifiableCredential"));
+                                assertFalse("Only mappers supported for the requested type should have been evaluated.", credential.getCredentialSubject().getClaims().containsKey("AnotherCredentialType"));
+                            }
+                        });
+                    } catch (IOException | VerificationException e) {
+                        fail("Was not able to get the credential: " + e.getMessage());
                     }
                 });
     }
@@ -434,24 +635,22 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
                     CredentialRequest credentialRequest = (CredentialRequest) m.get("credentialRequest");
                     assertEquals("Credential identifier should match", "test-credential", credentialRequest.getCredentialIdentifier());
 
-                    try (Response response = credentialTarget.request().header(HttpHeaders.AUTHORIZATION, "bearer " + accessToken).post(Entity.json(credentialRequest))) {
-                        if (response.getStatus() != 200) {
-                            String errorBody = response.readEntity(String.class);
-                            System.out.println("Error Response: " + errorBody);
-                        }
+                    try (Response response = credentialTarget.request()
+                            .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                            .post(Entity.json(credentialRequest))) {
                         assertEquals(200, response.getStatus());
-                        CredentialResponse credentialResponse = JsonSerialization.readValue(response.readEntity(String.class), CredentialResponse.class);
-
+                        BatchCredentialResponse batchResponse = JsonSerialization.readValue(response.readEntity(String.class), BatchCredentialResponse.class);
+                        assertNotNull("Credentials should be returned.", batchResponse.getCredentials());
+                        assertEquals("One credential should be returned.", 1, batchResponse.getCredentials().size());
+                        CredentialResponse credentialResponse = batchResponse.getCredentials().get(0);
                         JsonWebToken jsonWebToken = TokenVerifier.create((String) credentialResponse.getCredential(), JsonWebToken.class).getToken();
                         assertEquals("did:web:test.org", jsonWebToken.getIssuer());
 
                         VerifiableCredential credential = JsonSerialization.mapper.convertValue(jsonWebToken.getOtherClaims().get("vc"), VerifiableCredential.class);
-                        assertEquals(TEST_TYPES, credential.getType());
-                        assertEquals(TEST_DID, credential.getIssuer());
+                        assertEquals(List.of("VerifiableCredential"), credential.getType());
                         assertEquals("john@email.cz", credential.getCredentialSubject().getClaims().get("email"));
                     } catch (IOException | VerificationException e) {
-                        Assert.fail("Failed to process credential response: " + e.getMessage());
-                    }
+                        fail("Failed to process credential response: " + e.getMessage());
                 });
     }
 
@@ -463,7 +662,7 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
                     WebTarget credentialTarget = (WebTarget) m.get("credentialTarget");
                     CredentialRequest credentialRequest = (CredentialRequest) m.get("credentialRequest");
 
-                    try (Response response = credentialTarget.request().header(HttpHeaders.AUTHORIZATION, "bearer " + accessToken).post(Entity.json(credentialRequest))) {
+                    try (Response response = credentialTarget.request().header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken).post(Entity.json(credentialRequest))) {
                         assertEquals(400, response.getStatus());
                     }
                 });
@@ -477,7 +676,7 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
                     WebTarget credentialTarget = (WebTarget) m.get("credentialTarget");
                     CredentialRequest credentialRequest = (CredentialRequest) m.get("credentialRequest");
 
-                    try (Response response = credentialTarget.request().header(HttpHeaders.AUTHORIZATION, "bearer " + accessToken).post(Entity.json(credentialRequest))) {
+                    try (Response response = credentialTarget.request().header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken).post(Entity.json(credentialRequest))) {
                         assertEquals(400, response.getStatus());
                     }
                 });

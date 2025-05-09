@@ -56,6 +56,9 @@ import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.CredentialBuilder
 import org.keycloak.protocol.oid4vc.issuance.keybinding.ProofValidator;
 import org.keycloak.protocol.oid4vc.issuance.mappers.OID4VCMapper;
 import org.keycloak.protocol.oid4vc.issuance.signing.CredentialSigner;
+import org.keycloak.protocol.oid4vc.model.BatchCredentialRequest;
+import org.keycloak.protocol.oid4vc.model.BatchCredentialResponse;
+import org.keycloak.protocol.oid4vc.model.CredentialBuildConfig;
 import org.keycloak.protocol.oid4vc.model.CredentialOfferURI;
 import org.keycloak.protocol.oid4vc.model.CredentialRequest;
 import org.keycloak.protocol.oid4vc.model.CredentialResponse;
@@ -88,6 +91,7 @@ import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -100,7 +104,6 @@ import java.util.stream.Stream;
 import static org.keycloak.protocol.oid4vc.model.Format.JWT_VC;
 import static org.keycloak.protocol.oid4vc.model.Format.LDP_VC;
 import static org.keycloak.protocol.oid4vc.model.Format.SD_JWT_VC;
-import static org.keycloak.protocol.oid4vc.model.Format.SUPPORTED_FORMATS;
 
 /**
  * Provides the (REST-)endpoints required for the OID4VCI protocol.
@@ -117,6 +120,7 @@ public class OID4VCIssuerEndpoint {
 
     private static final String CODE_LIFESPAN_REALM_ATTRIBUTE_KEY = "preAuthorizedCodeLifespanS";
     private static final int DEFAULT_CODE_LIFESPAN_S = 30;
+    private static final int DEFAULT_NONCE_LIFESPAN_S = 300; // 5 minutes for c_nonce expiration
 
     public static final String CREDENTIAL_PATH = "credential";
     public static final String CREDENTIAL_OFFER_PATH = "credential-offer/";
@@ -320,74 +324,121 @@ public class OID4VCIssuerEndpoint {
 
 
     /**
-     * Returns a verifiable credential
+     * Issues one or more verifiable credentials as per OID4VCI draft 15.
+     * Supports batch issuance by processing multiple credential requests in a single call.
+     * Backward compatible with single credential requests.
      */
     @POST
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     @Path(CREDENTIAL_PATH)
-    public Response requestCredential(
-            CredentialRequest credentialRequestVO) {
-        LOGGER.debugf("Received credentials request %s.", credentialRequestVO);
-
+    public Response requestCredential(String requestBody) {
+        LOGGER.debugf("Received credential request: %s", requestBody);
         cors = Cors.builder().auth().allowedMethods("POST").auth().exposedHeaders(Cors.ACCESS_CONTROL_ALLOW_METHODS);
 
-        // do first to fail fast on auth
-        AuthenticationManager.AuthResult authResult = getAuthResult();
+        try {
+            // Parse request as either single or batch
+            BatchCredentialRequest batchRequest = parseRequest(requestBody);
 
-        if (!isIgnoreScopeCheck) {
-            checkScope(credentialRequestVO);
+            // Authenticate client
+            AuthenticationManager.AuthResult authResult = getAuthResult();
+            Map<String, SupportedCredentialConfiguration> supportedCredentials =
+                    OID4VCIssuerWellKnownProvider.getSupportedCredentials(session);
+
+            List<CredentialResponse> credentialResponses = new ArrayList<>();
+            boolean isDeferred = false;
+            String transactionId = null;
+
+            // Process each credential request
+            for (CredentialRequest request : batchRequest.getCredentialRequests()) {
+                if (!isIgnoreScopeCheck) {
+                    checkScope(request);
+                }
+
+                SupportedCredentialConfiguration config = resolveCredentialConfiguration(request, supportedCredentials);
+                if (config == null) {
+                    throw new BadRequestException(getErrorResponse(ErrorType.UNSUPPORTED_CREDENTIAL_TYPE));
+                }
+
+                if (isDeferredIssuance(config)) {
+                    isDeferred = true;
+                    transactionId = generateTransactionId();
+                    continue;
+                }
+
+                // Only issue credential if not deferred
+                if (!isDeferred) {
+                    Object credential = getCredential(authResult, config, request);
+                    CredentialResponse response = new CredentialResponse()
+                            .setCredential(credential)
+                            .setcNonce(authResult.getToken().getNonce())
+                            .setcNonceExpiresIn(String.valueOf(DEFAULT_NONCE_LIFESPAN_S));
+                    credentialResponses.add(response);
+                }
+            }
+
+            // Build response
+            BatchCredentialResponse batchResponse = new BatchCredentialResponse();
+            if (isDeferred) {
+                batchResponse.setTransactionId(transactionId);
+            } else {
+                batchResponse.setCredentials(credentialResponses);
+                if (credentialResponses.size() > 1) {
+                    batchResponse.setNotificationId(generateNotificationId());
+                }
+            }
+
+            return Response.ok(batchResponse).build();
+        } catch (JsonProcessingException e) {
+            throw new BadRequestException(getErrorResponse(ErrorType.INVALID_CREDENTIAL_REQUEST));
+        } catch (BadRequestException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new BadRequestException(getErrorResponse(ErrorType.INVALID_CREDENTIAL_REQUEST));
         }
+    }
 
-        // Both Format and identifier are optional.
-        // If the credential_identifier is present, Format can't be present. But this implementation will
-        // tolerate the presence of both, waiting for clarity in specifications.
-        // This implementation will privilege the presence of the credential config identifier.
-        String requestedCredentialId = credentialRequestVO.getCredentialIdentifier();
-        String requestedFormat = credentialRequestVO.getFormat();
+    private BatchCredentialRequest parseRequest(String requestBody) throws JsonProcessingException {
+        try {
+            return JsonSerialization.mapper.readValue(requestBody, BatchCredentialRequest.class);
+        } catch (JsonProcessingException e) {
+            // Fallback to single CredentialRequest for backward compatibility
+            CredentialRequest singleRequest = JsonSerialization.mapper.readValue(requestBody, CredentialRequest.class);
+            return new BatchCredentialRequest().setCredentialRequests(List.of(singleRequest));
+        }
+    }
 
-        // Check if at least one of both is available.
+    private SupportedCredentialConfiguration resolveCredentialConfiguration(CredentialRequest credentialRequest, Map<String, SupportedCredentialConfiguration> supportedCredentials) {
+        String requestedCredentialId = credentialRequest.getCredentialIdentifier();
+        String requestedFormat = credentialRequest.getFormat();
+
         if (requestedCredentialId == null && requestedFormat == null) {
-            LOGGER.debugf("Missing both configuration id and requested format. At least one shall be specified.");
+            LOGGER.debug("Missing both configuration id and requested format.");
             throw new BadRequestException(getErrorResponse(ErrorType.MISSING_CREDENTIAL_CONFIG_AND_FORMAT));
         }
 
-        Map<String, SupportedCredentialConfiguration> supportedCredentials = OID4VCIssuerWellKnownProvider.getSupportedCredentials(this.session);
-
-        // resolve from identifier first
-        SupportedCredentialConfiguration supportedCredentialConfiguration = null;
+        SupportedCredentialConfiguration config = null;
         if (requestedCredentialId != null) {
-            supportedCredentialConfiguration = supportedCredentials.get(requestedCredentialId);
-            if (supportedCredentialConfiguration == null) {
+            config = supportedCredentials.get(requestedCredentialId);
+            if (config == null) {
                 LOGGER.debugf("Credential with configuration id %s not found.", requestedCredentialId);
                 throw new BadRequestException(getErrorResponse(ErrorType.UNSUPPORTED_CREDENTIAL_TYPE));
             }
-            // Then for format. We know spec does not allow both parameter. But we are tolerant if you send both
-            // Was found by id, check that the format matches.
-            if (requestedFormat != null && !requestedFormat.equals(supportedCredentialConfiguration.getFormat())) {
-                LOGGER.debugf("Credential with configuration id %s does not support requested format %s, but supports %s.", requestedCredentialId, requestedFormat, supportedCredentialConfiguration.getFormat());
+            if (requestedFormat != null && !requestedFormat.equals(config.getFormat())) {
+                LOGGER.debugf("Credential with configuration id %s does not support format %s.", requestedCredentialId, requestedFormat);
                 throw new BadRequestException(getErrorResponse(ErrorType.UNSUPPORTED_CREDENTIAL_FORMAT));
             }
         }
 
-        if (supportedCredentialConfiguration == null && requestedFormat != null) {
-            // Search by format
-            supportedCredentialConfiguration = getSupportedCredentialConfiguration(credentialRequestVO, supportedCredentials, requestedFormat);
-            if (supportedCredentialConfiguration == null) {
-                LOGGER.debugf("Credential with requested format %s, not supported.", requestedFormat);
+        if (config == null && requestedFormat != null) {
+            config = getSupportedCredentialConfiguration(credentialRequest, supportedCredentials, requestedFormat);
+            if (config == null) {
+                LOGGER.debugf("Credential with format %s not supported.", requestedFormat);
                 throw new BadRequestException(getErrorResponse(ErrorType.UNSUPPORTED_CREDENTIAL_FORMAT));
             }
         }
 
-        CredentialResponse responseVO = new CredentialResponse();
-
-        Object theCredential = getCredential(authResult, supportedCredentialConfiguration, credentialRequestVO);
-        if (SUPPORTED_FORMATS.contains(requestedFormat)) {
-            responseVO.setCredential(theCredential);
-        } else {
-            throw new BadRequestException(getErrorResponse(ErrorType.UNSUPPORTED_CREDENTIAL_TYPE));
-        }
-        return Response.ok().entity(responseVO).build();
+        return config;
     }
 
     private SupportedCredentialConfiguration getSupportedCredentialConfiguration(CredentialRequest credentialRequestVO, Map<String, SupportedCredentialConfiguration> supportedCredentials, String requestedFormat) {
@@ -631,7 +682,8 @@ public class OID4VCIssuerEndpoint {
             Optional.ofNullable(proofValidator.validateProof(vcIssuanceContext))
                     .ifPresent(jwk -> vcIssuanceContext.getCredentialBody().addKeyBinding(jwk));
         } catch (VCIssuerException e) {
-            throw new BadRequestException("Could not validate provided proof", e);
+            throw new BadRequestException
+                    (String.valueOf(ErrorResponse.invalidProof("Could not validate provided proof")));
         }
     }
 
@@ -644,5 +696,19 @@ public class OID4VCIssuerEndpoint {
         }
 
         return credentialBuilder;
+    }
+
+    private boolean isDeferredIssuance(SupportedCredentialConfiguration config) {
+        return Optional.ofNullable(config.getCredentialBuildConfig())
+                .map(CredentialBuildConfig::getDeferredIssuance)
+                .orElse(false);
+    }
+
+    private String generateTransactionId() {
+        return "tx_" + SecretGenerator.getInstance().randomString();
+    }
+
+    private String generateNotificationId() {
+        return "batch_" + SecretGenerator.getInstance().randomString();
     }
 }

@@ -74,4 +74,11 @@ public class ErrorResponse {
         this.cNonceExpiresIn = cNonceExpiresIn;
         return this;
     }
+
+    // Convenience methods for specific error types
+    public static ErrorResponse invalidProof(String description) {
+        return new ErrorResponse()
+                .setError(ErrorType.INVALID_PROOF)
+                .setErrorDescription(description);
+    }
 }

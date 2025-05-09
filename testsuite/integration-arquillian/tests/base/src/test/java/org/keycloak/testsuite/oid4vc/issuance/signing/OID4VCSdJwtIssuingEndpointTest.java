@@ -28,6 +28,8 @@ import org.apache.http.client.entity.UrlEncodedFormEntity;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
+import org.apache.http.entity.ContentType;
+import org.apache.http.entity.StringEntity;
 import org.apache.http.message.BasicNameValuePair;
 import org.junit.Test;
 import org.keycloak.OAuth2Constants;
@@ -35,11 +37,11 @@ import org.keycloak.TokenVerifier;
 import org.keycloak.common.VerificationException;
 import org.keycloak.common.util.Base64Url;
 import org.keycloak.models.KeycloakSession;
-import org.keycloak.protocol.oid4vc.OID4VCLoginProtocolFactory;
 import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerEndpoint;
 import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerWellKnownProvider;
 import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.SdJwtCredentialBuilder;
 import org.keycloak.protocol.oid4vc.issuance.mappers.OID4VCGeneratedIdMapper;
+import org.keycloak.protocol.oid4vc.model.BatchCredentialResponse;
 import org.keycloak.protocol.oid4vc.model.CredentialIssuer;
 import org.keycloak.protocol.oid4vc.model.CredentialOfferURI;
 import org.keycloak.protocol.oid4vc.model.CredentialRequest;
@@ -48,10 +50,10 @@ import org.keycloak.protocol.oid4vc.model.CredentialsOffer;
 import org.keycloak.protocol.oid4vc.model.Format;
 import org.keycloak.protocol.oid4vc.model.Proof;
 import org.keycloak.protocol.oid4vc.model.ProofType;
+import org.keycloak.protocol.oid4vc.model.SupportedCredentialConfiguration;
 import org.keycloak.protocol.oidc.grants.PreAuthorizedCodeGrantTypeFactory;
 import org.keycloak.protocol.oidc.representations.OIDCConfigurationRepresentation;
 import org.keycloak.representations.JsonWebToken;
-import org.keycloak.representations.idm.ClientRepresentation;
 import org.keycloak.representations.idm.ComponentExportRepresentation;
 import org.keycloak.representations.idm.ProtocolMapperRepresentation;
 import org.keycloak.sdjwt.vp.SdJwtVP;
@@ -61,7 +63,6 @@ import org.keycloak.util.JsonSerialization;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.time.temporal.ChronoUnit;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -138,10 +139,18 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
                 .setVct(vct)
                 .setProof(proof);
 
-        Response credentialResponse = issuerEndpoint.requestCredential(credentialRequest);
+        Response credentialResponse = null;
+        try {
+            credentialResponse = issuerEndpoint.requestCredential(JsonSerialization.writeValueAsString(credentialRequest));
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
         assertEquals("The credential request should be answered successfully.", HttpStatus.SC_OK, credentialResponse.getStatus());
         assertNotNull("A credential should be responded.", credentialResponse.getEntity());
-        CredentialResponse credentialResponseVO = JsonSerialization.mapper.convertValue(credentialResponse.getEntity(), CredentialResponse.class);
+        BatchCredentialResponse batchResponse = JsonSerialization.mapper.convertValue(credentialResponse.getEntity(), BatchCredentialResponse.class);
+        assertNotNull("Credentials should be returned.", batchResponse.getCredentials());
+        assertEquals("One credential should be returned.", 1, batchResponse.getCredentials().size());
+        CredentialResponse credentialResponseVO = batchResponse.getCredentials().get(0);
         new TestCredentialResponseHandler(vct).handleCredentialResponse(credentialResponseVO);
 
         return SdJwtVP.of(credentialResponseVO.getCredential().toString());
@@ -156,7 +165,6 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
     // 6. Get the credential
     @Test
     public void testCredentialIssuance() throws Exception {
-
         String token = getBearerToken(oauth);
 
         // 1. Retrieving the credential-offer-uri
@@ -215,10 +223,8 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
                 .forEach(supportedCredential -> {
                     try {
                         requestOffer(theToken, credentialIssuer.getCredentialEndpoint(), supportedCredential, new TestCredentialResponseHandler(vct));
-                    } catch (IOException e) {
-                        fail("Was not able to get the credential.");
-                    } catch (VerificationException e) {
-                        throw new RuntimeException(e);
+                    } catch (IOException | VerificationException e) {
+                        fail("Was not able to get the credential: " + e.getMessage());
                     }
                 });
     }
@@ -257,6 +263,28 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
                     assertEquals("The IdentityCredential should display as Test Credential", "Identity Credential", credentialIssuer.getCredentialsSupported().get("IdentityCredential").getDisplay().get(0).getName());
                     assertTrue("The IdentityCredential should support a proof of type jwt with signing algorithm ES256", credentialIssuer.getCredentialsSupported().get("IdentityCredential").getProofTypesSupported().getJwt().getProofSigningAlgValuesSupported().contains("ES256"));
                 }));
+    }
+
+    protected void requestOffer(String token, String credentialEndpoint, SupportedCredentialConfiguration offeredCredential, CredentialResponseHandler responseHandler) throws IOException, VerificationException {
+        CredentialRequest request = new CredentialRequest();
+        request.setFormat(offeredCredential.getFormat());
+        request.setVct(offeredCredential.getVct());
+
+        StringEntity stringEntity = new StringEntity(JsonSerialization.writeValueAsString(request), ContentType.APPLICATION_JSON);
+
+        HttpPost postCredential = new HttpPost(credentialEndpoint);
+        postCredential.addHeader(HttpHeaders.AUTHORIZATION, "Bearer " + token);
+        postCredential.setEntity(stringEntity);
+        CloseableHttpResponse credentialRequestResponse = httpClient.execute(postCredential);
+        assertEquals(HttpStatus.SC_OK, credentialRequestResponse.getStatusLine().getStatusCode());
+        String s = IOUtils.toString(credentialRequestResponse.getEntity().getContent(), StandardCharsets.UTF_8);
+        BatchCredentialResponse batchResponse = JsonSerialization.readValue(s, BatchCredentialResponse.class);
+        assertNotNull("Credentials should be returned.", batchResponse.getCredentials());
+        assertEquals("One credential should be returned.", 1, batchResponse.getCredentials().size());
+        CredentialResponse credentialResponse = batchResponse.getCredentials().get(0);
+
+        // Use response handler to customize checks based on formats.
+        responseHandler.handleCredentialResponse(credentialResponse);
     }
 
     protected static OID4VCIssuerEndpoint prepareIssuerEndpoint(KeycloakSession session, AppAuthManager.BearerTokenAuthenticator authenticator) {
@@ -303,7 +331,7 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
     protected Map<String, String> getCredentialDefinitionAttributes() {
         Map<String, String> testCredentialAttributes = Map.ofEntries(
                 Map.entry("vc.test-credential.expiry_in_s", "1800"),
-                Map.entry("vc.test-credential.format", Format.SD_JWT_VC),
+                Map.entry("vc.test-credential.format", Format.SD_JWT_VC.toString()),
                 Map.entry("vc.test-credential.scope", "test-credential"),
                 Map.entry("vc.test-credential.claims", "{ \"firstName\": {\"mandatory\": false, \"display\": [{\"name\": \"First Name\", \"locale\": \"en-US\"}, {\"name\": \"名前\", \"locale\": \"ja-JP\"}]}, \"lastName\": {\"mandatory\": false}, \"email\": {\"mandatory\": false} }"),
                 Map.entry("vc.test-credential.vct", "https://credentials.example.com/test-credential"),
@@ -320,7 +348,7 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
 
         Map<String, String> identityCredentialAttributes = Map.ofEntries(
                 Map.entry("vc.IdentityCredential.expiry_in_s", "31536000"),
-                Map.entry("vc.IdentityCredential.format", Format.SD_JWT_VC),
+                Map.entry("vc.IdentityCredential.format", Format.SD_JWT_VC.toString()),
                 Map.entry("vc.IdentityCredential.scope", "identity_credential"),
                 Map.entry("vc.IdentityCredential.vct", "https://credentials.example.com/identity_credential"),
                 Map.entry("vc.IdentityCredential.cryptographic_binding_methods_supported", "jwk"),
@@ -364,9 +392,9 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
                     .map(disclosure -> {
                         try {
                             JsonNode jsonNode = JsonSerialization.mapper.readTree(Base64Url.decode(disclosure));
-                            return Map.entry(jsonNode.get(1).asText(), jsonNode); // Create a Map.Entry
+                            return Map.entry(jsonNode.get(1).asText(), jsonNode);
                         } catch (IOException e) {
-                            throw new RuntimeException(e); // Re-throw as unchecked exception
+                            throw new RuntimeException(e);
                         }
                     })
                     .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));

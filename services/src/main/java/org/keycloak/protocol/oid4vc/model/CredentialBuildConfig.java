@@ -41,6 +41,7 @@ public class CredentialBuildConfig {
     private static final String HASH_ALGORITHM_KEY = "hash_algorithm";
     private static final String VISIBLE_CLAIMS_KEY = "visible_claims";
     private static final String NUMBER_OF_DECOYS_KEY = "decoys";
+    private static final String DEFERRED_ISSUANCE_KEY = "deferred_issuance";
 
     private static final String SIGNING_KEY_ID_KEY = "signing_key_id";
     private static final String OVERRIDE_KEY_ID_KEY = "override_key_id";
@@ -86,6 +87,9 @@ public class CredentialBuildConfig {
     // The type of LD-Proofs to be created.
     // Needs to fit the provided signing key.
     private String ldpProofType;
+
+    // Determines whether the credential is issued immediately or deferred with a transaction_id.
+    private Boolean deferredIssuance;
 
     public String getCredentialId() {
         return credentialId;
@@ -177,6 +181,15 @@ public class CredentialBuildConfig {
         return this;
     }
 
+    public Boolean getDeferredIssuance() {
+        return deferredIssuance;
+    }
+
+    public CredentialBuildConfig setDeferredIssuance(Boolean deferredIssuance) {
+        this.deferredIssuance = deferredIssuance;
+        return this;
+    }
+
     public Map<String, String> toDotNotation() {
         Map<String, String> dotNotation = new HashMap<>();
 
@@ -205,6 +218,9 @@ public class CredentialBuildConfig {
                 .ifPresent(signingAlgorithm -> dotNotation.put(prefix + SIGNING_ALGORITHM_KEY, signingAlgorithm));
         Optional.ofNullable(ldpProofType)
                 .ifPresent(ldpProofType -> dotNotation.put(prefix + LDP_PROOF_TYPE_KEY, ldpProofType));
+        Optional.ofNullable(deferredIssuance)
+                .ifPresent(deferred -> dotNotation.put(prefix + DEFERRED_ISSUANCE_KEY,
+                        String.valueOf(deferred)));
 
         return dotNotation;
     }
@@ -249,6 +265,9 @@ public class CredentialBuildConfig {
                 .ifPresent(credentialBuildConfig::setSigningAlgorithm);
         Optional.ofNullable(dotNotated.get(prefix + LDP_PROOF_TYPE_KEY))
                 .ifPresent(credentialBuildConfig::setLdpProofType);
+        Optional.ofNullable(dotNotated.get(prefix + DEFERRED_ISSUANCE_KEY))
+                .map(Boolean::parseBoolean)
+                .ifPresent(credentialBuildConfig::setDeferredIssuance);
 
         return credentialBuildConfig;
     }
