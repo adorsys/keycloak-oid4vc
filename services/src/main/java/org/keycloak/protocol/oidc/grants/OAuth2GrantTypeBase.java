@@ -17,6 +17,8 @@
 
 package org.keycloak.protocol.oidc.grants;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.MultivaluedMap;
@@ -41,6 +43,10 @@ import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
 import org.keycloak.models.UserModel;
 import org.keycloak.models.UserSessionModel;
+import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerWellKnownProvider;
+import org.keycloak.protocol.oid4vc.model.AuthorizationDetail;
+import org.keycloak.protocol.oid4vc.model.AuthorizationDetailResponse;
+import org.keycloak.protocol.oid4vc.model.SupportedCredentialConfiguration;
 import org.keycloak.protocol.oidc.OIDCAdvancedConfigWrapper;
 import org.keycloak.protocol.oidc.TokenManager;
 import org.keycloak.protocol.oidc.utils.AuthorizeClientUtil;
@@ -56,8 +62,11 @@ import org.keycloak.services.util.AuthorizationContextUtil;
 import org.keycloak.services.util.MtlsHoKTokenUtil;
 import org.keycloak.util.TokenUtil;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.function.Function;
 
 /**
@@ -68,6 +77,11 @@ import java.util.function.Function;
 public abstract class OAuth2GrantTypeBase implements OAuth2GrantType {
 
     private static final Logger logger = Logger.getLogger(OAuth2GrantTypeBase.class);
+
+    protected static final ObjectMapper objectMapper = new ObjectMapper();
+
+    protected static final String AUTHORIZATION_DETAILS_PARAM = "authorization_details";
+    protected static final String AUTHORIZATION_DETAILS_RESPONSE_KEY = "authorization_details_response";
 
     protected OAuth2GrantType.Context context;
 
@@ -240,6 +254,99 @@ public abstract class OAuth2GrantTypeBase implements OAuth2GrantType {
         if (client.isBearerOnly()) {
             throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_CLIENT, "Bearer-only not allowed", Response.Status.BAD_REQUEST);
         }
+    }
+
+    protected List<AuthorizationDetailResponse> processAuthorizationDetails() {
+        String authorizationDetailsParam = formParams.getFirst(AUTHORIZATION_DETAILS_PARAM);
+        if (authorizationDetailsParam == null) {
+            return null; // authorization_details is optional
+        }
+
+        List<AuthorizationDetail> authDetails;
+        try {
+            authDetails = objectMapper.readValue(authorizationDetailsParam, new TypeReference<List<AuthorizationDetail>>(){});
+        } catch (Exception e) {
+            event.error(Errors.INVALID_REQUEST);
+            throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_REQUEST, "Invalid authorization_details format", Response.Status.BAD_REQUEST);
+        }
+
+        List<String> supportedFormats = OID4VCIssuerWellKnownProvider.getSupportedFormats(session);
+        Map<String, SupportedCredentialConfiguration> supportedCredentials = OID4VCIssuerWellKnownProvider.getSupportedCredentials(session);
+        List<AuthorizationDetailResponse> authDetailsResponse = new ArrayList<>();
+
+        for (AuthorizationDetail detail : authDetails) {
+            String type = detail.getType();
+            String credentialConfigurationId = detail.getCredentialConfigurationId();
+            String format = detail.getFormat();
+            String vct = detail.getVct();
+
+            // Validate type
+            if (!"openid_credential".equals(type)) {
+                event.error(Errors.INVALID_REQUEST);
+                throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_REQUEST, "Invalid authorization_details type", Response.Status.BAD_REQUEST);
+            }
+
+            // Ensure exactly one of credential_configuration_id or format is present
+            if ((credentialConfigurationId == null && format == null) || (credentialConfigurationId != null && format != null)) {
+                event.error(Errors.INVALID_REQUEST);
+                throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_REQUEST, "Exactly one of credential_configuration_id or format must be present", Response.Status.BAD_REQUEST);
+            }
+
+            if (credentialConfigurationId != null) {
+                // Validate credential_configuration_id
+                SupportedCredentialConfiguration config = supportedCredentials.get(credentialConfigurationId);
+                if (config == null) {
+                    event.error(Errors.INVALID_REQUEST);
+                    throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_REQUEST, "Unsupported credential_configuration_id: " + credentialConfigurationId, Response.Status.BAD_REQUEST);
+                }
+
+                // Generate credential_identifiers
+                List<String> credentialIdentifiers = new ArrayList<>();
+                credentialIdentifiers.add(credentialConfigurationId + "-" + UUID.randomUUID().toString());
+
+                // Prepare response details
+                AuthorizationDetailResponse responseDetail = new AuthorizationDetailResponse();
+                responseDetail.setType("openid_credential");
+                responseDetail.setCredentialConfigurationId(credentialConfigurationId);
+                responseDetail.setCredentialIdentifiers(credentialIdentifiers);
+                authDetailsResponse.add(responseDetail);
+            } else {
+                // Validate format
+                if (!supportedFormats.contains(format)) {
+                    event.error(Errors.INVALID_REQUEST);
+                    throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_REQUEST, "Unsupported format: " + format, Response.Status.BAD_REQUEST);
+                }
+
+                // Validate vct if provided and format is "vc+sd-jwt"
+                if (vct != null && "vc+sd-jwt".equals(format)) {
+                    boolean vctSupported = supportedCredentials.values().stream()
+                            .filter(config -> "vc+sd-jwt".equals(config.getFormat()))
+                            .anyMatch(config -> vct.equals(config.getVct()));
+                    if (!vctSupported) {
+                        event.error(Errors.INVALID_REQUEST);
+                        throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_REQUEST, "Unsupported vct for format vc+sd-jwt: " + vct, Response.Status.BAD_REQUEST);
+                    }
+                }
+
+                // Generate credential_identifiers based on format, including vct only for "vc+sd-jwt"
+                List<String> credentialIdentifiers = new ArrayList<>();
+                String identifierBase = ("vc+sd-jwt".equals(format) && vct != null ? format + "-" + vct : format) + "-" + UUID.randomUUID().toString();
+                credentialIdentifiers.add(identifierBase);
+
+                // Prepare response details with validated format and optional vct
+                AuthorizationDetailResponse responseDetail = new AuthorizationDetailResponse();
+                responseDetail.setType("openid_credential");
+                responseDetail.setFormat(format); // Set the validated format in the response
+                if (vct != null && "vc+sd-jwt".equals(format)) {
+                    // Include vct in response only for 'vc+sd-jwt' format
+                    responseDetail.setVct(vct);
+                }
+                responseDetail.setCredentialIdentifiers(credentialIdentifiers);
+                authDetailsResponse.add(responseDetail);
+            }
+        }
+
+        return authDetailsResponse;
     }
 
     @Override
