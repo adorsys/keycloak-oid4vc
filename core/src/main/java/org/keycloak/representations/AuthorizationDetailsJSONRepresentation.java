@@ -52,6 +52,8 @@ public class AuthorizationDetailsJSONRepresentation implements Serializable {
     private String identifier;
     @JsonProperty("privileges")
     private List<String> privileges;
+    @JsonProperty("credential_identifiers")
+    private List<String> credential_identifiers;
 
     private final Map<String, Object> customData = new HashMap<>();
 
@@ -101,6 +103,14 @@ public class AuthorizationDetailsJSONRepresentation implements Serializable {
 
     public void setPrivileges(List<String> privileges) {
         this.privileges = privileges;
+    }
+
+    public List<String> getCredentialIdentifiers() {
+        return credential_identifiers;
+    }
+
+    public void setCredentialIdentifier(List<String> credential_identifiers) {
+        this.credential_identifiers = credential_identifiers;
     }
 
     @JsonAnyGetter

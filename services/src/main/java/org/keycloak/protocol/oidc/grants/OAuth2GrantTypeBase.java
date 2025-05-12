@@ -17,6 +17,7 @@
 
 package org.keycloak.protocol.oidc.grants;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.MultivaluedMap;
@@ -55,7 +56,9 @@ import org.keycloak.services.cors.Cors;
 import org.keycloak.services.util.AuthorizationContextUtil;
 import org.keycloak.services.util.MtlsHoKTokenUtil;
 import org.keycloak.util.TokenUtil;
+import org.keycloak.util.JsonSerialization;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Function;
@@ -151,6 +154,23 @@ public abstract class OAuth2GrantTypeBase implements OAuth2GrantType {
             }
         } else {
             res = responseBuilder.build();
+        }
+
+        // Add credential_identifiers to token response and access token
+        String credentialIdentifiersJson = clientSessionCtx.getClientSession().getNote("credential_identifiers");
+        if (credentialIdentifiersJson != null) {
+            try {
+                List<String> credentialIdentifiers = JsonSerialization.readValue(credentialIdentifiersJson,
+                        new TypeReference<>() {
+                        });
+                res.getOtherClaims().put("credential_identifiers", credentialIdentifiers);
+                token.setOtherClaims("credential_identifiers", credentialIdentifiers);
+                logger.debugf("Added credential_identifiers to token response: %s", credentialIdentifiers);
+            } catch (Exception e) {
+                logger.errorf("Failed to deserialize credential_identifiers: %s", e.getMessage(), e);
+                throw new CorsErrorResponseException(cors, OAuthErrorException.SERVER_ERROR,
+                        "Failed to deserialize credential_identifiers: " + e.getMessage(), Response.Status.INTERNAL_SERVER_ERROR);
+            }
         }
 
         event.success();
