@@ -264,7 +264,8 @@ public abstract class OAuth2GrantTypeBase implements OAuth2GrantType {
 
         List<AuthorizationDetail> authDetails;
         try {
-            authDetails = objectMapper.readValue(authorizationDetailsParam, new TypeReference<List<AuthorizationDetail>>(){});
+            authDetails = objectMapper.readValue(authorizationDetailsParam, new TypeReference<List<AuthorizationDetail>>() {
+            });
         } catch (Exception e) {
             event.error(Errors.INVALID_REQUEST);
             throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_REQUEST, "Invalid authorization_details format", Response.Status.BAD_REQUEST);
