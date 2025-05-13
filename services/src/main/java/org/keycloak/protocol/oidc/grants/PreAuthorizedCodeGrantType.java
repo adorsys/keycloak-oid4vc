@@ -36,13 +36,11 @@ import org.keycloak.protocol.oid4vc.model.AuthorizationDetailResponse;
 import org.keycloak.protocol.oidc.TokenManager;
 import org.keycloak.protocol.oidc.utils.OAuth2Code;
 import org.keycloak.protocol.oidc.utils.OAuth2CodeParser;
-import org.keycloak.protocol.oid4vc.model.CredentialsOffer;
 import org.keycloak.provider.EnvironmentDependentProviderFactory;
 import org.keycloak.representations.AccessToken;
 import org.keycloak.representations.AccessTokenResponse;
 import org.keycloak.services.CorsErrorResponseException;
 import org.keycloak.services.util.DefaultClientSessionContext;
-import org.keycloak.util.JsonSerialization;
 import org.keycloak.utils.MediaType;
 
 import java.util.List;
@@ -54,7 +52,6 @@ public class PreAuthorizedCodeGrantType extends OAuth2GrantTypeBase {
     private static final Logger LOGGER = Logger.getLogger(PreAuthorizedCodeGrantType.class);
 
     public static final String VC_ISSUANCE_FLOW = "VC-Issuance-Flow";
-    private static final String CREDENTIAL_OFFER_KEY_PREFIX = "credential_offer_";
 
     @Override
     public Response process(Context context) {
@@ -92,14 +89,6 @@ public class PreAuthorizedCodeGrantType extends OAuth2GrantTypeBase {
         // set the client as retrieved from the pre-authorized session
         session.getContext().setClient(result.getClientSession().getClient());
 
-        // Retrieve CredentialsOffer
-        CredentialsOffer credentialsOffer = getCredentialsOfferFromSession(clientSession, code);
-
-        // Process authorization_details
-        List<AuthorizationDetailResponse> authorizationDetailsResponse = processAuthorizationDetails();
-
-        // Restrict Access Token to the credentials specified in the Credential Offer
-        String allowedCredentials = String.join(" ", credentialsOffer.getCredentialConfigurationIds());
         AccessToken accessToken = tokenManager.createClientAccessToken(session,
                 clientSession.getRealm(),
                 clientSession.getClient(),
@@ -107,11 +96,6 @@ public class PreAuthorizedCodeGrantType extends OAuth2GrantTypeBase {
                 clientSession.getUserSession(),
                 sessionContext);
 
-        if (!allowedCredentials.isEmpty()) {
-            accessToken.setOtherClaims("allowed_credentials", allowedCredentials);
-        }
-
-        // Include authorization_details in the response
         TokenManager.AccessTokenResponseBuilder responseBuilder = tokenManager.responseBuilder(
                 clientSession.getRealm(),
                 clientSession.getClient(),
@@ -120,35 +104,47 @@ public class PreAuthorizedCodeGrantType extends OAuth2GrantTypeBase {
                 clientSession.getUserSession(),
                 sessionContext).accessToken(accessToken);
 
-        AccessTokenResponse tokenResponse;
-        try {
-            tokenResponse = responseBuilder.build();
-        } catch (RuntimeException re) {
-            if ("can not get encryption KEK".equals(re.getMessage())) {
-                throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_REQUEST,
-                        "can not get encryption KEK", Response.Status.BAD_REQUEST);
-            } else {
-                throw re;
-            }
-        }
+        // Check if authorization_details is present in the request
+        if (formParams.containsKey(AUTHORIZATION_DETAILS_PARAM)) {
 
-        // If authorization_details is present, serialize the response and add it
-        if (authorizationDetailsResponse != null) {
+            // Process authorization_details
+            List<AuthorizationDetailResponse> authorizationDetailsResponse = processAuthorizationDetails();
+
+            AccessTokenResponse tokenResponse;
             try {
-                Map<String, Object> responseMap = objectMapper.convertValue(tokenResponse, new TypeReference<Map<String, Object>>() {});
-                responseMap.put(AUTHORIZATION_DETAILS_PARAM, authorizationDetailsResponse);
-                event.success();
-                return cors.allowAllOrigins().add(Response.ok(responseMap).type(MediaType.APPLICATION_JSON_TYPE));
-            } catch (Exception e) {
-                event.error(Errors.INVALID_REQUEST);
-                throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_REQUEST,
-                        "Failed to include authorization_details in response", Response.Status.BAD_REQUEST);
+                tokenResponse = responseBuilder.build();
+            } catch (RuntimeException re) {
+                if ("can not get encryption KEK".equals(re.getMessage())) {
+                    throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_REQUEST,
+                            "can not get encryption KEK", Response.Status.BAD_REQUEST);
+                } else {
+                    throw re;
+                }
             }
-        }
 
-        // return the original token response without serialization
-        event.success();
-        return cors.allowAllOrigins().add(Response.ok(tokenResponse).type(MediaType.APPLICATION_JSON_TYPE));
+            // If authorization_details is present, serialize the response and add it
+            if (authorizationDetailsResponse != null) {
+                try {
+                    Map<String, Object> responseMap = objectMapper.convertValue(tokenResponse, new TypeReference<Map<String, Object>>() {
+                    });
+                    responseMap.put(AUTHORIZATION_DETAILS_PARAM, authorizationDetailsResponse);
+                    event.success();
+                    return cors.allowAllOrigins().add(Response.ok(responseMap).type(MediaType.APPLICATION_JSON_TYPE));
+                } catch (Exception e) {
+                    event.error(Errors.INVALID_REQUEST);
+                    throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_REQUEST,
+                            "Failed to include authorization_details in response", Response.Status.BAD_REQUEST);
+                }
+            }
+
+            // Return the token response without serialization
+            event.success();
+            return cors.allowAllOrigins().add(Response.ok(tokenResponse).type(MediaType.APPLICATION_JSON_TYPE));
+        } else {
+            AccessTokenResponse tokenResponse = responseBuilder.build();
+            event.success();
+            return cors.allowAllOrigins().add(Response.ok(tokenResponse).type(MediaType.APPLICATION_JSON_TYPE));
+        }
     }
 
     @Override
@@ -172,45 +168,4 @@ public class PreAuthorizedCodeGrantType extends OAuth2GrantTypeBase {
         return OAuth2CodeParser.persistCode(session, authenticatedClientSession, oAuth2Code);
     }
 
-    // Helper method to retrieve CredentialsOffer from client session
-    private CredentialsOffer getCredentialsOfferFromSession(AuthenticatedClientSessionModel clientSession, String code) {
-        String offerJson = clientSession.getNote(CREDENTIAL_OFFER_KEY_PREFIX + code);
-        if (offerJson == null) {
-            LOGGER.warnf("No CredentialsOffer found for pre-authorized code: %s", code);
-            throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_GRANT,
-                    "No credential offer associated with pre-authorized code", Response.Status.BAD_REQUEST);
-        }
-
-        try {
-            return JsonSerialization.mapper.readValue(offerJson, CredentialsOffer.class);
-        } catch (Exception e) {
-            LOGGER.warnf("Failed to parse CredentialsOffer for pre-authorized code %s: %s", code, e.getMessage());
-            throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_GRANT,
-                    "Invalid credential offer data", Response.Status.BAD_REQUEST);
-        } finally {
-            // Remove the offer to prevent reuse
-            clientSession.removeNote(CREDENTIAL_OFFER_KEY_PREFIX + code);
-        }
-    }
-
-    // Overloaded method to support CredentialsOffer
-    public static String getPreAuthorizedCode(KeycloakSession session, AuthenticatedClientSessionModel authenticatedClientSession, int expirationTime, CredentialsOffer credentialsOffer) {
-        String codeId = UUID.randomUUID().toString();
-        String nonce = SecretGenerator.getInstance().randomString();
-        OAuth2Code oAuth2Code = new OAuth2Code(codeId, expirationTime, nonce, null, null, null, null, null,
-                authenticatedClientSession.getUserSession().getId());
-        String preAuthorizedCode = OAuth2CodeParser.persistCode(session, authenticatedClientSession, oAuth2Code);
-
-        // Store the CredentialsOffer with the pre-authorized code as the key
-        if (credentialsOffer != null) {
-            try {
-                String offerJson = JsonSerialization.mapper.writeValueAsString(credentialsOffer);
-                authenticatedClientSession.setNote(CREDENTIAL_OFFER_KEY_PREFIX + preAuthorizedCode, offerJson);
-            } catch (Exception e) {
-                LOGGER.warnf("Failed to store CredentialsOffer for pre-authorized code %s: %s", preAuthorizedCode, e.getMessage());
-            }
-        }
-
-        return preAuthorizedCode;
-    }
 }
