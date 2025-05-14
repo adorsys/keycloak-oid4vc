@@ -16,12 +16,14 @@
  */
 package org.keycloak.testsuite.oid4vc.issuance.signing;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import jakarta.ws.rs.BadRequestException;
 import jakarta.ws.rs.client.Entity;
 import jakarta.ws.rs.client.WebTarget;
 import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
+import jakarta.ws.rs.core.UriBuilder;
 import org.apache.commons.io.IOUtils;
 import org.apache.http.HttpStatus;
 import org.apache.http.NameValuePair;
@@ -33,10 +35,12 @@ import org.apache.http.message.BasicNameValuePair;
 import org.junit.Assert;
 import org.junit.Test;
 import org.keycloak.OAuth2Constants;
+import org.keycloak.OAuthErrorException;
 import org.keycloak.TokenVerifier;
 import org.keycloak.admin.client.resource.RealmResource;
 import org.keycloak.common.VerificationException;
 import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerEndpoint;
+import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerWellKnownProviderFactory;
 import org.keycloak.protocol.oid4vc.model.CredentialIssuer;
 import org.keycloak.protocol.oid4vc.model.CredentialOfferURI;
 import org.keycloak.protocol.oid4vc.model.CredentialRequest;
@@ -47,20 +51,27 @@ import org.keycloak.protocol.oid4vc.model.OfferUriType;
 import org.keycloak.protocol.oid4vc.model.PreAuthorizedCode;
 import org.keycloak.protocol.oid4vc.model.PreAuthorizedGrant;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
+import org.keycloak.protocol.oidc.OIDCLoginProtocol;
 import org.keycloak.protocol.oidc.grants.PreAuthorizedCodeGrantTypeFactory;
 import org.keycloak.protocol.oidc.representations.OIDCConfigurationRepresentation;
+import org.keycloak.representations.AuthorizationDetailsJSONRepresentation;
 import org.keycloak.representations.JsonWebToken;
 import org.keycloak.representations.idm.RealmRepresentation;
 import org.keycloak.services.managers.AppAuthManager;
+import org.keycloak.services.resources.RealmsResource;
 import org.keycloak.testsuite.util.oauth.AccessTokenResponse;
+import org.keycloak.testsuite.util.oauth.AuthorizationEndpointResponse;
+import org.keycloak.testsuite.util.oauth.OAuthClient;
 import org.keycloak.util.JsonSerialization;
 
 import java.io.IOException;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.logging.Logger;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -73,6 +84,9 @@ import static org.junit.Assert.fail;
  */
 public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
 
+    private static final Logger LOGGER = Logger.getLogger(OID4VCJWTIssuerEndpointTest.class.getName());
+    private static final String TEST_CREDENTIAL_IDENTIFIER = "test-credential";
+    private static final String TEST_CREDENTIAL_IDENTIFIER_2 = "another_credential_identifier";
     // ----- getCredentialOfferUri
 
     @Test(expected = BadRequestException.class)
@@ -538,5 +552,132 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
                         throw new RuntimeException(e);
                     }
                 });
+    }
+
+    private Map<String, Object> executeTokenRequest(HttpPost request, int expectedStatusCode) throws IOException {
+        try (CloseableHttpResponse response = httpClient.execute(request)) {
+            int statusCode = response.getStatusLine().getStatusCode();
+            String body = IOUtils.toString(response.getEntity().getContent(), StandardCharsets.UTF_8);
+
+            if (statusCode != expectedStatusCode) {
+                LOGGER.severe("Token request failed. Status: " + statusCode + ", Response: " + body);
+            }
+            assertEquals("Unexpected token response status", expectedStatusCode, statusCode);
+            return JsonSerialization.readValue(body, new TypeReference<>() {});
+        }
+    }
+
+    @Test
+    public void testAuthorizationCodeWithAuthorizationDetails() throws Exception {
+        List<String> expectedIdentifiers = List.of(TEST_CREDENTIAL_IDENTIFIER);
+        AuthCodeFlowContext ctx = performAuthCodeFlow();
+
+        AuthorizationDetailsJSONRepresentation authDetail = new AuthorizationDetailsJSONRepresentation();
+        authDetail.setType("openid_credential");
+        authDetail.setCredentialIdentifiers(expectedIdentifiers);
+        String authDetailsJson = JsonSerialization.writeValueAsString(List.of(authDetail));
+
+        HttpPost tokenRequest = buildTokenRequest(ctx, authDetailsJson);
+        Map<String, Object> tokenResponse = executeTokenRequest(tokenRequest, HttpStatus.SC_OK);
+
+        assertTrue(tokenResponse.containsKey("credential_identifiers"));
+        List<String> credentialIdentifiers = JsonSerialization.readValue(
+                JsonSerialization.writeValueAsString(tokenResponse.get("credential_identifiers")),
+                new TypeReference<>() {}
+        );
+
+        assertEquals(expectedIdentifiers, credentialIdentifiers);
+        assertNotNull("Access token should be present", tokenResponse.get("access_token"));
+    }
+
+    @Test
+    public void testAuthorizationCodeMissingCredentialIdentifiers() throws Exception {
+        AuthCodeFlowContext ctx = performAuthCodeFlow();
+
+        AuthorizationDetailsJSONRepresentation authDetail = new AuthorizationDetailsJSONRepresentation();
+        authDetail.setType("openid_credential");
+        String authDetailsJson = JsonSerialization.writeValueAsString(List.of(authDetail));
+
+        HttpPost tokenRequest = buildTokenRequest(ctx, authDetailsJson);
+        Map<String, Object> errorResponse = executeTokenRequest(tokenRequest, HttpStatus.SC_BAD_REQUEST);
+
+        assertEquals(OAuthErrorException.INVALID_REQUEST, errorResponse.get("error"));
+        assertTrue(((String) errorResponse.get("error_description"))
+                .contains("'authorization_details' of type 'openid_credential' must contain 'credential_identifiers'."));
+    }
+
+    @Test
+    public void testAuthorizationCodeMultipleCredentialIdentifiers() throws Exception {
+        List<String> expectedIdentifiers = List.of(TEST_CREDENTIAL_IDENTIFIER, TEST_CREDENTIAL_IDENTIFIER_2);
+        AuthCodeFlowContext ctx = performAuthCodeFlow();
+
+        AuthorizationDetailsJSONRepresentation authDetail = new AuthorizationDetailsJSONRepresentation();
+        authDetail.setType("openid_credential");
+        authDetail.setCredentialIdentifiers(expectedIdentifiers);
+        String authDetailsJson = JsonSerialization.writeValueAsString(List.of(authDetail));
+
+        HttpPost tokenRequest = buildTokenRequest(ctx, authDetailsJson);
+        Map<String, Object> tokenResponse = executeTokenRequest(tokenRequest, HttpStatus.SC_OK);
+
+        assertTrue(tokenResponse.containsKey("credential_identifiers"));
+        List<String> credentialIdentifiers = JsonSerialization.readValue(
+                JsonSerialization.writeValueAsString(tokenResponse.get("credential_identifiers")),
+                new TypeReference<>() {}
+        );
+
+        assertEquals(expectedIdentifiers, credentialIdentifiers);
+    }
+
+    private static class AuthCodeFlowContext {
+        String authorizationCode;
+        CredentialIssuer credentialIssuer;
+        OIDCConfigurationRepresentation openidConfig;
+    }
+
+    private AuthCodeFlowContext performAuthCodeFlow() throws Exception {
+        AuthCodeFlowContext ctx = new AuthCodeFlowContext();
+
+        oauth.clientId(oauth.getClientId()).scope("openid").openid(true);
+        AuthorizationEndpointResponse authResponse = oauth.doLogin("john", "password");
+        ctx.authorizationCode = authResponse.getCode();
+        assertNotNull("Authorization code should be present", ctx.authorizationCode);
+
+        ctx.credentialIssuer = fetchCredentialIssuer();
+        ctx.openidConfig = fetchOpenIdConfiguration(ctx.credentialIssuer.getAuthorizationServers().get(0));
+
+        return ctx;
+    }
+
+    private CredentialIssuer fetchCredentialIssuer() throws IOException {
+        URI discoveryUri = RealmsResource.wellKnownProviderUrl(UriBuilder.fromUri(OAuthClient.AUTH_SERVER_ROOT))
+                .build(TEST_REALM_NAME, OID4VCIssuerWellKnownProviderFactory.PROVIDER_ID);
+        try (CloseableHttpResponse response = httpClient.execute(new HttpGet(discoveryUri))) {
+            assertEquals(HttpStatus.SC_OK, response.getStatusLine().getStatusCode());
+            String json = IOUtils.toString(response.getEntity().getContent(), StandardCharsets.UTF_8);
+            return JsonSerialization.readValue(json, CredentialIssuer.class);
+        }
+    }
+
+    private OIDCConfigurationRepresentation fetchOpenIdConfiguration(String issuerUrl) throws IOException {
+        HttpGet request = new HttpGet(issuerUrl + "/.well-known/openid-configuration");
+        try (CloseableHttpResponse response = httpClient.execute(request)) {
+            assertEquals(HttpStatus.SC_OK, response.getStatusLine().getStatusCode());
+            String json = IOUtils.toString(response.getEntity().getContent(), StandardCharsets.UTF_8);
+            return JsonSerialization.readValue(json, OIDCConfigurationRepresentation.class);
+        }
+    }
+
+    private HttpPost buildTokenRequest(AuthCodeFlowContext ctx, String authDetailsJson) {
+        List<NameValuePair> parameters = new LinkedList<>();
+        parameters.add(new BasicNameValuePair(OAuth2Constants.GRANT_TYPE, OAuth2Constants.AUTHORIZATION_CODE));
+        parameters.add(new BasicNameValuePair(OAuth2Constants.CODE, ctx.authorizationCode));
+        parameters.add(new BasicNameValuePair(OAuth2Constants.CLIENT_ID, oauth.getClientId()));
+        parameters.add(new BasicNameValuePair(OAuth2Constants.CLIENT_SECRET, "password"));
+        parameters.add(new BasicNameValuePair(OAuth2Constants.REDIRECT_URI, oauth.getRedirectUri()));
+        parameters.add(new BasicNameValuePair(OIDCLoginProtocol.AUTHORIZATION_DETAILS_PARAM, authDetailsJson));
+
+        HttpPost post = new HttpPost(ctx.openidConfig.getTokenEndpoint());
+        post.setEntity(new UrlEncodedFormEntity(parameters, StandardCharsets.UTF_8));
+        return post;
     }
 }

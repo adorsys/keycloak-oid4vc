@@ -18,6 +18,7 @@
 package org.keycloak.protocol.oidc.grants;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.MultivaluedMap;
@@ -28,6 +29,7 @@ import org.keycloak.OAuthErrorException;
 import org.keycloak.authentication.AuthenticationProcessor;
 import org.keycloak.common.ClientConnection;
 import org.keycloak.common.Profile;
+import org.keycloak.common.util.ObjectUtil;
 import org.keycloak.constants.AdapterConstants;
 import org.keycloak.events.Details;
 import org.keycloak.events.Errors;
@@ -48,6 +50,7 @@ import org.keycloak.protocol.oidc.utils.AuthorizeClientUtil;
 import org.keycloak.rar.AuthorizationRequestContext;
 import org.keycloak.representations.AccessToken;
 import org.keycloak.representations.AccessTokenResponse;
+import org.keycloak.representations.AuthorizationDetailsJSONRepresentation;
 import org.keycloak.services.CorsErrorResponseException;
 import org.keycloak.services.ServicesLogger;
 import org.keycloak.services.clientpolicy.ClientPolicyContext;
@@ -56,12 +59,14 @@ import org.keycloak.services.cors.Cors;
 import org.keycloak.services.util.AuthorizationContextUtil;
 import org.keycloak.services.util.MtlsHoKTokenUtil;
 import org.keycloak.util.TokenUtil;
-import org.keycloak.util.JsonSerialization;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Function;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Base class for OAuth 2.0 grant types
@@ -71,6 +76,7 @@ import java.util.function.Function;
 public abstract class OAuth2GrantTypeBase implements OAuth2GrantType {
 
     private static final Logger logger = Logger.getLogger(OAuth2GrantTypeBase.class);
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     protected OAuth2GrantType.Context context;
 
@@ -156,20 +162,28 @@ public abstract class OAuth2GrantTypeBase implements OAuth2GrantType {
             res = responseBuilder.build();
         }
 
-        // Add credential_identifiers to token response and access token
-        String credentialIdentifiersJson = clientSessionCtx.getClientSession().getNote("credential_identifiers");
-        if (credentialIdentifiersJson != null) {
+        @SuppressWarnings("unchecked")
+        List<String> credentialIdentifiers = clientSessionCtx.getAttribute("credential_identifiers", List.class);
+
+        logger.infof("Retrieved credential_identifiers from clientSessionCtx: %s", credentialIdentifiers);
+
+        if (credentialIdentifiers != null && !credentialIdentifiers.isEmpty()) {
             try {
-                List<String> credentialIdentifiers = JsonSerialization.readValue(credentialIdentifiersJson,
-                        new TypeReference<>() {
-                        });
-                res.getOtherClaims().put("credential_identifiers", credentialIdentifiers);
-                token.setOtherClaims("credential_identifiers", credentialIdentifiers);
+                ObjectMapper objectMapper = new ObjectMapper();
+                Map<String, Object> responseMap = objectMapper.convertValue(res, new TypeReference<>() {});
+                responseMap.put("credential_identifiers", credentialIdentifiers);
                 logger.debugf("Added credential_identifiers to token response: %s", credentialIdentifiers);
+
+                event.success();
+                return cors.add(Response.ok(responseMap).type(MediaType.APPLICATION_JSON_TYPE));
             } catch (Exception e) {
-                logger.errorf("Failed to deserialize credential_identifiers: %s", e.getMessage(), e);
-                throw new CorsErrorResponseException(cors, OAuthErrorException.SERVER_ERROR,
-                        "Failed to deserialize credential_identifiers: " + e.getMessage(), Response.Status.INTERNAL_SERVER_ERROR);
+                logger.errorf("Failed to process credential_identifiers: %s", e.getMessage(), e);
+                throw new CorsErrorResponseException(
+                        cors,
+                        OAuthErrorException.SERVER_ERROR,
+                        "Failed to process credential_identifiers: " + e.getMessage(),
+                        Response.Status.INTERNAL_SERVER_ERROR
+                );
             }
         }
 
@@ -261,6 +275,56 @@ public abstract class OAuth2GrantTypeBase implements OAuth2GrantType {
             throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_CLIENT, "Bearer-only not allowed", Response.Status.BAD_REQUEST);
         }
     }
+
+    protected void handleCredentialIdentifiersFromAuthorizationDetails(
+            String authorizationDetailsJson,
+            ClientSessionContext clientSessionCtx) {
+
+        if (ObjectUtil.isBlank(authorizationDetailsJson)) {
+            logger.debug("No authorization_details provided in the request.");
+            return;
+        }
+
+        List<AuthorizationDetailsJSONRepresentation> authorizationDetails;
+        try {
+            authorizationDetails = OBJECT_MAPPER.readValue(
+                    authorizationDetailsJson,
+                    new TypeReference<>() {}
+            );
+        } catch (Exception ex) {
+            logger.error("Failed to parse 'authorization_details'.", ex);
+            throw new CorsErrorResponseException(
+                    cors,
+                    OAuthErrorException.INVALID_REQUEST,
+                    "Invalid 'authorization_details' JSON format.",
+                    Response.Status.BAD_REQUEST
+            );
+        }
+
+        List<String> credentialIdentifiers = authorizationDetails.stream()
+                .filter(detail -> "openid_credential".equals(detail.getType()))
+                .flatMap(this::extractCredentialIdentifiers)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+
+        if (credentialIdentifiers.isEmpty()) {
+            logger.warn("Missing 'credential_identifiers' for type 'openid_credential' in 'authorization_details'.");
+            throw new CorsErrorResponseException(
+                    cors,
+                    OAuthErrorException.INVALID_REQUEST,
+                    "'authorization_details' of type 'openid_credential' must contain 'credential_identifiers'.",
+                    Response.Status.BAD_REQUEST
+            );
+        }
+
+        clientSessionCtx.setAttribute("credential_identifiers", credentialIdentifiers);
+    }
+
+    private Stream<String> extractCredentialIdentifiers(AuthorizationDetailsJSONRepresentation detail) {
+        List<String> ids = detail.getCredentialIdentifiers();
+        return ids != null ? ids.stream() : Stream.empty();
+    }
+
 
     @Override
     public void close() {

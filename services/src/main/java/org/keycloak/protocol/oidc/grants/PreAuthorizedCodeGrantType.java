@@ -19,10 +19,8 @@ package org.keycloak.protocol.oidc.grants;
 
 import jakarta.ws.rs.core.Response;
 import org.jboss.logging.Logger;
-import org.keycloak.Config;
 import org.keycloak.OAuth2Constants;
 import org.keycloak.OAuthErrorException;
-import org.keycloak.common.Profile;
 import org.keycloak.common.util.SecretGenerator;
 import org.keycloak.events.Details;
 import org.keycloak.events.Errors;
@@ -31,9 +29,9 @@ import org.keycloak.models.AuthenticatedClientSessionModel;
 import org.keycloak.models.ClientSessionContext;
 import org.keycloak.models.Constants;
 import org.keycloak.models.KeycloakSession;
+import org.keycloak.protocol.oidc.OIDCLoginProtocol;
 import org.keycloak.protocol.oidc.utils.OAuth2Code;
 import org.keycloak.protocol.oidc.utils.OAuth2CodeParser;
-import org.keycloak.provider.EnvironmentDependentProviderFactory;
 import org.keycloak.representations.AccessToken;
 import org.keycloak.representations.AccessTokenResponse;
 import org.keycloak.services.CorsErrorResponseException;
@@ -80,6 +78,10 @@ public class PreAuthorizedCodeGrantType extends OAuth2GrantTypeBase {
                 OAuth2Constants.SCOPE_OPENID, session);
         clientSession.setNote(VC_ISSUANCE_FLOW, PreAuthorizedCodeGrantTypeFactory.GRANT_TYPE);
         sessionContext.setAttribute(Constants.GRANT_TYPE, PreAuthorizedCodeGrantTypeFactory.GRANT_TYPE);
+
+        // Parse and store credential_identifiers from authorization_details (if provided)
+        String authDetailsJson = clientSession.getNote(OIDCLoginProtocol.AUTHORIZATION_DETAILS_PARAM);
+        handleCredentialIdentifiersFromAuthorizationDetails(authDetailsJson, sessionContext);
 
         // set the client as retrieved from the pre-authorized session
         session.getContext().setClient(result.getClientSession().getClient());

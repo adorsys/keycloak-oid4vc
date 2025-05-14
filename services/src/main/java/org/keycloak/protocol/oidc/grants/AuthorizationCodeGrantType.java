@@ -16,14 +16,10 @@
  */
 
 package org.keycloak.protocol.oidc.grants;
-
-import com.fasterxml.jackson.core.type.TypeReference;
 import jakarta.ws.rs.core.Response;
 
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
-import java.util.List;
 
 import org.jboss.logging.Logger;
 
@@ -43,8 +39,6 @@ import org.keycloak.protocol.oidc.TokenManager;
 import org.keycloak.protocol.oidc.utils.OAuth2Code;
 import org.keycloak.protocol.oidc.utils.OAuth2CodeParser;
 import org.keycloak.protocol.oidc.utils.PkceUtils;
-import org.keycloak.rar.AuthorizationDetails;
-import org.keycloak.representations.AuthorizationDetailsJSONRepresentation;
 import org.keycloak.services.CorsErrorResponseException;
 import org.keycloak.services.clientpolicy.ClientPolicyException;
 import org.keycloak.services.clientpolicy.context.TokenRequestContext;
@@ -52,7 +46,6 @@ import org.keycloak.services.clientpolicy.context.TokenResponseContext;
 import org.keycloak.services.managers.AuthenticationManager;
 import org.keycloak.services.util.DPoPUtil;
 import org.keycloak.services.util.DefaultClientSessionContext;
-import org.keycloak.util.JsonSerialization;
 
 
 /**
@@ -209,40 +202,14 @@ public class AuthorizationCodeGrantType extends OAuth2GrantTypeBase {
             throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_SCOPE, errorMessage, Response.Status.BAD_REQUEST);
         }
 
-        // Handle credential_identifiers for authorization_details
-        String authorizationDetailsJson = clientSession.getNote(OIDCLoginProtocol.AUTHORIZATION_DETAILS_PARAM);
-        if (authorizationDetailsJson != null) {
-            try {
-                List<AuthorizationDetailsJSONRepresentation> authDetails = JsonSerialization.readValue(
-                        authorizationDetailsJson, new TypeReference<>() {
-                        });
-                List<String> credentialIdentifiers = authDetails.stream()
-                        .filter(detail -> "openid_credential".equals(detail.getType()))
-                        .flatMap(detail -> {
-                            List<String> ids = detail.getCredentialIdentifiers();
-                            return ids != null ? ids.stream() : Stream.empty();
-                        })
-                        .collect(Collectors.toList());
-                if (!credentialIdentifiers.isEmpty()) {
-                    clientSession.setNote("credential_identifiers", JsonSerialization.writeValueAsString(credentialIdentifiers));
-                    logger.debugf("Stored credential_identifiers: %s", credentialIdentifiers);
-                } else {
-                    logger.warn("No credential_identifiers found in authorization_details");
-                    throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_REQUEST,
-                            "authorization_details of type openid_credential requires credential_identifiers",
-                            Response.Status.BAD_REQUEST);
-                }
-            } catch (Exception e) {
-                logger.error("Failed to process authorization_details", e);
-                throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_REQUEST,
-                        "Invalid authorization_details format", Response.Status.BAD_REQUEST);
-            }
-        }
-
-        ClientSessionContext clientSessionCtx = DefaultClientSessionContext.fromClientSessionAndScopeParameter(clientSession, scopeParam, session);
-
-        // Set nonce as an attribute in the ClientSessionContext. Will be used for the token generation
+        ClientSessionContext clientSessionCtx = DefaultClientSessionContext.fromClientSessionAndScopeParameter(
+                clientSession, scopeParam, session);
+        // Set the nonce attribute (used during token generation)
         clientSessionCtx.setAttribute(OIDCLoginProtocol.NONCE_PARAM, codeData.getNonce());
+
+        // Parse and store credential_identifiers from authorization_details (if provided)
+        String authorizationDetailsJson = formParams.getFirst("authorization_details");
+        handleCredentialIdentifiersFromAuthorizationDetails(authorizationDetailsJson, clientSessionCtx);
 
         return createTokenResponse(user, userSession, clientSessionCtx, scopeParam, true,
                 s -> new TokenResponseContext(formParams, parseResult, clientSessionCtx, s));

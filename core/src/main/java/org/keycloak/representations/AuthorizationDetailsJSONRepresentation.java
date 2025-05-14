@@ -109,7 +109,7 @@ public class AuthorizationDetailsJSONRepresentation implements Serializable {
         return credential_identifiers;
     }
 
-    public void setCredentialIdentifier(List<String> credential_identifiers) {
+    public void setCredentialIdentifiers(List<String> credential_identifiers) {
         this.credential_identifiers = credential_identifiers;
     }
 
