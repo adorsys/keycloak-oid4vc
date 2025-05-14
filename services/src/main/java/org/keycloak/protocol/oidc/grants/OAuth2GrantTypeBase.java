@@ -318,30 +318,27 @@ public abstract class OAuth2GrantTypeBase implements OAuth2GrantType {
                     throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_REQUEST, "Unsupported format: " + format, Response.Status.BAD_REQUEST);
                 }
 
-                // Validate vct if provided and format is "vc+sd-jwt"
-                if (vct != null && "vc+sd-jwt".equals(format)) {
+                // Validate vct
+                if (vct != null) {
                     boolean vctSupported = supportedCredentials.values().stream()
-                            .filter(config -> "vc+sd-jwt".equals(config.getFormat()))
+                            .filter(config -> format.equals(config.getFormat()))
                             .anyMatch(config -> vct.equals(config.getVct()));
                     if (!vctSupported) {
                         event.error(Errors.INVALID_REQUEST);
-                        throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_REQUEST, "Unsupported vct for format vc+sd-jwt: " + vct, Response.Status.BAD_REQUEST);
+                        throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_REQUEST, "Unsupported vct for format " + format + ": " + vct, Response.Status.BAD_REQUEST);
                     }
                 }
 
                 // Generate credential_identifiers based on format, including vct only for "vc+sd-jwt"
                 List<String> credentialIdentifiers = new ArrayList<>();
-                String identifierBase = ("vc+sd-jwt".equals(format) && vct != null ? format + "-" + vct : format) + "-" + UUID.randomUUID().toString();
+                String identifierBase = (vct != null ? format + "-" + vct : format) + "-" + UUID.randomUUID().toString();
                 credentialIdentifiers.add(identifierBase);
 
                 // Prepare response details with validated format and optional vct
                 AuthorizationDetailResponse responseDetail = new AuthorizationDetailResponse();
                 responseDetail.setType("openid_credential");
-                responseDetail.setFormat(format); // Set the validated format in the response
-                if (vct != null && "vc+sd-jwt".equals(format)) {
-                    // Include vct in response only for 'vc+sd-jwt' format
-                    responseDetail.setVct(vct);
-                }
+                responseDetail.setFormat(format);
+                responseDetail.setVct(vct);
                 responseDetail.setCredentialIdentifiers(credentialIdentifiers);
                 authDetailsResponse.add(responseDetail);
             }
