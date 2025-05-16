@@ -332,8 +332,8 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
                     Response credentialResponse = issuerEndpoint.requestCredential(credentialRequest);
                     assertEquals("The credential request should be answered successfully.", HttpStatus.SC_OK, credentialResponse.getStatus());
                     assertNotNull("A credential should be responded.", credentialResponse.getEntity());
-                    CredentialResponse credentialResponseVO = JsonSerialization.mapper.convertValue(credentialResponse.getEntity(), CredentialResponse.class);
-                    JsonWebToken jsonWebToken = TokenVerifier.create((String) credentialResponseVO.getCredential(), JsonWebToken.class).getToken();
+                    String credentialResponseVO = String.valueOf(JsonSerialization.mapper.convertValue(credentialResponse.getEntity(), CredentialResponse.class));
+                    JsonWebToken jsonWebToken = TokenVerifier.create(credentialResponseVO, JsonWebToken.class).getToken();
 
                     assertNotNull("A valid credential string should have been responded", jsonWebToken);
                     assertNotNull("The credentials should be included at the vc-claim.", jsonWebToken.getOtherClaims().get("vc"));
@@ -440,9 +440,9 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
                             System.out.println("Error Response: " + errorBody);
                         }
                         assertEquals(200, response.getStatus());
-                        CredentialResponse credentialResponse = JsonSerialization.readValue(response.readEntity(String.class), CredentialResponse.class);
+                        String credentialResponse = String.valueOf(JsonSerialization.readValue(response.readEntity(String.class), CredentialResponse.class));
 
-                        JsonWebToken jsonWebToken = TokenVerifier.create((String) credentialResponse.getCredential(), JsonWebToken.class).getToken();
+                        JsonWebToken jsonWebToken = TokenVerifier.create(credentialResponse, JsonWebToken.class).getToken();
                         assertEquals("did:web:test.org", jsonWebToken.getIssuer());
 
                         VerifiableCredential credential = JsonSerialization.mapper.convertValue(jsonWebToken.getOtherClaims().get("vc"), VerifiableCredential.class);

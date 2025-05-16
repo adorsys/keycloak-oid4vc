@@ -22,8 +22,10 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 
+import java.util.List;
+
 /**
- * Represents a  CredentialRequest according to OID4VCI
+ * Represents a CredentialRequest according to OID4VCI
  * {@see https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#name-credential-request}
  *
  * @author <a href="https://github.com/wistefan">Stefan Wiedemann</a>
@@ -42,7 +44,7 @@ public class CredentialRequest {
             @JsonSubTypes.Type(value = JwtProof.class, name = ProofType.JWT),
             @JsonSubTypes.Type(value = LdpVpProof.class, name = ProofType.LD_PROOF)
     })
-    private Proof proof;
+    private List<Proof> proofs;
 
     // I have the choice of either defining format specific fields here, or adding a generic structure,
     // opening room for spamming the server. I will prefer having format specific fields.
@@ -70,12 +72,22 @@ public class CredentialRequest {
         return this;
     }
 
+    public List<Proof> getProofs() {
+        return proofs;
+    }
+
+    public CredentialRequest setProofs(List<Proof> proofs) {
+        this.proofs = proofs;
+        return this;
+    }
+
+    // Backward compatibility for single proof
     public Proof getProof() {
-        return proof;
+        return proofs != null && !proofs.isEmpty() ? proofs.get(0) : null;
     }
 
     public CredentialRequest setProof(Proof proof) {
-        this.proof = proof;
+        this.proofs = proof != null ? List.of(proof) : null;
         return this;
     }
 

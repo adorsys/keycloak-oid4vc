@@ -20,6 +20,8 @@ package org.keycloak.protocol.oid4vc.model;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
+import java.util.List;
+
 /**
  * Represents a CredentialResponse according to the OID4VCI Spec
  * {@see https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#name-credential-response}
@@ -29,17 +31,17 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class CredentialResponse {
 
-    // concrete type depends on the format
-    private Object credential;
+    // List of credentials (concrete type depends on the format)
+    private List<Object> credential;
 
     @JsonProperty("notification_id")
     private String notificationId;
 
-    public Object getCredential() {
+    public List<Object> getCredential() {
         return credential;
     }
 
-    public CredentialResponse setCredential(Object credential) {
+    public CredentialResponse setCredential(List<Object> credential) {
         this.credential = credential;
         return this;
     }

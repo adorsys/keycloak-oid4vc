@@ -21,6 +21,7 @@ import org.keycloak.jose.jws.JWSBuilder;
 import org.keycloak.protocol.oid4vc.issuance.TimeProvider;
 import org.keycloak.protocol.oid4vc.model.CredentialBuildConfig;
 import org.keycloak.protocol.oid4vc.model.Format;
+import org.keycloak.protocol.oid4vc.model.Proof;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
 import org.keycloak.representations.JsonWebToken;
 
@@ -51,6 +52,15 @@ public class JwtCredentialBuilder implements CredentialBuilder {
             VerifiableCredential verifiableCredential,
             CredentialBuildConfig credentialBuildConfig
     ) throws CredentialBuilderException {
+        return buildCredentialBody(verifiableCredential, credentialBuildConfig, null);
+    }
+
+    @Override
+    public JwtCredentialBody buildCredentialBody(
+            VerifiableCredential verifiableCredential,
+            CredentialBuildConfig credentialBuildConfig,
+            Proof proof
+    ) throws CredentialBuilderException {
         // Populate the issuer field of the VC
         verifiableCredential.setIssuer(URI.create(credentialIssuer));
 
@@ -80,6 +90,7 @@ public class JwtCredentialBuilder implements CredentialBuilder {
                 .map(Object::toString)
                 .ifPresent(jsonWebToken::subject);
 
+        // Key binding is handled by ProofValidator, which adds the JWK to the credential body
         JWSBuilder.EncodingBuilder jwsBuilder = new JWSBuilder()
                 .type(credentialBuildConfig.getTokenJwsType())
                 .jsonContent(jsonWebToken);

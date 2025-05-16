@@ -101,7 +101,6 @@ public abstract class OID4VCIssuerEndpointTest extends OID4VCTest {
     public static String verifiableCredentialScopeName = "VerifiableCredential";
     public static String testCredentialScopeName = "test-credential";
 
-
     @Before
     public void setup() {
         CryptoIntegration.init(this.getClass().getClassLoader());
@@ -116,7 +115,6 @@ public abstract class OID4VCIssuerEndpointTest extends OID4VCTest {
         assignOptionalClientScopeToClient(verifiableCredentialScopeId, client.getClientId());
         assignOptionalClientScopeToClient(testCredentialScopeId, client.getClientId());
     }
-
 
     protected String getBearerToken(OAuthClient oAuthClient) {
         AuthorizationEndpointResponse authorizationEndpointResponse = oAuthClient.doLogin("john", "password");
@@ -287,8 +285,8 @@ public abstract class OID4VCIssuerEndpointTest extends OID4VCTest {
 
     protected static OID4VCIssuerEndpoint prepareIssuerEndpoint(KeycloakSession session, AppAuthManager.BearerTokenAuthenticator authenticator) {
         JwtCredentialBuilder jwtCredentialBuilder = new JwtCredentialBuilder(
-            TEST_DID.toString(), 
-            new StaticTimeProvider(1000));
+                TEST_DID.toString(),
+                new StaticTimeProvider(1000));
 
         return prepareIssuerEndpoint(
                 session,
@@ -409,7 +407,9 @@ public abstract class OID4VCIssuerEndpointTest extends OID4VCTest {
     protected static class CredentialResponseHandler {
         protected void handleCredentialResponse(CredentialResponse credentialResponse) throws VerificationException {
             assertNotNull("The credential should have been responded.", credentialResponse.getCredential());
-            JsonWebToken jsonWebToken = TokenVerifier.create((String) credentialResponse.getCredential(), JsonWebToken.class).getToken();
+            assertFalse("The credential list should not be empty.", credentialResponse.getCredential().isEmpty());
+            String credentialString = (String) credentialResponse.getCredential().get(0); // Expecting a single JWT string
+            JsonWebToken jsonWebToken = TokenVerifier.create(credentialString, JsonWebToken.class).getToken();
             assertEquals("did:web:test.org", jsonWebToken.getIssuer());
             VerifiableCredential credential = JsonSerialization.mapper.convertValue(jsonWebToken.getOtherClaims().get("vc"), VerifiableCredential.class);
             assertEquals(List.of("VerifiableCredential"), credential.getType());

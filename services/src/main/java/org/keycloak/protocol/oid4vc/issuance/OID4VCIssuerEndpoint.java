@@ -318,21 +318,19 @@ public class OID4VCIssuerEndpoint {
         }
     }
 
-
     /**
-     * Returns a verifiable credential
+     * Returns one or more verifiable credentials as per OID4VCI draft 15.
      */
     @POST
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     @Path(CREDENTIAL_PATH)
-    public Response requestCredential(
-            CredentialRequest credentialRequestVO) {
+    public Response requestCredential(CredentialRequest credentialRequestVO) {
         LOGGER.debugf("Received credentials request %s.", credentialRequestVO);
 
         cors = Cors.builder().auth().allowedMethods("POST").auth().exposedHeaders(Cors.ACCESS_CONTROL_ALLOW_METHODS);
 
-        // do first to fail fast on auth
+        // Do first to fail fast on auth
         AuthenticationManager.AuthResult authResult = getAuthResult();
 
         if (!isIgnoreScopeCheck) {
@@ -354,7 +352,7 @@ public class OID4VCIssuerEndpoint {
 
         Map<String, SupportedCredentialConfiguration> supportedCredentials = OID4VCIssuerWellKnownProvider.getSupportedCredentials(this.session);
 
-        // resolve from identifier first
+        // Resolve from identifier first
         SupportedCredentialConfiguration supportedCredentialConfiguration = null;
         if (requestedCredentialId != null) {
             supportedCredentialConfiguration = supportedCredentials.get(requestedCredentialId);
@@ -381,12 +379,37 @@ public class OID4VCIssuerEndpoint {
 
         CredentialResponse responseVO = new CredentialResponse();
 
-        Object theCredential = getCredential(authResult, supportedCredentialConfiguration, credentialRequestVO);
-        if (SUPPORTED_FORMATS.contains(requestedFormat)) {
-            responseVO.setCredential(theCredential);
+        // Handle multiple credentials if proofs are provided
+        List<Proof> proofs = credentialRequestVO.getProofs() != null ? credentialRequestVO.getProofs() : List.of();
+        if (proofs.isEmpty()) {
+            // Single credential request without proof
+            Object theCredential = getCredential(authResult, supportedCredentialConfiguration, credentialRequestVO);
+            if (SUPPORTED_FORMATS.contains(requestedFormat)) {
+                responseVO.setCredential(List.of(theCredential));
+            } else {
+                throw new BadRequestException(getErrorResponse(ErrorType.UNSUPPORTED_CREDENTIAL_TYPE));
+            }
         } else {
-            throw new BadRequestException(getErrorResponse(ErrorType.UNSUPPORTED_CREDENTIAL_TYPE));
+            // Multiple credential request with proofs
+            SupportedCredentialConfiguration finalSupportedCredentialConfiguration = supportedCredentialConfiguration;
+            List<Object> credentials = proofs.stream()
+                    .map(proof -> {
+                        CredentialRequest singleProofRequest = new CredentialRequest()
+                                .setFormat(credentialRequestVO.getFormat())
+                                .setCredentialIdentifier(credentialRequestVO.getCredentialIdentifier())
+                                .setVct(credentialRequestVO.getVct())
+                                .setCredentialDefinition(credentialRequestVO.getCredentialDefinition())
+                                .setProof(proof);
+                        return getCredential(authResult, finalSupportedCredentialConfiguration, singleProofRequest);
+                    })
+                    .collect(Collectors.toList());
+            if (SUPPORTED_FORMATS.contains(requestedFormat)) {
+                responseVO.setCredential(credentials);
+            } else {
+                throw new BadRequestException(getErrorResponse(ErrorType.UNSUPPORTED_CREDENTIAL_TYPE));
+            }
         }
+
         return Response.ok().entity(responseVO).build();
     }
 
@@ -480,7 +503,7 @@ public class OID4VCIssuerEndpoint {
 
         VCIssuanceContext vcIssuanceContext = getVCToSign(protocolMappers, credentialConfig, authResult, credentialRequestVO);
 
-        // Enforce key binding prior to signing if necessary
+        // Enforce key binding if proof is provided
         enforceKeyBindingIfProofProvided(vcIssuanceContext);
 
         // Retrieve matching credential signer
@@ -601,8 +624,8 @@ public class OID4VCIssuerEndpoint {
         LOGGER.debugf("The credential to sign is: %s", vc);
 
         // Build format-specific credential
-        CredentialBody credentialBody = findCredentialBuilder(credentialConfig)
-                .buildCredentialBody(vc, credentialConfig.getCredentialBuildConfig());
+        CredentialBuilder builder = findCredentialBuilder(credentialConfig);
+        CredentialBody credentialBody = builder.buildCredentialBody(vc, credentialConfig.getCredentialBuildConfig(), credentialRequestVO.getProof());
 
         return new VCIssuanceContext()
                 .setAuthResult(authResult)
@@ -630,7 +653,7 @@ public class OID4VCIssuerEndpoint {
 
         // Validate proof and bind public key to credential
         try {
-            Optional.ofNullable(proofValidator.validateProof(vcIssuanceContext))
+            Optional.ofNullable(proofValidator.validateProof(vcIssuanceContext, proof))
                     .ifPresent(jwk -> vcIssuanceContext.getCredentialBody().addKeyBinding(jwk));
         } catch (VCIssuerException e) {
             throw new BadRequestException("Could not validate provided proof", e);

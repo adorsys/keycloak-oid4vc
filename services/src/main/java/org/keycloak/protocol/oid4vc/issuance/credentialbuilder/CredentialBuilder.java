@@ -18,9 +18,15 @@
 package org.keycloak.protocol.oid4vc.issuance.credentialbuilder;
 
 import org.keycloak.protocol.oid4vc.model.CredentialBuildConfig;
+                                                                                                       import org.keycloak.protocol.oid4vc.model.Proof;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
 import org.keycloak.provider.Provider;
 
+/**
+ * Interface for building credentials in various formats.
+ *
+ * @author <a href="https://github.com/wistefan">Stefan Wiedemann</a>
+ */
 public interface CredentialBuilder extends Provider {
 
     @Override
@@ -28,24 +34,22 @@ public interface CredentialBuilder extends Provider {
     }
 
     /**
-     * Returns the credential format supported by the builder.
+     * Returns the format supported by this builder.
      */
     String getSupportedFormat();
 
     /**
-     * Builds a verifiable credential of a specific format from the basis of
-     * an internal representation of the credential.
-     *
-     * <p>
-     * The credential is built incompletely, intended that it would be signed externally.
-     * </p>
-     *
-     * @param verifiableCredential  an internal representation of the credential
-     * @param credentialBuildConfig additional configurations for building the credential
-     * @return the built verifiable credential of the specific format, ready to be signed
+     * Builds a credential body from a VerifiableCredential and configuration.
      */
-    CredentialBody buildCredentialBody(
-            VerifiableCredential verifiableCredential,
-            CredentialBuildConfig credentialBuildConfig
-    ) throws CredentialBuilderException;
+    CredentialBody buildCredentialBody(VerifiableCredential verifiableCredential, CredentialBuildConfig credentialBuildConfig)
+            throws CredentialBuilderException;
+
+    /**
+     * Builds a credential body with an optional proof for key binding, used for multiple credential issuance.
+     */
+    default CredentialBody buildCredentialBody(VerifiableCredential verifiableCredential, CredentialBuildConfig credentialBuildConfig, Proof proof)
+            throws CredentialBuilderException {
+        // Default implementation for backward compatibility: ignore proof and call the original method
+        return buildCredentialBody(verifiableCredential, credentialBuildConfig);
+    }
 }

@@ -56,9 +56,16 @@ public class JwtProofValidator extends AbstractProofValidator {
         super(keycloakSession);
     }
 
+    @Override
     public JWK validateProof(VCIssuanceContext vcIssuanceContext) throws VCIssuerException {
+        Proof proof = vcIssuanceContext.getCredentialRequest().getProof();
+        return validateProof(vcIssuanceContext, proof);
+    }
+
+    @Override
+    public JWK validateProof(VCIssuanceContext vcIssuanceContext, Proof proof) throws VCIssuerException {
         try {
-            return validateJwtProof(vcIssuanceContext);
+            return validateJwtProof(vcIssuanceContext, proof);
         } catch (JWSInputException | VerificationException | IOException e) {
             throw new VCIssuerException("Could not validate proof", e);
         }
@@ -79,20 +86,20 @@ public class JwtProofValidator extends AbstractProofValidator {
      * @throws IllegalStateException: is credential type badly configured
      * @throws IOException
      */
-    private JWK validateJwtProof(VCIssuanceContext vcIssuanceContext) throws VCIssuerException, JWSInputException, VerificationException, IOException {
-
-        Optional<Proof> optionalProof = getProofFromContext(vcIssuanceContext);
-
-        if (optionalProof.isEmpty() || !(optionalProof.get() instanceof JwtProof)) {
-            return null; // No proof support
+    private JWK validateJwtProof(VCIssuanceContext vcIssuanceContext, Proof proof) throws VCIssuerException, JWSInputException, VerificationException, IOException {
+        if (proof == null) {
+            return null; // No proof provided
+        }
+        if (!(proof instanceof JwtProof)) {
+            throw new VCIssuerException("Wrong proof type. Expected JwtProof, but got: " + proof.getClass().getSimpleName());
         }
 
-        JwtProof proof = (JwtProof) optionalProof.get();
+        JwtProof jwtProof = (JwtProof) proof;
 
-        // Check key binding config for jwt. Only type supported.
+        // Check key binding config for jwt
         checkCryptographicKeyBinding(vcIssuanceContext);
 
-        JWSInput jwsInput = getJwsInput(proof);
+        JWSInput jwsInput = getJwsInput(jwtProof);
         JWSHeader jwsHeader = jwsInput.getHeader();
         validateJwsHeader(vcIssuanceContext, jwsHeader);
 
@@ -120,31 +127,6 @@ public class JwtProofValidator extends AbstractProofValidator {
                 !vcIssuanceContext.getCredentialConfig().getCryptographicBindingMethodsSupported().contains(CRYPTOGRAPHIC_BINDING_METHOD_JWK)) {
             throw new IllegalStateException("This SD-JWT implementation only supports jwk as cryptographic binding method");
         }
-    }
-
-    private Optional<Proof> getProofFromContext(VCIssuanceContext vcIssuanceContext) throws VCIssuerException {
-        return Optional.ofNullable(vcIssuanceContext.getCredentialConfig())
-                .map(SupportedCredentialConfiguration::getProofTypesSupported)
-                .flatMap(proofTypesSupported -> {
-                    Optional.ofNullable(proofTypesSupported.getJwt())
-                            .orElseThrow(() -> new VCIssuerException("SD-JWT supports only jwt proof type."));
-
-                    Proof proofObject = vcIssuanceContext.getCredentialRequest().getProof();
-                    if (proofObject == null) {
-                        throw new VCIssuerException("Credential configuration requires a proof of type: " + ProofType.JWT);
-                    }
-
-                    if (!(proofObject instanceof JwtProof)) {
-                        throw new VCIssuerException("Wrong proof type. Expected JwtProof, but got: " + proofObject.getClass().getSimpleName());
-                    }
-
-                    Proof proof = (Proof) proofObject;
-                    if (!Objects.equals(proof.getProofType(), ProofType.JWT)) {
-                        throw new VCIssuerException("Wrong proof type");
-                    }
-
-                    return Optional.of(proof);
-                });
     }
 
     private JWSInput getJwsInput(JwtProof proof) throws JWSInputException {
@@ -184,14 +166,6 @@ public class JwtProofValidator extends AbstractProofValidator {
     }
 
     private void validateProofPayload(VCIssuanceContext vcIssuanceContext, AccessToken proofPayload) throws VCIssuerException {
-        // azp is the id of the client, as mentioned in the access token used to request the credential.
-        // Token provided from user is obtained with a clientId that support the oidc login protocol.
-        // oid4vci client doesn't. But it is the client needed at the credential endpoint.
-        //        String azp = vcIssuanceContext.getAuthResult().getToken().getIssuedFor();
-        //        Optional.ofNullable(proofPayload.getIssuer())
-        //                .filter(proofIssuer -> Objects.equals(azp, proofIssuer))
-        //                .orElseThrow(() -> new VCIssuerException("Issuer claim must be null for preauthorized code else the clientId of the client making the request: " + azp));
-
         // The audience of the proof MUST be the Credential Issuer Identifier.
         // https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#name-jwt-proof-type
         String credentialIssuer = OID4VCIssuerWellKnownProvider.getIssuer(keycloakSession.getContext());
@@ -221,6 +195,9 @@ public class JwtProofValidator extends AbstractProofValidator {
                             // So no_op
                         }
                 );
+    }
 
+    @Override
+    public void close() {
     }
 }
