@@ -20,19 +20,26 @@ package org.keycloak.protocol.oid4vc.issuance.keybinding;
 import org.keycloak.jose.jwk.JWK;
 import org.keycloak.protocol.oid4vc.issuance.VCIssuanceContext;
 import org.keycloak.protocol.oid4vc.issuance.VCIssuerException;
+import org.keycloak.protocol.oid4vc.model.Proof;
 import org.keycloak.provider.Provider;
 
+/**
+ * Interface for validating proofs provided in credential requests.
+ *
+ * @author <a href="https://github.com/wistefan">Stefan Wiedemann</a>
+ */
 public interface ProofValidator extends Provider {
 
-    @Override
-    default void close() {
-    }
-
     /**
-     * Validates a client-provided key binding proof.
-     *
-     * @param vcIssuanceContext the issuance context with credential request and config
-     * @return the JWK to bind to the credential
+     * Validates a proof in the issuance context and returns the JWK for key binding.
      */
     JWK validateProof(VCIssuanceContext vcIssuanceContext) throws VCIssuerException;
+
+    /**
+     * Validates a specific proof and returns the JWK for key binding, used for multiple credential issuance.
+     */
+    default JWK validateProof(VCIssuanceContext vcIssuanceContext, Proof proof) throws VCIssuerException {
+        // Default implementation for backward compatibility: use the original method
+        return validateProof(vcIssuanceContext);
+    }
 }
