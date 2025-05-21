@@ -33,6 +33,10 @@ import java.util.List;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class CredentialRequest {
 
+    @JsonProperty("credential_specs")
+    private List<CredentialSpec> credentialSpecs;
+
+    // Backward compatibility fields for single credential requests
     private String format;
 
     @JsonProperty("credential_identifier")
@@ -54,6 +58,81 @@ public class CredentialRequest {
     @JsonProperty("credential_definition")
     private CredentialDefinition credentialDefinition;
 
+    // New class to represent a single credential specification
+    public static class CredentialSpec {
+        private String format;
+
+        @JsonProperty("credential_identifier")
+        private String credentialIdentifier;
+
+        private String vct;
+
+        @JsonProperty("credential_definition")
+        private CredentialDefinition credentialDefinition;
+
+        @JsonProperty("proof")
+        @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "proof_type")
+        @JsonSubTypes({
+                @JsonSubTypes.Type(value = JwtProof.class, name = ProofType.JWT),
+                @JsonSubTypes.Type(value = LdpVpProof.class, name = ProofType.LD_PROOF)
+        })
+        private Proof proof;
+
+        public String getFormat() {
+            return format;
+        }
+
+        public CredentialSpec setFormat(String format) {
+            this.format = format;
+            return this;
+        }
+
+        public String getCredentialIdentifier() {
+            return credentialIdentifier;
+        }
+
+        public CredentialSpec setCredentialIdentifier(String credentialIdentifier) {
+            this.credentialIdentifier = credentialIdentifier;
+            return this;
+        }
+
+        public String getVct() {
+            return vct;
+        }
+
+        public CredentialSpec setVct(String vct) {
+            this.vct = vct;
+            return this;
+        }
+
+        public CredentialDefinition getCredentialDefinition() {
+            return credentialDefinition;
+        }
+
+        public CredentialSpec setCredentialDefinition(CredentialDefinition credentialDefinition) {
+            this.credentialDefinition = credentialDefinition;
+            return this;
+        }
+
+        public Proof getProof() {
+            return proof;
+        }
+
+        public CredentialSpec setProof(Proof proof) {
+            this.proof = proof;
+            return this;
+        }
+    }
+
+    public List<CredentialSpec> getCredentialSpecs() {
+        return credentialSpecs;
+    }
+
+    public CredentialRequest setCredentialSpecs(List<CredentialSpec> credentialSpecs) {
+        this.credentialSpecs = credentialSpecs;
+        return this;
+    }
+
     public String getFormat() {
         return format;
     }
@@ -72,21 +151,18 @@ public class CredentialRequest {
         return this;
     }
 
-    public List<Proof> getProofs() {
-        return proofs;
-    }
-
-    public CredentialRequest setProofs(List<Proof> proofs) {
-        this.proofs = proofs;
-        return this;
-    }
-
-    // Backward compatibility for single proof
+    // Backward compatibility for single proof, ensuring only one proof is used for single credential requests
     public Proof getProof() {
+        if (proofs != null && proofs.size() > 1) {
+            throw new IllegalStateException("Multiple proofs are not supported for single credential requests in backward compatibility mode");
+        }
         return proofs != null && !proofs.isEmpty() ? proofs.get(0) : null;
     }
 
     public CredentialRequest setProof(Proof proof) {
+        if (proof != null && this.proofs != null && !this.proofs.isEmpty()) {
+            throw new IllegalStateException("Cannot set single proof when proofs list is already set");
+        }
         this.proofs = proof != null ? List.of(proof) : null;
         return this;
     }

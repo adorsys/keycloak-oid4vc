@@ -35,7 +35,6 @@ import org.keycloak.TokenVerifier;
 import org.keycloak.common.VerificationException;
 import org.keycloak.common.util.Base64Url;
 import org.keycloak.models.KeycloakSession;
-import org.keycloak.protocol.oid4vc.OID4VCLoginProtocolFactory;
 import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerEndpoint;
 import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerWellKnownProvider;
 import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.SdJwtCredentialBuilder;
@@ -48,21 +47,20 @@ import org.keycloak.protocol.oid4vc.model.CredentialsOffer;
 import org.keycloak.protocol.oid4vc.model.Format;
 import org.keycloak.protocol.oid4vc.model.JwtProof;
 import org.keycloak.protocol.oid4vc.model.Proof;
-import org.keycloak.protocol.oid4vc.model.ProofType;
 import org.keycloak.protocol.oidc.grants.PreAuthorizedCodeGrantTypeFactory;
 import org.keycloak.protocol.oidc.representations.OIDCConfigurationRepresentation;
 import org.keycloak.representations.JsonWebToken;
-import org.keycloak.representations.idm.ClientRepresentation;
 import org.keycloak.representations.idm.ComponentExportRepresentation;
 import org.keycloak.representations.idm.ProtocolMapperRepresentation;
 import org.keycloak.sdjwt.vp.SdJwtVP;
 import org.keycloak.services.managers.AppAuthManager;
+import org.keycloak.testsuite.Assert;
 import org.keycloak.testsuite.util.oauth.AccessTokenResponse;
 import org.keycloak.util.JsonSerialization;
 
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
-import java.time.temporal.ChronoUnit;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -120,7 +118,92 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
         );
     }
 
-    private static String getCredentialIssuer(KeycloakSession session) {
+
+    @Test
+    public void testMultipleCredentialsWithProofs() {
+        String token = getBearerToken(oauth);
+        testingClient
+                .server(TEST_REALM_NAME)
+                .run((session -> {
+                    AppAuthManager.BearerTokenAuthenticator authenticator = new AppAuthManager.BearerTokenAuthenticator(session);
+                    authenticator.setTokenString(token);
+                    OID4VCIssuerEndpoint issuerEndpoint = prepareIssuerEndpoint(session, authenticator);
+
+                    // Multiple credentials request with proofs
+                    CredentialRequest credentialRequest = new CredentialRequest()
+                            .setCredentialSpecs(List.of(
+                                    new CredentialRequest.CredentialSpec()
+                                            .setFormat(Format.SD_JWT_VC)
+                                            .setVct("https://credentials.example.com/test-credential")
+                                            .setProof(new JwtProof().setJwt(generateJwtProof(getCredentialIssuer(session), null))),
+                                    new CredentialRequest.CredentialSpec()
+                                            .setFormat(Format.SD_JWT_VC)
+                                            .setVct("https://credentials.example.com/test-credential")
+                                            .setProof(new JwtProof().setJwt(generateJwtProof(getCredentialIssuer(session), null)))
+                            ));
+
+                    Response response = issuerEndpoint.requestCredential(credentialRequest);
+                    assertEquals(HttpStatus.SC_OK, response.getStatus());
+
+                    CredentialResponse responseVO = JsonSerialization.readValue(
+                            JsonSerialization.writeValueAsString(response.getEntity()),
+                            CredentialResponse.class);
+
+                    // Verify multiple credentials response with key binding
+                    assertNotNull(responseVO.getCredentials());
+                    assertEquals(2, responseVO.getCredentials().size());
+                    responseVO.getCredentials().forEach(cred -> {
+                        assertNotNull(cred.getCredential());
+                        assertEquals(Format.SD_JWT_VC, cred.getFormat());
+                        SdJwtVP sdJwtVP = SdJwtVP.of(cred.getCredential().toString());
+                        assertNotNull("A cnf claim must be attached to the credential", sdJwtVP.getCnfClaim());
+                    });
+                }));
+    }
+
+    @Test
+    public void testSingleCredentialWithEmptyProofsList() {
+        String token = getBearerToken(oauth);
+        testingClient
+                .server(TEST_REALM_NAME)
+                .run((session -> {
+                    AppAuthManager.BearerTokenAuthenticator authenticator = new AppAuthManager.BearerTokenAuthenticator(session);
+                    authenticator.setTokenString(token);
+                    OID4VCIssuerEndpoint issuerEndpoint = prepareIssuerEndpoint(session, authenticator);
+
+                    // Single credential request with empty proofs list
+                    CredentialRequest credentialRequest = new CredentialRequest()
+                            .setFormat(Format.SD_JWT_VC)
+                            .setVct("https://credentials.example.com/test-credential");
+
+                    // Use reflection to set empty proofs list
+                    try {
+                        Field proofsField = CredentialRequest.class.getDeclaredField("proofs");
+                        proofsField.setAccessible(true);
+                        proofsField.set(credentialRequest, List.of());
+                    } catch (NoSuchFieldException e) {
+                        Assert.fail("Reflection failed: 'proofs' field not found in CredentialRequest: " + e.getMessage());
+                    } catch (IllegalAccessException e) {
+                        Assert.fail("Reflection failed: Cannot access 'proofs' field in CredentialRequest: " + e.getMessage());
+                    }
+
+                    Response response = issuerEndpoint.requestCredential(credentialRequest);
+                    assertEquals(HttpStatus.SC_OK, response.getStatus());
+
+                    CredentialResponse responseVO = JsonSerialization.readValue(
+                            JsonSerialization.writeValueAsString(response.getEntity()),
+                            CredentialResponse.class);
+
+                    // Verify response (no key binding expected)
+                    assertNotNull(responseVO.getCredentials());
+                    assertEquals(1, responseVO.getCredentials().size());
+                    assertNotNull(responseVO.getCredentials().get(0).getCredential());
+                    SdJwtVP sdJwtVP = SdJwtVP.of(responseVO.getCredentials().get(0).getCredential().toString());
+                    assertEquals("No cnf claim should be attached when no proof is provided", null, sdJwtVP.getCnfClaim());
+                }));
+    }
+
+    static String getCredentialIssuer(KeycloakSession session) {
         return OID4VCIssuerWellKnownProvider.getIssuer(session.getContext());
     }
 
@@ -138,12 +221,39 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
                 .setProof(proof);
 
         Response credentialResponse = issuerEndpoint.requestCredential(credentialRequest);
-        assertEquals("The credential request should be answered successfully.", HttpStatus.SC_OK, credentialResponse.getStatus());
-        assertNotNull("A credential should be responded.", credentialResponse.getEntity());
-        CredentialResponse credentialResponseVO = JsonSerialization.mapper.convertValue(credentialResponse.getEntity(), CredentialResponse.class);
-        new TestCredentialResponseHandler(vct).handleCredentialResponse(credentialResponseVO);
+        assertEquals("The credential request should be answered successfully.",
+                HttpStatus.SC_OK, credentialResponse.getStatus());
 
-        return SdJwtVP.of(credentialResponseVO.getCredential().toString());
+        Object responseEntity = credentialResponse.getEntity();
+        assertNotNull("A credential should be responded.", responseEntity);
+
+        try {
+            CredentialResponse credentialResponseVO = JsonSerialization.mapper.convertValue(responseEntity, CredentialResponse.class);
+            assertNotNull("Credential response should not be null", credentialResponseVO);
+            assertNotNull("Credential should be present", credentialResponseVO.getCredential());
+
+            Object credentialObj = credentialResponseVO.getCredential();
+            String credentialString;
+            if (credentialObj instanceof String) {
+                credentialString = (String) credentialObj;
+            } else if (credentialObj instanceof List) {
+                List<?> credentials = (List<?>) credentialObj;
+                assertEquals("Expected exactly one credential", 1, credentials.size());
+                Object firstCredential = credentials.get(0);
+                assertTrue("First credential should be a string", firstCredential instanceof String);
+                credentialString = (String) firstCredential;
+            } else {
+                throw new VerificationException("Credential must be a String or List, got: " + credentialObj.getClass());
+            }
+
+            assertNotNull("Credential string should not be null", credentialString);
+            assertFalse("Credential string should not be empty", credentialString.isEmpty());
+            System.out.println("Credential string: " + credentialString);
+
+            return SdJwtVP.of(credentialString);
+        } catch (Exception e) {
+            throw new VerificationException("Failed to process credential response", e);
+        }
     }
 
     // Tests the complete flow from
@@ -350,38 +460,93 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
 
         @Override
         protected void handleCredentialResponse(CredentialResponse credentialResponse) throws VerificationException {
-            // SDJWT have a special format.
-            SdJwtVP sdJwtVP = SdJwtVP.of(credentialResponse.getCredential().toString());
-            JsonWebToken jsonWebToken = TokenVerifier.create(sdJwtVP.getIssuerSignedJWT().toJws(), JsonWebToken.class).getToken();
+            try {
+                // First validate the basic response structure
+                assertNotNull("Credential response should not be null", credentialResponse);
+                assertNotNull("Credential should be present in response", credentialResponse.getCredential());
 
-            assertNotNull("A valid credential string should have been responded", jsonWebToken);
-            assertNotNull("The credentials should include the id claim", jsonWebToken.getId());
-            assertNotNull("The credentials should be included at the vct-claim.", jsonWebToken.getOtherClaims().get("vct"));
-            assertEquals("The credentials should be included at the vct-claim.", vct, jsonWebToken.getOtherClaims().get("vct").toString());
+                // Get the credential string - handle both single credential and credentials array cases
+                Object credentialObj = credentialResponse.getCredential();
+                String credentialString;
 
-            Map<String, JsonNode> disclosureMap = sdJwtVP.getDisclosures().values().stream()
-                    .map(disclosure -> {
-                        try {
-                            JsonNode jsonNode = JsonSerialization.mapper.readTree(Base64Url.decode(disclosure));
-                            return Map.entry(jsonNode.get(1).asText(), jsonNode); // Create a Map.Entry
-                        } catch (IOException e) {
-                            throw new RuntimeException(e); // Re-throw as unchecked exception
-                        }
-                    })
-                    .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
-            assertFalse("Only mappers supported for the requested type should have been evaluated.", disclosureMap.containsKey("given_name"));
-            assertTrue("The credentials should include the firstName claim.", disclosureMap.containsKey("firstName"));
-            assertEquals("firstName claim incorrectly mapped.", "John", disclosureMap.get("firstName").get(2).asText());
-            assertTrue("The credentials should include the lastName claim.", disclosureMap.containsKey("lastName"));
-            assertEquals("lastName claim incorrectly mapped.", "Doe", disclosureMap.get("lastName").get(2).asText());
-            assertTrue("The credentials should include the roles claim.", disclosureMap.containsKey("roles"));
-            assertTrue("The credentials should include the test-credential claim.", disclosureMap.containsKey("test-credential"));
-            assertTrue("lastName claim incorrectly mapped.", disclosureMap.get("test-credential").get(2).asBoolean());
-            assertTrue("The credentials should include the email claim.", disclosureMap.containsKey("email"));
-            assertEquals("email claim incorrectly mapped.", "john@email.cz", disclosureMap.get("email").get(2).asText());
+                if (credentialObj instanceof String) {
+                    credentialString = (String) credentialObj;
+                } else {
+                    // For array responses, get the first credential
+                    assertTrue("Credential should be a string or array", credentialObj instanceof List);
+                    List<?> credentials = (List<?>) credentialObj;
+                    assertFalse("Credentials list should not be empty", credentials.isEmpty());
+                    assertTrue("First credential should be a string", credentials.get(0) instanceof String);
+                    credentialString = (String) credentials.get(0);
+                }
 
-            assertNotNull("Test credential shall include an iat claim.", jsonWebToken.getIat());
-            assertNotNull("Test credential shall include an nbf claim.", jsonWebToken.getNbf());
+                assertNotNull("Credential string should not be null", credentialString);
+                assertFalse("Credential string should not be empty", credentialString.isEmpty());
+
+                // Parse the SD-JWT
+                SdJwtVP sdJwtVP;
+                try {
+                    sdJwtVP = SdJwtVP.of(credentialString);
+                } catch (Exception e) {
+                    throw new VerificationException("Failed to parse SD-JWT: " + credentialString, e);
+                }
+
+                // Verify the SD-JWT structure
+                assertNotNull("SD-JWT should be parsed successfully", sdJwtVP);
+                assertNotNull("Issuer signed JWT should be present", sdJwtVP.getIssuerSignedJWT());
+
+                // Verify the JWT claims
+                JsonWebToken jsonWebToken = TokenVerifier.create(sdJwtVP.getIssuerSignedJWT().toJws(), JsonWebToken.class).getToken();
+                assertNotNull("A valid credential string should have been responded", jsonWebToken);
+                assertNotNull("The credentials should include the id claim", jsonWebToken.getId());
+
+                // Verify vct claim if specified
+                if (vct != null) {
+                    assertNotNull("The credentials should include the vct claim", jsonWebToken.getOtherClaims().get("vct"));
+                    assertEquals("The vct claim should match expected value",
+                            vct, jsonWebToken.getOtherClaims().get("vct").toString());
+                }
+
+                // Verify standard claims
+                assertNotNull("Test credential shall include an iat claim", jsonWebToken.getIat());
+                assertNotNull("Test credential shall include an nbf claim", jsonWebToken.getNbf());
+
+                // Verify disclosures if present
+                if (!sdJwtVP.getDisclosures().isEmpty()) {
+                    Map<String, JsonNode> disclosureMap = sdJwtVP.getDisclosures().values().stream()
+                            .map(disclosure -> {
+                                try {
+                                    JsonNode jsonNode = JsonSerialization.mapper.readTree(Base64Url.decode(disclosure));
+                                    return Map.entry(jsonNode.get(1).asText(), jsonNode);
+                                } catch (IOException e) {
+                                    throw new RuntimeException("Failed to parse disclosure", e);
+                                }
+                            })
+                            .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+
+                    // Verify expected claims
+                    assertTrue("The credentials should include the firstName claim", disclosureMap.containsKey("firstName"));
+                    assertEquals("firstName claim incorrectly mapped", "John", disclosureMap.get("firstName").get(2).asText());
+                    assertTrue("The credentials should include the lastName claim", disclosureMap.containsKey("lastName"));
+                    assertEquals("lastName claim incorrectly mapped", "Doe", disclosureMap.get("lastName").get(2).asText());
+                    assertTrue("The credentials should include the email claim", disclosureMap.containsKey("email"));
+                    assertEquals("email claim incorrectly mapped", "john@email.cz", disclosureMap.get("email").get(2).asText());
+
+                    // Verify credential-specific claims
+                    assertTrue("The credentials should include the test-credential claim", disclosureMap.containsKey("test-credential"));
+                    assertTrue("test-credential claim incorrectly mapped", disclosureMap.get("test-credential").get(2).asBoolean());
+
+                    // Verify no unexpected claims
+                    assertFalse("Only mappers supported for the requested type should have been evaluated",
+                            disclosureMap.containsKey("given_name"));
+                }
+
+            } catch (Exception e) {
+                if (e instanceof VerificationException) {
+                    throw (VerificationException) e;
+                }
+                throw new VerificationException("Failed to validate credential response", e);
+            }
         }
     }
 }

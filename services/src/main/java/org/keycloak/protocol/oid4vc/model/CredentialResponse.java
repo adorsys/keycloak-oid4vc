@@ -21,6 +21,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * Represents a CredentialResponse according to the OID4VCI Spec
@@ -31,27 +32,54 @@ import java.util.List;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class CredentialResponse {
 
-    // List of credentials (concrete type depends on the format)
-    private List<Object> credential;
+    public static class CredentialEntry {
+        private String format;
+        private Object credential;
 
-    @JsonProperty("notification_id")
-    private String notificationId;
+        public String getFormat() {
+            return format;
+        }
 
-    public List<Object> getCredential() {
-        return credential;
+        public CredentialEntry setFormat(String format) {
+            this.format = format;
+            return this;
+        }
+
+        public Object getCredential() {
+            return credential;
+        }
+
+        public CredentialEntry setCredential(Object credential) {
+            this.credential = credential;
+            return this;
+        }
     }
 
-    public CredentialResponse setCredential(List<Object> credential) {
-        this.credential = credential;
+    @JsonProperty("credentials")
+    private List<CredentialEntry> credentials;
+
+    public List<CredentialEntry> getCredentials() {
+        return credentials;
+    }
+
+    public CredentialResponse setCredentials(List<CredentialEntry> credentials) {
+        this.credentials = credentials;
         return this;
     }
 
-    public String getNotificationId() {
-        return notificationId;
+    // Backward compatibility for single credential
+    public List<Object> getCredential() {
+        return credentials != null
+                ? credentials.stream().map(CredentialEntry::getCredential).collect(Collectors.toList())
+                : null;
     }
 
-    public CredentialResponse setNotificationId(String notificationId) {
-        this.notificationId = notificationId;
+    public CredentialResponse setCredential(List<Object> credentials) {
+        this.credentials = credentials != null
+                ? credentials.stream()
+                .map(cred -> new CredentialEntry().setCredential(cred))
+                .collect(Collectors.toList())
+                : null;
         return this;
     }
 }

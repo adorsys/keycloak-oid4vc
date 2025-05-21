@@ -42,6 +42,8 @@ import org.keycloak.protocol.oid4vc.model.CredentialOfferURI;
 import org.keycloak.protocol.oid4vc.model.CredentialRequest;
 import org.keycloak.protocol.oid4vc.model.CredentialResponse;
 import org.keycloak.protocol.oid4vc.model.CredentialsOffer;
+import org.keycloak.protocol.oid4vc.model.ErrorResponse;
+import org.keycloak.protocol.oid4vc.model.ErrorType;
 import org.keycloak.protocol.oid4vc.model.Format;
 import org.keycloak.protocol.oid4vc.model.OfferUriType;
 import org.keycloak.protocol.oid4vc.model.PreAuthorizedCode;
@@ -284,19 +286,19 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
     public void testRequestCredentialNoMatchingCredentialBuilder() throws Throwable {
         String token = getBearerToken(oauth);
         withCausePropagation(() ->
-            testingClient
-                    .server(TEST_REALM_NAME)
-                    .run((session -> {
-                        AppAuthManager.BearerTokenAuthenticator authenticator = new AppAuthManager.BearerTokenAuthenticator(session);
-                        authenticator.setTokenString(token);
+                testingClient
+                        .server(TEST_REALM_NAME)
+                        .run((session -> {
+                            AppAuthManager.BearerTokenAuthenticator authenticator = new AppAuthManager.BearerTokenAuthenticator(session);
+                            authenticator.setTokenString(token);
 
-                        // Prepare the issue endpoint with no credential builders.
-                        OID4VCIssuerEndpoint issuerEndpoint = prepareIssuerEndpoint(session, authenticator, Map.of());
+                            // Prepare the issue endpoint with no credential builders.
+                            OID4VCIssuerEndpoint issuerEndpoint = prepareIssuerEndpoint(session, authenticator, Map.of());
 
-                        issuerEndpoint.requestCredential(new CredentialRequest()
-                                .setFormat(Format.JWT_VC)
-                                .setCredentialIdentifier("test-credential"));
-                    }))
+                            issuerEndpoint.requestCredential(new CredentialRequest()
+                                    .setFormat(Format.JWT_VC)
+                                    .setCredentialIdentifier("test-credential"));
+                        }))
         );
     }
 
@@ -332,8 +334,11 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
                     Response credentialResponse = issuerEndpoint.requestCredential(credentialRequest);
                     assertEquals("The credential request should be answered successfully.", HttpStatus.SC_OK, credentialResponse.getStatus());
                     assertNotNull("A credential should be responded.", credentialResponse.getEntity());
-                    String credentialResponseVO = String.valueOf(JsonSerialization.mapper.convertValue(credentialResponse.getEntity(), CredentialResponse.class));
-                    JsonWebToken jsonWebToken = TokenVerifier.create(credentialResponseVO, JsonWebToken.class).getToken();
+                    CredentialResponse responseVO = JsonSerialization.readValue(JsonSerialization.writeValueAsString(credentialResponse.getEntity()), CredentialResponse.class);
+                    assertNotNull("The credentials list should not be null.", responseVO.getCredentials());
+                    assertFalse("The credentials list should not be empty.", responseVO.getCredentials().isEmpty());
+                    String credentialString = (String) responseVO.getCredentials().get(0).getCredential();
+                    JsonWebToken jsonWebToken = TokenVerifier.create(credentialString, JsonWebToken.class).getToken();
 
                     assertNotNull("A valid credential string should have been responded", jsonWebToken);
                     assertNotNull("The credentials should be included at the vc-claim.", jsonWebToken.getOtherClaims().get("vc"));
@@ -440,9 +445,12 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
                             System.out.println("Error Response: " + errorBody);
                         }
                         assertEquals(200, response.getStatus());
-                        String credentialResponse = String.valueOf(JsonSerialization.readValue(response.readEntity(String.class), CredentialResponse.class));
+                        CredentialResponse responseVO = JsonSerialization.readValue(response.readEntity(String.class), CredentialResponse.class);
+                        assertNotNull("The credentials list should not be null.", responseVO.getCredentials());
+                        assertFalse("The credentials list should not be empty.", responseVO.getCredentials().isEmpty());
+                        String credentialString = (String) responseVO.getCredentials().get(0).getCredential();
 
-                        JsonWebToken jsonWebToken = TokenVerifier.create(credentialResponse, JsonWebToken.class).getToken();
+                        JsonWebToken jsonWebToken = TokenVerifier.create(credentialString, JsonWebToken.class).getToken();
                         assertEquals("did:web:test.org", jsonWebToken.getIssuer());
 
                         VerifiableCredential credential = JsonSerialization.mapper.convertValue(jsonWebToken.getOtherClaims().get("vc"), VerifiableCredential.class);
@@ -471,7 +479,7 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
 
     @Test
     public void testCredentialIssuanceWithAuthZCodeSWithoutScope() throws Exception {
-        testCredentialIssuanceWithAuthZCodeFlow((testClientId, testScope) -> getBearerToken(oauth.clientId(testClientId).openid(false).scope(null)), // no scope
+        testCredentialIssuanceWithAuthZCodeFlow((testClientId, testScope) -> getBearerToken(oauth.clientId(testClientId).openid(false).scope(null)),
                 m -> {
                     String accessToken = (String) m.get("accessToken");
                     WebTarget credentialTarget = (WebTarget) m.get("credentialTarget");
@@ -533,10 +541,205 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
                         Map<String, Object> errorMap = JsonSerialization.readValue(errorJson, Map.class);
                         assertTrue("Error should contain 'error' field", errorMap.containsKey("error"));
                         assertEquals("UNSUPPORTED_CREDENTIAL_TYPE", errorMap.get("error"));
-                        assertEquals("Scope check failure", errorMap.get("error_description"));
+                        assertEquals("Scope check failure for credential: test-credential", errorMap.get("error_description"));
                     } catch (IOException e) {
                         throw new RuntimeException(e);
                     }
                 });
+    }
+
+    @Test
+    public void testSingleCredentialRequest() {
+        String token = getBearerToken(oauth);
+        testingClient
+                .server(TEST_REALM_NAME)
+                .run((session -> {
+                    AppAuthManager.BearerTokenAuthenticator authenticator = new AppAuthManager.BearerTokenAuthenticator(session);
+                    authenticator.setTokenString(token);
+                    OID4VCIssuerEndpoint issuerEndpoint = prepareIssuerEndpoint(session, authenticator);
+
+                    // Single credential request (legacy format)
+                    CredentialRequest credentialRequest = new CredentialRequest()
+                            .setFormat(Format.JWT_VC)
+                            .setCredentialIdentifier("test-credential");
+
+                    Response response = issuerEndpoint.requestCredential(credentialRequest);
+                    assertEquals(HttpStatus.SC_OK, response.getStatus());
+
+                    CredentialResponse responseVO = JsonSerialization.readValue(
+                            JsonSerialization.writeValueAsString(response.getEntity()),
+                            CredentialResponse.class);
+
+                    // Verify single credential response
+                    assertNotNull(responseVO.getCredentials());
+                    assertEquals(1, responseVO.getCredentials().size());
+                    assertNotNull(responseVO.getCredentials().get(0).getCredential());
+                }));
+    }
+
+    @Test
+    public void testMultipleCredentialsRequest() {
+        String token = getBearerToken(oauth);
+        testingClient
+                .server(TEST_REALM_NAME)
+                .run((session -> {
+                    AppAuthManager.BearerTokenAuthenticator authenticator = new AppAuthManager.BearerTokenAuthenticator(session);
+                    authenticator.setTokenString(token);
+                    OID4VCIssuerEndpoint issuerEndpoint = prepareIssuerEndpoint(session, authenticator);
+
+                    // Multiple credentials request
+                    CredentialRequest credentialRequest = new CredentialRequest()
+                            .setCredentialSpecs(List.of(
+                                    new CredentialRequest.CredentialSpec()
+                                            .setFormat(Format.JWT_VC)
+                                            .setCredentialIdentifier("test-credential"),
+                                    new CredentialRequest.CredentialSpec()
+                                            .setFormat(Format.JWT_VC)
+                                            .setCredentialIdentifier("test-credential")
+                            ));
+
+                    Response response = issuerEndpoint.requestCredential(credentialRequest);
+                    assertEquals(HttpStatus.SC_OK, response.getStatus());
+
+                    CredentialResponse responseVO = JsonSerialization.readValue(
+                            JsonSerialization.writeValueAsString(response.getEntity()),
+                            CredentialResponse.class);
+
+                    // Verify multiple credentials response
+                    assertNotNull(responseVO.getCredentials());
+                    assertEquals(2, responseVO.getCredentials().size());
+                    responseVO.getCredentials().forEach(cred -> {
+                        assertNotNull(cred.getCredential());
+                        assertEquals(Format.JWT_VC, cred.getFormat());
+                    });
+                }));
+    }
+
+    @Test(expected = BadRequestException.class)
+    public void testMultipleCredentialsWithDifferentDatasets() throws Throwable {
+        String token = getBearerToken(oauth);
+        withCausePropagation(() ->
+                testingClient
+                        .server(TEST_REALM_NAME)
+                        .run((session -> {
+                            AppAuthManager.BearerTokenAuthenticator authenticator = new AppAuthManager.BearerTokenAuthenticator(session);
+                            authenticator.setTokenString(token);
+                            OID4VCIssuerEndpoint issuerEndpoint = prepareIssuerEndpoint(session, authenticator);
+
+                            // Invalid request with different credential identifiers
+                            CredentialRequest credentialRequest = new CredentialRequest()
+                                    .setCredentialSpecs(List.of(
+                                            new CredentialRequest.CredentialSpec()
+                                                    .setFormat(Format.JWT_VC)
+                                                    .setCredentialIdentifier("test-credential"),
+                                            new CredentialRequest.CredentialSpec()
+                                                    .setFormat(Format.JWT_VC)
+                                                    .setCredentialIdentifier("different-credential")
+                                    ));
+
+                            issuerEndpoint.requestCredential(credentialRequest);
+                        }))
+        );
+    }
+
+    @Test
+    public void testScopeValidationForMultipleCredentials() throws Exception {
+        // Set up realm with scope requirements
+        RealmResource realm = adminClient.realm(TEST_REALM_NAME);
+        RealmRepresentation rep = realm.toRepresentation();
+        Map<String, String> attributes = rep.getAttributes() != null ? new HashMap<>(rep.getAttributes()) : new HashMap<>();
+        attributes.put("vc.test-credential.scope", "VerifiableCredential");
+        rep.setAttributes(attributes);
+        realm.update(rep);
+
+        testCredentialIssuanceWithAuthZCodeFlow(
+                (testClientId, testScope) -> getBearerToken(oauth.clientId(testClientId).openid(false).scope("VerifiableCredential")),
+                m -> {
+                    String accessToken = (String) m.get("accessToken");
+                    WebTarget credentialTarget = (WebTarget) m.get("credentialTarget");
+
+                    // Create request with multiple credentials
+                    CredentialRequest credentialRequest = new CredentialRequest()
+                            .setCredentialSpecs(List.of(
+                                    new CredentialRequest.CredentialSpec()
+                                            .setFormat(Format.JWT_VC)
+                                            .setCredentialIdentifier("test-credential"),
+                                    new CredentialRequest.CredentialSpec()
+                                            .setFormat(Format.JWT_VC)
+                                            .setCredentialIdentifier("test-credential")
+                            ));
+
+                    try (Response response = credentialTarget.request()
+                            .header(HttpHeaders.AUTHORIZATION, "bearer " + accessToken)
+                            .post(Entity.json(credentialRequest))) {
+
+                        assertEquals(200, response.getStatus());
+                        CredentialResponse responseVO = JsonSerialization.readValue(
+                                response.readEntity(String.class),
+                                CredentialResponse.class);
+
+                        assertNotNull(responseVO.getCredentials());
+                        assertEquals(2, responseVO.getCredentials().size());
+                    } catch (IOException e) {
+                        Assert.fail("Failed to process credential response: " + e.getMessage());
+                    }
+                });
+    }
+
+    @Test
+    public void testPartialFailureInMultipleCredentials() {
+        String token = getBearerToken(oauth);
+        testingClient
+                .server(TEST_REALM_NAME)
+                .run((session -> {
+                    AppAuthManager.BearerTokenAuthenticator authenticator = new AppAuthManager.BearerTokenAuthenticator(session);
+                    authenticator.setTokenString(token);
+                    OID4VCIssuerEndpoint issuerEndpoint = prepareIssuerEndpoint(session, authenticator);
+
+                    // Request with one valid and one invalid credential
+                    CredentialRequest credentialRequest = new CredentialRequest()
+                            .setCredentialSpecs(List.of(
+                                    new CredentialRequest.CredentialSpec()
+                                            .setFormat(Format.JWT_VC)
+                                            .setCredentialIdentifier("test-credential"),
+                                    new CredentialRequest.CredentialSpec()
+                                            .setFormat(Format.JWT_VC)
+                                            .setCredentialIdentifier("invalid-credential")
+                            ));
+
+                    try {
+                        Response response = issuerEndpoint.requestCredential(credentialRequest);
+                        fail("Should have thrown BadRequestException");
+                    } catch (BadRequestException e) {
+                        // Verify the entire request fails if any credential fails
+                        assertTrue(e.getResponse().getEntity() instanceof ErrorResponse);
+                        ErrorResponse error = (ErrorResponse) e.getResponse().getEntity();
+                        assertEquals(ErrorType.UNSUPPORTED_CREDENTIAL_TYPE, error.getError());
+                    }
+                }));
+    }
+
+    @Test(expected = BadRequestException.class)
+    public void testMixedFormatsInRequest() throws Throwable {
+        String token = getBearerToken(oauth);
+        withCausePropagation(() ->
+                testingClient.server(TEST_REALM_NAME).run(session -> {
+                    AppAuthManager.BearerTokenAuthenticator authenticator = new AppAuthManager.BearerTokenAuthenticator(session);
+                    authenticator.setTokenString(token);
+                    OID4VCIssuerEndpoint issuerEndpoint = prepareIssuerEndpoint(session, authenticator);
+
+                    CredentialRequest request = new CredentialRequest()
+                            .setCredentialSpecs(List.of(
+                                    new CredentialRequest.CredentialSpec()
+                                            .setFormat(Format.JWT_VC)
+                                            .setCredentialIdentifier("test-credential"),
+                                    new CredentialRequest.CredentialSpec()
+                                            .setFormat(Format.SD_JWT_VC)
+                                            .setCredentialIdentifier("test-credential")
+                            ));
+
+                    issuerEndpoint.requestCredential(request);
+                })
+        );
     }
 }
