@@ -296,20 +296,30 @@ public class OID4VCIssuerEndpoint {
         if (vcIssuanceFlow == null || !vcIssuanceFlow.equals(PreAuthorizedCodeGrantTypeFactory.GRANT_TYPE)) {
             // Authorization Code Flow
             RealmModel realm = session.getContext().getRealm();
-            String credentialIdentifier = credentialRequestVO.getCredentialIdentifier();
-
-            String scope = realm.getAttribute("vc." + credentialIdentifier + ".scope");
-
             AccessToken accessToken = bearerTokenAuthenticator.authenticate().getToken();
-            if (scope == null || Arrays.stream(accessToken.getScope().split(" "))
-                    .noneMatch(tokenScope -> tokenScope.equals(scope))) {
-                LOGGER.debugf("Scope check failure: credentialIdentifier = %s, required scope = %s, scope in access token = %s.",
-                        credentialIdentifier, scope, accessToken.getScope());
-                throw new CorsErrorResponseException(cors,
-                        ErrorType.UNSUPPORTED_CREDENTIAL_TYPE.toString(),
-                        "Scope check failure",
-                        Response.Status.BAD_REQUEST);
-            } else {
+
+            // Get all credential identifiers from the request
+            List<String> credentialIdentifiers = credentialRequestVO.getCredentialSpecs() != null
+                    ? credentialRequestVO.getCredentialSpecs().stream()
+                    .map(CredentialRequest.CredentialSpec::getCredentialIdentifier)
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toList())
+                    : List.of(credentialRequestVO.getCredentialIdentifier());
+
+            for (String credentialIdentifier : credentialIdentifiers) {
+                if (credentialIdentifier == null) {
+                    continue; // Skip if no identifier is provided (e.g., format-based request)
+                }
+                String scope = realm.getAttribute("vc." + credentialIdentifier + ".scope");
+                if (scope == null || Arrays.stream(accessToken.getScope().split(" "))
+                        .noneMatch(tokenScope -> tokenScope.equals(scope))) {
+                    LOGGER.debugf("Scope check failure: credentialIdentifier = %s, required scope = %s, scope in access token = %s.",
+                            credentialIdentifier, scope, accessToken.getScope());
+                    throw new CorsErrorResponseException(cors,
+                            ErrorType.UNSUPPORTED_CREDENTIAL_TYPE.toString(),
+                            "Scope check failure for credential: " + credentialIdentifier,
+                            Response.Status.BAD_REQUEST);
+                }
                 LOGGER.debugf("Scope check success: credentialIdentifier = %s, required scope = %s, scope in access token = %s.",
                         credentialIdentifier, scope, accessToken.getScope());
             }
@@ -318,80 +328,113 @@ public class OID4VCIssuerEndpoint {
         }
     }
 
-
     /**
-     * Returns a verifiable credential
+     * Returns one or more verifiable credentials as per OID4VCI draft 15.
      */
     @POST
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     @Path(CREDENTIAL_PATH)
-    public Response requestCredential(
-            CredentialRequest credentialRequestVO) {
+    public Response requestCredential(CredentialRequest credentialRequestVO) {
         LOGGER.debugf("Received credentials request %s.", credentialRequestVO);
 
         cors = Cors.builder().auth().allowedMethods("POST").auth().exposedHeaders(Cors.ACCESS_CONTROL_ALLOW_METHODS);
 
-        // do first to fail fast on auth
+        // Do first to fail fast on auth
         AuthenticationManager.AuthResult authResult = getAuthResult();
 
         if (!isIgnoreScopeCheck) {
             checkScope(credentialRequestVO);
         }
 
-        // Both Format and identifier are optional.
-        // If the credential_identifier is present, Format can't be present. But this implementation will
-        // tolerate the presence of both, waiting for clarity in specifications.
-        // This implementation will privilege the presence of the credential config identifier.
-        String requestedCredentialId = credentialRequestVO.getCredentialIdentifier();
-        String requestedFormat = credentialRequestVO.getFormat();
+        Map<String, SupportedCredentialConfiguration> supportedCredentials = OID4VCIssuerWellKnownProvider.getSupportedCredentials(this.session);
+        CredentialResponse responseVO = new CredentialResponse();
 
-        // Check if at least one of both is available.
+        // Handle single or multiple credential specs
+        List<CredentialRequest.CredentialSpec> specs = credentialRequestVO.getCredentialSpecs() != null
+                ? credentialRequestVO.getCredentialSpecs()
+                : List.of(new CredentialRequest.CredentialSpec()
+                .setFormat(credentialRequestVO.getFormat())
+                .setCredentialIdentifier(credentialRequestVO.getCredentialIdentifier())
+                .setVct(credentialRequestVO.getVct())
+                .setCredentialDefinition(credentialRequestVO.getCredentialDefinition())
+                .setProof(credentialRequestVO.getProof()));
+
+        // Process each credential specification
+        List<CredentialResponse.CredentialEntry> credentials = specs.stream()
+                .map(spec -> {
+                    // Resolve credential configuration
+                    SupportedCredentialConfiguration config = resolveCredentialConfiguration(spec, supportedCredentials);
+
+                    // Single credential request for compatibility with existing getCredential method
+                    CredentialRequest singleRequest = new CredentialRequest()
+                            .setFormat(spec.getFormat())
+                            .setCredentialIdentifier(spec.getCredentialIdentifier())
+                            .setVct(spec.getVct())
+                            .setCredentialDefinition(spec.getCredentialDefinition())
+                            .setProof(spec.getProof());
+
+                    // Generate credential
+                    Object credential = getCredential(authResult, config, singleRequest);
+
+                    // Ensure format is supported
+                    if (!SUPPORTED_FORMATS.contains(spec.getFormat())) {
+                        throw new BadRequestException(getErrorResponse(ErrorType.UNSUPPORTED_CREDENTIAL_TYPE));
+                    }
+
+                    return new CredentialResponse.CredentialEntry()
+                            .setFormat(spec.getFormat())
+                            .setCredential(credential);
+                })
+                .collect(Collectors.toList());
+
+        responseVO.setCredentials(credentials);
+        return Response.ok().entity(responseVO).build();
+    }
+
+    private SupportedCredentialConfiguration resolveCredentialConfiguration(CredentialRequest.CredentialSpec spec, Map<String, SupportedCredentialConfiguration> supportedCredentials) {
+        String requestedCredentialId = spec.getCredentialIdentifier();
+        String requestedFormat = spec.getFormat();
+
+        // Check if at least one of credential_identifier or format is provided
         if (requestedCredentialId == null && requestedFormat == null) {
             LOGGER.debugf("Missing both configuration id and requested format. At least one shall be specified.");
             throw new BadRequestException(getErrorResponse(ErrorType.MISSING_CREDENTIAL_CONFIG_AND_FORMAT));
         }
 
-        Map<String, SupportedCredentialConfiguration> supportedCredentials = OID4VCIssuerWellKnownProvider.getSupportedCredentials(this.session);
-
-        // resolve from identifier first
-        SupportedCredentialConfiguration supportedCredentialConfiguration = null;
+        SupportedCredentialConfiguration config = null;
         if (requestedCredentialId != null) {
-            supportedCredentialConfiguration = supportedCredentials.get(requestedCredentialId);
-            if (supportedCredentialConfiguration == null) {
+            config = supportedCredentials.get(requestedCredentialId);
+            if (config == null) {
                 LOGGER.debugf("Credential with configuration id %s not found.", requestedCredentialId);
                 throw new BadRequestException(getErrorResponse(ErrorType.UNSUPPORTED_CREDENTIAL_TYPE));
             }
-            // Then for format. We know spec does not allow both parameter. But we are tolerant if you send both
-            // Was found by id, check that the format matches.
-            if (requestedFormat != null && !requestedFormat.equals(supportedCredentialConfiguration.getFormat())) {
-                LOGGER.debugf("Credential with configuration id %s does not support requested format %s, but supports %s.", requestedCredentialId, requestedFormat, supportedCredentialConfiguration.getFormat());
+            // Check format compatibility if provided
+            if (requestedFormat != null && !requestedFormat.equals(config.getFormat())) {
+                LOGGER.debugf("Credential with configuration id %s does not support requested format %s, but supports %s.",
+                        requestedCredentialId, requestedFormat, config.getFormat());
                 throw new BadRequestException(getErrorResponse(ErrorType.UNSUPPORTED_CREDENTIAL_FORMAT));
             }
         }
 
-        if (supportedCredentialConfiguration == null && requestedFormat != null) {
+        if (config == null && requestedFormat != null) {
             // Search by format
-            supportedCredentialConfiguration = getSupportedCredentialConfiguration(credentialRequestVO, supportedCredentials, requestedFormat);
-            if (supportedCredentialConfiguration == null) {
-                LOGGER.debugf("Credential with requested format %s, not supported.", requestedFormat);
+            config = getSupportedCredentialConfiguration(spec, supportedCredentials, requestedFormat);
+            if (config == null) {
+                LOGGER.debugf("Credential with requested format %s not supported.", requestedFormat);
                 throw new BadRequestException(getErrorResponse(ErrorType.UNSUPPORTED_CREDENTIAL_FORMAT));
             }
         }
 
-        CredentialResponse responseVO = new CredentialResponse();
-
-        Object theCredential = getCredential(authResult, supportedCredentialConfiguration, credentialRequestVO);
-        if (SUPPORTED_FORMATS.contains(requestedFormat)) {
-            responseVO.setCredential(theCredential);
-        } else {
+        if (config == null) {
             throw new BadRequestException(getErrorResponse(ErrorType.UNSUPPORTED_CREDENTIAL_TYPE));
         }
-        return Response.ok().entity(responseVO).build();
+
+        return config;
     }
 
-    private SupportedCredentialConfiguration getSupportedCredentialConfiguration(CredentialRequest credentialRequestVO, Map<String, SupportedCredentialConfiguration> supportedCredentials, String requestedFormat) {
-        // 1. Format resolver
+    private SupportedCredentialConfiguration getSupportedCredentialConfiguration(CredentialRequest.CredentialSpec spec, Map<String, SupportedCredentialConfiguration> supportedCredentials, String requestedFormat) {
+        // Filter by format
         List<SupportedCredentialConfiguration> configs = supportedCredentials.values().stream()
                 .filter(supportedCredential -> Objects.equals(supportedCredential.getFormat(), requestedFormat))
                 .collect(Collectors.toList());
@@ -402,14 +445,14 @@ public class OID4VCIssuerEndpoint {
             case SD_JWT_VC:
                 // Resolve from vct for sd-jwt
                 matchingConfigs = configs.stream()
-                        .filter(supportedCredential -> Objects.equals(supportedCredential.getVct(), credentialRequestVO.getVct()))
+                        .filter(supportedCredential -> Objects.equals(supportedCredential.getVct(), spec.getVct()))
                         .collect(Collectors.toList());
                 break;
             case JWT_VC:
             case LDP_VC:
-                // Will detach this when each format provides logic on how to resolve from definition.
+                // Resolve from credential_definition
                 matchingConfigs = configs.stream()
-                        .filter(supportedCredential -> Objects.equals(supportedCredential.getCredentialDefinition(), credentialRequestVO.getCredentialDefinition()))
+                        .filter(supportedCredential -> Objects.equals(supportedCredential.getCredentialDefinition(), spec.getCredentialDefinition()))
                         .collect(Collectors.toList());
                 break;
             default:
@@ -480,7 +523,7 @@ public class OID4VCIssuerEndpoint {
 
         VCIssuanceContext vcIssuanceContext = getVCToSign(protocolMappers, credentialConfig, authResult, credentialRequestVO);
 
-        // Enforce key binding prior to signing if necessary
+        // Enforce key binding if proof is provided
         enforceKeyBindingIfProofProvided(vcIssuanceContext);
 
         // Retrieve matching credential signer
@@ -564,6 +607,17 @@ public class OID4VCIssuerEndpoint {
                 .build();
     }
 
+    private Response getErrorResponse(ErrorType errorType, String errorDescription) {
+        var errorResponse = new ErrorResponse();
+        errorResponse.setError(errorType);
+        errorResponse.setErrorDescription(errorDescription);
+        return Response
+                .status(Response.Status.BAD_REQUEST)
+                .entity(errorResponse)
+                .type(MediaType.APPLICATION_JSON)
+                .build();
+    }
+
     private ClientModel getClient(String clientId) {
         return session.clients().getClientByClientId(session.getContext().getRealm(), clientId);
     }
@@ -601,8 +655,8 @@ public class OID4VCIssuerEndpoint {
         LOGGER.debugf("The credential to sign is: %s", vc);
 
         // Build format-specific credential
-        CredentialBody credentialBody = findCredentialBuilder(credentialConfig)
-                .buildCredentialBody(vc, credentialConfig.getCredentialBuildConfig());
+        CredentialBuilder builder = findCredentialBuilder(credentialConfig);
+        CredentialBody credentialBody = builder.buildCredentialBody(vc, credentialConfig.getCredentialBuildConfig(), credentialRequestVO.getProof());
 
         return new VCIssuanceContext()
                 .setAuthResult(authResult)
@@ -630,7 +684,7 @@ public class OID4VCIssuerEndpoint {
 
         // Validate proof and bind public key to credential
         try {
-            Optional.ofNullable(proofValidator.validateProof(vcIssuanceContext))
+            Optional.ofNullable(proofValidator.validateProof(vcIssuanceContext, proof))
                     .ifPresent(jwk -> vcIssuanceContext.getCredentialBody().addKeyBinding(jwk));
         } catch (VCIssuerException e) {
             throw new BadRequestException("Could not validate provided proof", e);
