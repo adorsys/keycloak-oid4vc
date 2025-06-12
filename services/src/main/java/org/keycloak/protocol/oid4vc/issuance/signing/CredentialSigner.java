@@ -22,32 +22,22 @@ import org.keycloak.protocol.oid4vc.model.CredentialBuildConfig;
 import org.keycloak.provider.Provider;
 
 /**
- * Interface for signing verifiable credentials in the OID4VCI protocol.
- * Implementations must produce a signed credential representation based on the provided
- * credential body and configuration.
- *
- * @param <T> the type of the signed credential representation (e.g., String for JWT, Map for LD-Proof)
+ * Interface to be used for signing verifiable credentials.
  */
 public interface CredentialSigner<T> extends Provider {
 
-    /**
-     * Default implementation for closing resources. Implementations should override
-     * if they hold resources that need to be released.
-     */
     @Override
     default void close() {
-        // No resources to close by default
     }
 
     /**
-     * Signs a verifiable credential using the provided credential body and configuration.
+     * Takes a verifiable credential and signs it according to the implementation.
+     * Depending on the type of the CredentialSigner, it will return a signed representation
+     * of the credential that be returned at the credential request endpoint.
      *
-     * @param credentialBody        the partially built credential representation to be signed
-     * @param credentialBuildConfig additional configurations for building and signing the credential
-     * @return a signed credential representation
-     * @throws CredentialSignerException if signing fails due to invalid inputs, configuration errors,
-     *                                   or cryptographic issues
-     * @throws IllegalArgumentException if credentialBody or credentialBuildConfig is null
+     * @param credentialBody        a partially built credential representation, awaiting to be signed
+     * @param credentialBuildConfig additional configurations for building the credential
+     * @return a signed representation
      */
     T signCredential(CredentialBody credentialBody, CredentialBuildConfig credentialBuildConfig)
             throws CredentialSignerException;
