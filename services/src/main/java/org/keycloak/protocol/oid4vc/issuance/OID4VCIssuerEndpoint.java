@@ -429,7 +429,6 @@ public class OID4VCIssuerEndpoint {
             throw new BadRequestException(getErrorResponse(ErrorType.INVALID_CREDENTIAL_REQUEST));
         }
 
-        // Validate JWK for RSA
         boolean isValidRsaJwk = false;
         if ("RSA".equals(jwk.getKeyType())) {
             if (jwk instanceof RSAPublicJWK) {
