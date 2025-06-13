@@ -318,7 +318,6 @@ public class OID4VCIssuerEndpoint {
         }
     }
 
-
     /**
      * Returns a verifiable credential
      */
@@ -381,13 +380,25 @@ public class OID4VCIssuerEndpoint {
 
         CredentialResponse responseVO = new CredentialResponse();
 
-        Object theCredential = getCredential(authResult, supportedCredentialConfiguration, credentialRequestVO);
-        if (SUPPORTED_FORMATS.contains(requestedFormat)) {
-            responseVO.setCredential(theCredential);
-        } else {
-            throw new BadRequestException(getErrorResponse(ErrorType.UNSUPPORTED_CREDENTIAL_TYPE));
+        try {
+            Object theCredential = getCredential(authResult, supportedCredentialConfiguration, credentialRequestVO);
+            if (SUPPORTED_FORMATS.contains(requestedFormat)) {
+                responseVO.setCredential(theCredential);
+            } else {
+                throw new BadRequestException(getErrorResponse(ErrorType.UNSUPPORTED_CREDENTIAL_TYPE));
+            }
+            return Response.ok().entity(responseVO).build();
+        } catch (VCIssuerException e) {
+            if (e.getMessage().contains("nonce")) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .type(MediaType.APPLICATION_JSON)
+                        .entity(new ErrorResponse()
+                                .setError(ErrorType.INVALID_NONCE)
+                                .setErrorDescription(e.getMessage()))
+                        .build();
+            }
+            throw new BadRequestException("Could not validate provided proof", e);
         }
-        return Response.ok().entity(responseVO).build();
     }
 
     private SupportedCredentialConfiguration getSupportedCredentialConfiguration(CredentialRequest credentialRequestVO, Map<String, SupportedCredentialConfiguration> supportedCredentials, String requestedFormat) {
@@ -557,6 +568,16 @@ public class OID4VCIssuerEndpoint {
     private Response getErrorResponse(ErrorType errorType) {
         var errorResponse = new ErrorResponse();
         errorResponse.setError(errorType);
+        return Response
+                .status(Response.Status.BAD_REQUEST)
+                .entity(errorResponse)
+                .type(MediaType.APPLICATION_JSON)
+                .build();
+    }
+
+    private Response getErrorResponse(ErrorType errorType, String errorDescription) {
+        var errorResponse = new ErrorResponse();
+        errorResponse.setError(errorType).setErrorDescription(errorDescription);
         return Response
                 .status(Response.Status.BAD_REQUEST)
                 .entity(errorResponse)

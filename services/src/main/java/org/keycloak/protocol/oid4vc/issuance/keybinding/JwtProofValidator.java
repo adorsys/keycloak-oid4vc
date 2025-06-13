@@ -215,12 +215,10 @@ public class JwtProofValidator extends AbstractProofValidator {
                         cNonce -> {
                             Optional.ofNullable(proofPayload.getNonce())
                                     .filter(nonce -> Objects.equals(cNonce, nonce))
-                                    .orElseThrow(() -> new VCIssuerException("Missing or wrong nonce value. Please provide nonce returned by the issuer if any."));
-
-                            // We expect the expiration to be identical to the token expiration. We assume token expiration has been checked by AuthManager,
-                            // So no_op
+                                    .orElseThrow(() -> new VCIssuerException(
+                                            "Invalid or missing nonce value. The wallet should retrieve a new c_nonce from the token endpoint."
+                                    ));
                         }
                 );
-
     }
 }
