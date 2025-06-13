@@ -51,6 +51,9 @@ public class CredentialIssuer {
     @JsonProperty("credential_configurations_supported")
     private Map<String, SupportedCredentialConfiguration> credentialsSupported;
 
+    @JsonProperty("credential_response_encryption")
+    private CredentialResponseEncryption credentialResponseEncryption;
+
     private DisplayObject display;
 
     public String getCredentialIssuer() {
@@ -115,5 +118,55 @@ public class CredentialIssuer {
         this.notificationEndpoint = notificationEndpoint;
         return this;
     }
-}
 
+    public CredentialResponseEncryption getCredentialResponseEncryption() {
+        return credentialResponseEncryption;
+    }
+
+    public CredentialIssuer setCredentialResponseEncryption(CredentialResponseEncryption credentialResponseEncryption) {
+        this.credentialResponseEncryption = credentialResponseEncryption;
+        return this;
+    }
+
+    /**
+     * Represents the credential_response_encryption metadata
+     * {@see https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#section-11.2.2}
+     */
+    public static class CredentialResponseEncryption {
+        @JsonProperty("alg_values_supported")
+        private List<String> algValuesSupported;
+
+        @JsonProperty("enc_values_supported")
+        private List<String> encValuesSupported;
+
+        @JsonProperty("encryption_required")
+        private Boolean encryptionRequired;
+
+        public List<String> getAlgValuesSupported() {
+            return algValuesSupported;
+        }
+
+        public CredentialResponseEncryption setAlgValuesSupported(List<String> algValuesSupported) {
+            this.algValuesSupported = algValuesSupported;
+            return this;
+        }
+
+        public List<String> getEncValuesSupported() {
+            return encValuesSupported;
+        }
+
+        public CredentialResponseEncryption setEncValuesSupported(List<String> encValuesSupported) {
+            this.encValuesSupported = encValuesSupported;
+            return this;
+        }
+
+        public Boolean getEncryptionRequired() {
+            return encryptionRequired;
+        }
+
+        public CredentialResponseEncryption setEncryptionRequired(Boolean encryptionRequired) {
+            this.encryptionRequired = encryptionRequired;
+            return this;
+        }
+    }
+}
