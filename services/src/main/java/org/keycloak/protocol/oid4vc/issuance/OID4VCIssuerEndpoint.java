@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Red Hat, Inc. and/or its affiliates
+ * Copyright 2025 Red Hat, Inc. and/or its affiliates
  * and other contributors as indicated by the @author tags.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -449,48 +449,36 @@ public class OID4VCIssuerEndpoint {
      * @throws BadRequestException If encryption fails or parameters are invalid
      */
     private String encryptCredentialResponse(CredentialResponse response, String alg, String enc, JWK jwk) {
+        // Validate input parameters
         if (alg == null || enc == null || jwk == null) {
-            LOGGER.debugf("Incomplete credential_response_encryption parameters: alg=%s, enc=%s, jwk=%s", alg, enc, jwk);
+            LOGGER.debug("Invalid encryption parameters: alg={}, enc={}, jwk={}");
             throw new BadRequestException(getErrorResponse(ErrorType.INVALID_CREDENTIAL_REQUEST));
         }
 
-        boolean isValidRsaJwk = false;
-        if ("RSA".equals(jwk.getKeyType())) {
-            if (jwk instanceof RSAPublicJWK) {
-                RSAPublicJWK rsaJwk = (RSAPublicJWK) jwk;
-                if (rsaJwk.getModulus() != null && rsaJwk.getPublicExponent() != null) {
-                    isValidRsaJwk = true;
-                }
-            } else {
-                // Handle generic JWK (e.g., parsed from JSON)
-                if (jwk.getOtherClaims().get(RSAPublicJWK.MODULUS) != null && jwk.getOtherClaims().get(RSAPublicJWK.PUBLIC_EXPONENT) != null) {
-                    isValidRsaJwk = true;
-                }
-            }
-        }
-        if (!isValidRsaJwk) {
-            LOGGER.debugf("Invalid JWK: Missing required RSA fields (kty=RSA, n, e)");
+        // Validate JWK for RSA requirements
+        if (!isValidRsaJwk(jwk)) {
+            LOGGER.debug("Invalid JWK: Missing required RSA fields (kty=RSA, n, e)");
             throw new BadRequestException(getErrorResponse(ErrorType.INVALID_ENCRYPTION_PARAMETER));
         }
 
-        // Validate alg and enc against metadata
+        // Validate algorithm and encryption method against issuer metadata
         CredentialIssuer metadata = (CredentialIssuer) new OID4VCIssuerWellKnownProvider(session).getConfig();
         CredentialIssuer.CredentialResponseEncryption encryptionMetadata = metadata.getCredentialResponseEncryption();
-        if (encryptionMetadata == null || !encryptionMetadata.getAlgValuesSupported().contains(alg) || !encryptionMetadata.getEncValuesSupported().contains(enc)) {
-            LOGGER.debugf("Unsupported alg=%s or enc=%s. Supported: alg=%s, enc=%s",
-                    alg, enc,
-                    encryptionMetadata != null ? encryptionMetadata.getAlgValuesSupported() : "none",
-                    encryptionMetadata != null ? encryptionMetadata.getEncValuesSupported() : "none");
+        if (!isSupportedEncryption(encryptionMetadata, alg, enc)) {
+            LOGGER.debug("Unsupported encryption parameters: alg={}, enc={}. Supported: alg={}, enc={}"
+            );
             throw new BadRequestException(getErrorResponse(ErrorType.INVALID_CREDENTIAL_REQUEST));
         }
 
+        // Perform encryption
         try {
             byte[] content = JsonSerialization.writeValueAsBytes(response);
             PublicKey publicKey = JWKParser.create(jwk).toPublicKey();
             if (publicKey == null) {
-                LOGGER.debug("Invalid JWK: Could not parse to public key");
+                LOGGER.debug("Invalid JWK: Failed to parse public key");
                 throw new BadRequestException(getErrorResponse(ErrorType.INVALID_ENCRYPTION_PARAMETER));
             }
+
             JWEHeader header = new JWEHeader.JWEHeaderBuilder()
                     .algorithm(alg)
                     .encryptionAlgorithm(enc)
@@ -498,13 +486,29 @@ public class OID4VCIssuerEndpoint {
             JWE jwe = new JWE()
                     .header(header)
                     .content(content);
-            JWEKeyStorage keyStorage = jwe.getKeyStorage();
-            keyStorage.setEncryptionKey(publicKey);
+            jwe.getKeyStorage().setEncryptionKey(publicKey);
             return jwe.encodeJwe();
         } catch (IOException | JWEException e) {
-            LOGGER.error("Failed to encrypt CredentialResponse: %s", e.getMessage(), e);
+            LOGGER.error("Encryption failed: {}", e.getMessage(), e);
             throw new BadRequestException(getErrorResponse(ErrorType.INVALID_CREDENTIAL_REQUEST));
         }
+    }
+
+    private boolean isValidRsaJwk(JWK jwk) {
+        if (!"RSA".equals(jwk.getKeyType())) {
+            return false;
+        }
+        if (jwk instanceof RSAPublicJWK rsaJwk) {
+            return rsaJwk.getModulus() != null && rsaJwk.getPublicExponent() != null;
+        }
+        return jwk.getOtherClaims().get(RSAPublicJWK.MODULUS) != null &&
+                jwk.getOtherClaims().get(RSAPublicJWK.PUBLIC_EXPONENT) != null;
+    }
+
+    private boolean isSupportedEncryption(CredentialIssuer.CredentialResponseEncryption metadata, String alg, String enc) {
+        return metadata != null &&
+                metadata.getAlgValuesSupported().contains(alg) &&
+                metadata.getEncValuesSupported().contains(enc);
     }
 
     private SupportedCredentialConfiguration getSupportedCredentialConfiguration(CredentialRequest credentialRequestVO, Map<String, SupportedCredentialConfiguration> supportedCredentials, String requestedFormat) {
