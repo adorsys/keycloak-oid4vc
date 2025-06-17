@@ -329,7 +329,7 @@ public abstract class OAuth2GrantTypeBase implements OAuth2GrantType {
                     }
                 }
 
-                // Generate credential_identifiers based on format, including vct only for "vc+sd-jwt"
+                // Generate credential_identifiers based on format
                 List<String> credentialIdentifiers = new ArrayList<>();
                 String identifierBase = format + "-" + UUID.randomUUID().toString();
                 credentialIdentifiers.add(identifierBase);
