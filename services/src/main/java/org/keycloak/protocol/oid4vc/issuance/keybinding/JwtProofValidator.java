@@ -31,7 +31,7 @@ import org.keycloak.protocol.oid4vc.issuance.VCIssuerException;
 import org.keycloak.protocol.oid4vc.model.JwtProof;
 import org.keycloak.protocol.oid4vc.model.Proof;
 import org.keycloak.protocol.oid4vc.model.ProofType;
-import org.keycloak.protocol.oid4vc.model.ProofTypeSupported;
+import org.keycloak.protocol.oid4vc.model.ProofTypeMetadata;
 import org.keycloak.protocol.oid4vc.model.ProofTypesSupported;
 import org.keycloak.protocol.oid4vc.model.SupportedCredentialConfiguration;
 import org.keycloak.representations.AccessToken;
@@ -171,7 +171,7 @@ public class JwtProofValidator extends AbstractProofValidator {
         Optional.ofNullable(vcIssuanceContext.getCredentialConfig())
                 .map(SupportedCredentialConfiguration::getProofTypesSupported)
                 .map(ProofTypesSupported::getJwt)
-                .map(ProofTypeSupported::getProofSigningAlgValuesSupported)
+                .map(ProofTypeMetadata::getProofSigningAlgValuesSupported)
                 .filter(supportedAlgs -> supportedAlgs.contains(jwsHeader.getAlgorithm().name()))
                 .orElseThrow(() -> new VCIssuerException("Proof signature algorithm not supported: " + jwsHeader.getAlgorithm().name()));
 

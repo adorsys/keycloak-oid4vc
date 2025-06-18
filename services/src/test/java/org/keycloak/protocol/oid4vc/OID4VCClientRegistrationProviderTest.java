@@ -23,7 +23,7 @@ import org.keycloak.protocol.oid4vc.model.CredentialBuildConfig;
 import org.keycloak.protocol.oid4vc.model.DisplayObject;
 import org.keycloak.protocol.oid4vc.model.Format;
 import org.keycloak.protocol.oid4vc.model.OID4VCClient;
-import org.keycloak.protocol.oid4vc.model.ProofTypeSupported;
+import org.keycloak.protocol.oid4vc.model.ProofTypeMetadata;
 import org.keycloak.protocol.oid4vc.model.ProofTypesSupported;
 import org.keycloak.protocol.oid4vc.model.SupportedCredentialConfiguration;
 
@@ -99,7 +99,7 @@ public class OID4VCClientRegistrationProviderTest {
                                                 .setFormat(Format.SD_JWT_VC)
                                                 .setDisplay(Arrays.asList(new DisplayObject().setLocale("de").setName("Second Credential")))
                                                 .setScope("MyType")
-                                                .setProofTypesSupported(new ProofTypesSupported().setJwt(new ProofTypeSupported().setProofSigningAlgValuesSupported(Arrays.asList("ES256"))))),
+                                                .setProofTypesSupported(new ProofTypesSupported().setJwt(new ProofTypeMetadata().setProofSigningAlgValuesSupported(Arrays.asList("ES256"))))),
                                 null, null)
                 },
                 {

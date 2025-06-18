@@ -32,37 +32,37 @@ import java.util.Objects;
 public class ProofTypesSupported {
 
     @JsonProperty(ProofType.JWT)
-    private ProofTypeSupported jwt;
+    private ProofTypeMetadata jwt;
 
     @JsonProperty(ProofType.LD_PROOF)
-    private ProofTypeSupported ldpVp;
+    private ProofTypeMetadata ldpVp;
 
     @JsonProperty(ProofType.ATTESTATION)
-    private ProofTypeSupported attestation;
+    private ProofTypeMetadata attestation;
 
-    public ProofTypeSupported getJwt() {
+    public ProofTypeMetadata getJwt() {
         return jwt;
     }
 
-    public ProofTypesSupported setJwt(ProofTypeSupported jwt) {
+    public ProofTypesSupported setJwt(ProofTypeMetadata jwt) {
         this.jwt = jwt;
         return this;
     }
 
-    public ProofTypeSupported getLdpVp() {
+    public ProofTypeMetadata getLdpVp() {
         return ldpVp;
     }
 
-    public ProofTypesSupported setLdpVp(ProofTypeSupported ldpVp) {
+    public ProofTypesSupported setLdpVp(ProofTypeMetadata ldpVp) {
         this.ldpVp = ldpVp;
         return this;
     }
 
-    public ProofTypeSupported getAttestation() {
+    public ProofTypeMetadata getAttestation() {
         return attestation;
     }
 
-    public void setAttestation(ProofTypeSupported attestation) {
+    public void setAttestation(ProofTypeMetadata attestation) {
         this.attestation = attestation;
     }
 

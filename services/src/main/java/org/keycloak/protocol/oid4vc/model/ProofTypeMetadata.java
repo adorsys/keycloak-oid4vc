@@ -31,7 +31,7 @@ import java.util.Objects;
  * Credential Issuer Metadata Parameters</a>
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public class ProofTypeSupported {
+public class ProofTypeMetadata {
 
     // Algorithms supported for this proof type
     @JsonProperty("proof_signing_alg_values_supported")
@@ -47,7 +47,7 @@ public class ProofTypeSupported {
         return proofSigningAlgValuesSupported;
     }
 
-    public ProofTypeSupported setProofSigningAlgValuesSupported(List<String> proofSigningAlgValuesSupported) {
+    public ProofTypeMetadata setProofSigningAlgValuesSupported(List<String> proofSigningAlgValuesSupported) {
         this.proofSigningAlgValuesSupported = proofSigningAlgValuesSupported;
         return this;
     }
@@ -63,7 +63,7 @@ public class ProofTypeSupported {
     @Override
     public boolean equals(Object o) {
         if (o == null || getClass() != o.getClass()) return false;
-        ProofTypeSupported that = (ProofTypeSupported) o;
+        ProofTypeMetadata that = (ProofTypeMetadata) o;
         return Objects.equals(proofSigningAlgValuesSupported, that.proofSigningAlgValuesSupported) && Objects.equals(keyAttestationsRequired, that.keyAttestationsRequired);
     }
 
