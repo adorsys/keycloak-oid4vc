@@ -59,7 +59,6 @@ import org.keycloak.representations.JsonWebToken;
 import org.keycloak.representations.idm.RealmRepresentation;
 import org.keycloak.services.managers.AppAuthManager;
 import org.keycloak.services.resources.RealmsResource;
-import org.keycloak.testsuite.Assert;
 import org.keycloak.testsuite.util.oauth.AccessTokenResponse;
 import org.keycloak.testsuite.util.oauth.AuthorizationEndpointResponse;
 import org.keycloak.testsuite.util.oauth.OAuthClient;
@@ -1006,10 +1005,10 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
     @Test
     public void testCredentialIdentifierDifferentSessions() throws Exception {
         // Test that different sessions generate different identifiers for the same credential_configuration_id
-        
+
         // 1. First session - get a token and make a request
         String token1 = getBearerToken(oauth);
-        
+
         // Prepare authorization_details with credential_configuration_id
         AuthorizationDetail authDetail = new AuthorizationDetail();
         authDetail.setType("openid_credential");
@@ -1123,11 +1122,12 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
             String secondSessionIdentifier = authDetailResponse2.getCredentialIdentifiers().get(0);
 
             // Should be different from the first session identifier
-            assertFalse("Different sessions should generate different identifiers for the same credential_configuration_id", 
-                       firstSessionIdentifier.equals(secondSessionIdentifier));
-            assertTrue("Second session identifier should start with credential_configuration_id", 
-                      secondSessionIdentifier.startsWith("test-credential-"));
+            assertFalse("Different sessions should generate different identifiers for the same credential_configuration_id",
+                    firstSessionIdentifier.equals(secondSessionIdentifier));
+            assertTrue("Second session identifier should start with credential_configuration_id",
+                    secondSessionIdentifier.startsWith("test-credential-"));
         }
+    }
 
     @Test
     public void testCredentialIssuanceWithRealmScopeUnmatched() throws Exception {
