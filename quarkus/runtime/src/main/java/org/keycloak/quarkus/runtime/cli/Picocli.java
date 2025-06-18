@@ -38,6 +38,7 @@ import java.util.Arrays;
 import java.util.EnumMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -48,6 +49,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import org.keycloak.common.profile.ProfileException;
+import org.keycloak.common.util.CollectionUtil;
 import org.keycloak.config.DeprecatedMetadata;
 import org.keycloak.config.Option;
 import org.keycloak.config.OptionCategory;
@@ -288,7 +290,11 @@ public class Picocli {
     }
 
     private static int runReAugmentation(List<String> cliArgs, CommandLine cmd) {
-        if(!isDevMode() && cmd != null) {
+        if (cmd == null) {
+            throw new IllegalStateException("CommandLine is null when trying to run re-augmentation. (CLI args: '%s')".formatted(String.join(", ", cliArgs)));
+        }
+
+        if (!isDevMode()) {
             cmd.getOut().println("Changes detected in configuration. Updating the server image.");
             if (Configuration.isOptimized()) {
                 checkChangesInBuildOptionsDuringAutoBuild(cmd.getOut());
@@ -305,6 +311,7 @@ public class Picocli {
             }
         }, ignored -> {});
 
+        cmd = cmd.setUnmatchedArgumentsAllowed(true);
         int exitCode = cmd.execute(configArgsList.toArray(new String[0]));
 
         if(!isDevMode() && exitCode == cmd.getCommandSpec().exitCodeOnSuccess()) {
@@ -371,10 +378,11 @@ public class Picocli {
             DisabledMappersInterceptor.disable(); // we want all properties, even disabled ones
 
             final List<String> ignoredRunTime = new ArrayList<>();
-            final Set<String> disabledBuildTime = new HashSet<>();
-            final Set<String> disabledRunTime = new HashSet<>();
-            final Set<String> deprecatedInUse = new HashSet<>();
-            final Set<String> missingOption = new HashSet<>();
+            final Set<String> disabledBuildTime = new LinkedHashSet<>();
+            final Set<String> disabledRunTime = new LinkedHashSet<>();
+            final Set<String> deprecatedInUse = new LinkedHashSet<>();
+            final Set<String> missingOption = new LinkedHashSet<>();
+            final Set<String> ambiguousSpi = new LinkedHashSet<>();
             final LinkedHashMap<String, String> secondClassOptions = new LinkedHashMap<>();
 
             final Set<PropertyMapper<?>> disabledMappers = new HashSet<>();
@@ -395,6 +403,9 @@ public class Picocli {
                 }
                 if (!options.includeRuntime) {
                     checkRuntimeSpiOptions(name, ignoredRunTime);
+                }
+                if (PropertyMappers.isMaybeSpiBuildTimeProperty(name)) {
+                    ambiguousSpi.add(name);
                 }
                 PropertyMapper<?> mapper = PropertyMappers.getMapper(name);
                 if (mapper == null) {
@@ -454,7 +465,9 @@ public class Picocli {
             if (!deprecatedInUse.isEmpty()) {
                 warn("The following used options or option values are DEPRECATED and will be removed or their behaviour changed in a future release:\n" + String.join("\n", deprecatedInUse) + "\nConsult the Release Notes for details.", getOutWriter());
             }
-
+            if (!ambiguousSpi.isEmpty()) {
+                warn("The following spi options are using the legacy format and are not being treated as build time options. Please use the new format with the appropriate -- separators to resolve this ambiguity: " + String.join("\n", ambiguousSpi));
+            }
             secondClassOptions.forEach((key, firstClass) -> {
                 warn("Please use the first-class option `%s` instead of `%s`".formatted(firstClass, key), getOutWriter());
             });
@@ -516,7 +529,12 @@ public class Picocli {
             return;
         }
 
-        mapper.validate(configValue);
+        PropertyMappingInterceptor.enable();
+        try {
+            mapper.validate(configValue);
+        } finally {
+            PropertyMappingInterceptor.disable();
+        }
 
         mapper.getDeprecatedMetadata().ifPresent(metadata -> handleDeprecated(deprecatedInUse, mapper, configValueStr, metadata));
     }
@@ -626,7 +644,7 @@ public class Picocli {
                 if (!mapper.isBuildTime()) {
                     return;
                 }
-                name = mapper.getFrom();
+                name = mapper.forKey(name).getFrom();
                 if (properties.containsKey(name)) {
                     return;
                 }
@@ -760,7 +778,9 @@ public class Picocli {
 
         addMappedOptionsToArgGroups(commandLine, mappers);
 
-        allowedMappers = mappers.values().stream().flatMap(List::stream).collect(Collectors.toUnmodifiableSet());
+        if (CollectionUtil.isEmpty(allowedMappers)) {
+            allowedMappers = mappers.values().stream().flatMap(List::stream).collect(Collectors.toUnmodifiableSet());
+        }
     }
 
     private static <T extends Map<OptionCategory, List<PropertyMapper<?>>>> void combinePropertyMappers(T origMappers, T additionalMappers) {
@@ -816,6 +836,7 @@ public class Picocli {
                     optBuilder.defaultValue(Option.getDefaultValueString(mapper.getDefaultValue().get()));
                 }
 
+                optBuilder.arity("1"); // everything requires a value to match configargs parsing
                 if (mapper.getType() != null) {
                     optBuilder.type(mapper.getType());
                     if (mapper.isList()) {
