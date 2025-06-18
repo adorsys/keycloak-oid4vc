@@ -305,7 +305,7 @@ public abstract class OAuth2GrantTypeBase implements OAuth2GrantType {
                 String noteKey = "credential_identifier_" + credentialConfigurationId;
                 String existingIdentifier = userSession.getNote(noteKey);
                 List<String> credentialIdentifiers = new ArrayList<>();
-                
+
                 if (existingIdentifier != null) {
                     credentialIdentifiers.add(existingIdentifier);
                 } else {
@@ -342,7 +342,7 @@ public abstract class OAuth2GrantTypeBase implements OAuth2GrantType {
                 String noteKey = "credential_identifier_" + format;
                 String existingIdentifier = userSession.getNote(noteKey);
                 List<String> credentialIdentifiers = new ArrayList<>();
-                
+
                 if (existingIdentifier != null) {
                     credentialIdentifiers.add(existingIdentifier);
                 } else {
