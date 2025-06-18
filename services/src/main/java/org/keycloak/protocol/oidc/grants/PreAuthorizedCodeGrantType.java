@@ -108,7 +108,7 @@ public class PreAuthorizedCodeGrantType extends OAuth2GrantTypeBase {
         if (formParams.containsKey(AUTHORIZATION_DETAILS_PARAM)) {
 
             // Process authorization_details
-            List<AuthorizationDetailResponse> authorizationDetailsResponse = processAuthorizationDetails();
+            List<AuthorizationDetailResponse> authorizationDetailsResponse = processAuthorizationDetails(clientSession.getUserSession());
 
             AccessTokenResponse tokenResponse;
             try {

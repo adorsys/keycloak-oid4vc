@@ -256,7 +256,7 @@ public abstract class OAuth2GrantTypeBase implements OAuth2GrantType {
         }
     }
 
-    protected List<AuthorizationDetailResponse> processAuthorizationDetails() {
+    protected List<AuthorizationDetailResponse> processAuthorizationDetails(UserSessionModel userSession) {
         String authorizationDetailsParam = formParams.getFirst(AUTHORIZATION_DETAILS_PARAM);
         if (authorizationDetailsParam == null) {
             return null; // authorization_details is optional
@@ -301,9 +301,18 @@ public abstract class OAuth2GrantTypeBase implements OAuth2GrantType {
                     throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_REQUEST, "Unsupported credential_configuration_id: " + credentialConfigurationId, Response.Status.BAD_REQUEST);
                 }
 
-                // Generate credential_identifiers
+                // Check for existing credential identifier
+                String noteKey = "credential_identifier_" + credentialConfigurationId;
+                String existingIdentifier = userSession.getNote(noteKey);
                 List<String> credentialIdentifiers = new ArrayList<>();
-                credentialIdentifiers.add(credentialConfigurationId + "-" + UUID.randomUUID().toString());
+                
+                if (existingIdentifier != null) {
+                    credentialIdentifiers.add(existingIdentifier);
+                } else {
+                    String newIdentifier = credentialConfigurationId + "-" + UUID.randomUUID().toString();
+                    credentialIdentifiers.add(newIdentifier);
+                    userSession.setNote(noteKey, newIdentifier);
+                }
 
                 // Prepare response details
                 AuthorizationDetailResponse responseDetail = new AuthorizationDetailResponse();
@@ -329,10 +338,18 @@ public abstract class OAuth2GrantTypeBase implements OAuth2GrantType {
                     }
                 }
 
-                // Generate credential_identifiers based on format
+                // Check for existing credential identifier
+                String noteKey = "credential_identifier_" + format;
+                String existingIdentifier = userSession.getNote(noteKey);
                 List<String> credentialIdentifiers = new ArrayList<>();
-                String identifierBase = format + "-" + UUID.randomUUID().toString();
-                credentialIdentifiers.add(identifierBase);
+                
+                if (existingIdentifier != null) {
+                    credentialIdentifiers.add(existingIdentifier);
+                } else {
+                    String newIdentifier = format + "-" + UUID.randomUUID().toString();
+                    credentialIdentifiers.add(newIdentifier);
+                    userSession.setNote(noteKey, newIdentifier);
+                }
 
                 // Prepare response details with validated format and optional vct
                 AuthorizationDetailResponse responseDetail = new AuthorizationDetailResponse();

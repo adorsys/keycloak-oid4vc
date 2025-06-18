@@ -200,7 +200,7 @@ public class AuthorizationCodeGrantType extends OAuth2GrantTypeBase {
             throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_GRANT, cpe.getErrorDetail(), Response.Status.BAD_REQUEST);
         }
 
-        List<AuthorizationDetailResponse> authorizationDetailsResponse = processAuthorizationDetails();
+        List<AuthorizationDetailResponse> authorizationDetailsResponse = processAuthorizationDetails(userSession);
 
         updateClientSession(clientSession);
         updateUserSessionFromClientAuth(userSession);
