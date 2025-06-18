@@ -30,28 +30,40 @@ import java.util.Objects;
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class ProofTypesSupported {
-    @JsonProperty("jwt")
-    private ProofTypeJWT jwt;
 
-    @JsonProperty("ldp_vp")
-    private ProofTypeLdpVp ldpVp;
+    @JsonProperty(ProofType.JWT)
+    private ProofTypeSupported jwt;
 
-    public ProofTypeJWT getJwt() {
+    @JsonProperty(ProofType.LD_PROOF)
+    private ProofTypeSupported ldpVp;
+
+    @JsonProperty(ProofType.ATTESTATION)
+    private ProofTypeSupported attestation;
+
+    public ProofTypeSupported getJwt() {
         return jwt;
     }
 
-    public ProofTypesSupported setJwt(ProofTypeJWT jwt) {
+    public ProofTypesSupported setJwt(ProofTypeSupported jwt) {
         this.jwt = jwt;
         return this;
     }
 
-    public ProofTypeLdpVp getLdpVp() {
+    public ProofTypeSupported getLdpVp() {
         return ldpVp;
     }
 
-    public ProofTypesSupported setLdpVp(ProofTypeLdpVp ldpVp) {
+    public ProofTypesSupported setLdpVp(ProofTypeSupported ldpVp) {
         this.ldpVp = ldpVp;
         return this;
+    }
+
+    public ProofTypeSupported getAttestation() {
+        return attestation;
+    }
+
+    public void setAttestation(ProofTypeSupported attestation) {
+        this.attestation = attestation;
     }
 
     public String toJsonString(){
@@ -75,11 +87,11 @@ public class ProofTypesSupported {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         ProofTypesSupported that = (ProofTypesSupported) o;
-        return Objects.equals(jwt, that.jwt) && Objects.equals(ldpVp, that.ldpVp);
+        return Objects.equals(jwt, that.jwt) && Objects.equals(ldpVp, that.ldpVp) && Objects.equals(attestation, that.attestation);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(jwt, ldpVp);
+        return Objects.hash(jwt, ldpVp, attestation);
     }
 }
