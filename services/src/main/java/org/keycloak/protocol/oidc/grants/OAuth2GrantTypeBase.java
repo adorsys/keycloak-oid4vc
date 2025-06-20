@@ -61,6 +61,7 @@ import org.keycloak.services.cors.Cors;
 import org.keycloak.services.util.AuthorizationContextUtil;
 import org.keycloak.services.util.MtlsHoKTokenUtil;
 import org.keycloak.util.TokenUtil;
+import org.keycloak.protocol.oid4vc.model.CredentialIssuer;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -82,6 +83,8 @@ public abstract class OAuth2GrantTypeBase implements OAuth2GrantType {
 
     protected static final String AUTHORIZATION_DETAILS_PARAM = "authorization_details";
     protected static final String AUTHORIZATION_DETAILS_RESPONSE_KEY = "authorization_details_response";
+
+    public static final String TYPE_OPENID_CREDENTIAL = "openid_credential";
 
     protected OAuth2GrantType.Context context;
 
@@ -262,106 +265,142 @@ public abstract class OAuth2GrantTypeBase implements OAuth2GrantType {
             return null; // authorization_details is optional
         }
 
-        List<AuthorizationDetail> authDetails;
-        try {
-            authDetails = objectMapper.readValue(authorizationDetailsParam, new TypeReference<List<AuthorizationDetail>>() {
-            });
-        } catch (Exception e) {
-            event.error(Errors.INVALID_REQUEST);
-            throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_REQUEST, "Invalid authorization_details format", Response.Status.BAD_REQUEST);
-        }
-
+        List<AuthorizationDetail> authDetails = parseAuthorizationDetails(authorizationDetailsParam);
         List<String> supportedFormats = OID4VCIssuerWellKnownProvider.getSupportedFormats(session);
         Map<String, SupportedCredentialConfiguration> supportedCredentials = OID4VCIssuerWellKnownProvider.getSupportedCredentials(session);
         List<AuthorizationDetailResponse> authDetailsResponse = new ArrayList<>();
 
+        // Retrieve issuer metadata and identifier for locations check
+        CredentialIssuer issuerMetadata = (CredentialIssuer) new OID4VCIssuerWellKnownProvider(session).getConfig();
+        List<String> authorizationServers = issuerMetadata.getAuthorizationServers();
+        String issuerIdentifier = OID4VCIssuerWellKnownProvider.getIssuer(session.getContext());
+
         for (AuthorizationDetail detail : authDetails) {
-            String type = detail.getType();
-            String credentialConfigurationId = detail.getCredentialConfigurationId();
-            String format = detail.getFormat();
-            String vct = detail.getVct();
-
-            // Validate type
-            if (!"openid_credential".equals(type)) {
-                event.error(Errors.INVALID_REQUEST);
-                throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_REQUEST, "Invalid authorization_details type", Response.Status.BAD_REQUEST);
-            }
-
-            // Ensure exactly one of credential_configuration_id or format is present
-            if ((credentialConfigurationId == null && format == null) || (credentialConfigurationId != null && format != null)) {
-                event.error(Errors.INVALID_REQUEST);
-                throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_REQUEST, "Exactly one of credential_configuration_id or format must be present", Response.Status.BAD_REQUEST);
-            }
-
-            if (credentialConfigurationId != null) {
-                // Validate credential_configuration_id
-                SupportedCredentialConfiguration config = supportedCredentials.get(credentialConfigurationId);
-                if (config == null) {
-                    event.error(Errors.INVALID_REQUEST);
-                    throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_REQUEST, "Unsupported credential_configuration_id: " + credentialConfigurationId, Response.Status.BAD_REQUEST);
-                }
-
-                // Check for existing credential identifier
-                String noteKey = "credential_identifier_" + credentialConfigurationId;
-                String existingIdentifier = userSession.getNote(noteKey);
-                List<String> credentialIdentifiers = new ArrayList<>();
-
-                if (existingIdentifier != null) {
-                    credentialIdentifiers.add(existingIdentifier);
-                } else {
-                    String newIdentifier = credentialConfigurationId + "-" + UUID.randomUUID().toString();
-                    credentialIdentifiers.add(newIdentifier);
-                    userSession.setNote(noteKey, newIdentifier);
-                }
-
-                // Prepare response details
-                AuthorizationDetailResponse responseDetail = new AuthorizationDetailResponse();
-                responseDetail.setType("openid_credential");
-                responseDetail.setCredentialConfigurationId(credentialConfigurationId);
-                responseDetail.setCredentialIdentifiers(credentialIdentifiers);
-                authDetailsResponse.add(responseDetail);
-            } else {
-                // Validate format
-                if (!supportedFormats.contains(format)) {
-                    event.error(Errors.INVALID_REQUEST);
-                    throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_REQUEST, "Unsupported format: " + format, Response.Status.BAD_REQUEST);
-                }
-
-                // Validate vct
-                if (vct != null) {
-                    boolean vctSupported = supportedCredentials.values().stream()
-                            .filter(config -> format.equals(config.getFormat()))
-                            .anyMatch(config -> vct.equals(config.getVct()));
-                    if (!vctSupported) {
-                        event.error(Errors.INVALID_REQUEST);
-                        throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_REQUEST, "Unsupported vct for format " + format + ": " + vct, Response.Status.BAD_REQUEST);
-                    }
-                }
-
-                // Check for existing credential identifier
-                String noteKey = "credential_identifier_" + format;
-                String existingIdentifier = userSession.getNote(noteKey);
-                List<String> credentialIdentifiers = new ArrayList<>();
-
-                if (existingIdentifier != null) {
-                    credentialIdentifiers.add(existingIdentifier);
-                } else {
-                    String newIdentifier = format + "-" + UUID.randomUUID().toString();
-                    credentialIdentifiers.add(newIdentifier);
-                    userSession.setNote(noteKey, newIdentifier);
-                }
-
-                // Prepare response details with validated format and optional vct
-                AuthorizationDetailResponse responseDetail = new AuthorizationDetailResponse();
-                responseDetail.setType("openid_credential");
-                responseDetail.setFormat(format);
-                responseDetail.setVct(vct);
-                responseDetail.setCredentialIdentifiers(credentialIdentifiers);
-                authDetailsResponse.add(responseDetail);
-            }
+            validateAuthorizationDetail(detail, supportedFormats, supportedCredentials, authorizationServers, issuerIdentifier);
+            AuthorizationDetailResponse responseDetail = buildAuthorizationDetailResponse(detail, userSession, supportedCredentials, supportedFormats);
+            authDetailsResponse.add(responseDetail);
         }
 
         return authDetailsResponse;
+    }
+
+    private List<AuthorizationDetail> parseAuthorizationDetails(String authorizationDetailsParam) {
+        try {
+            return objectMapper.readValue(authorizationDetailsParam, new TypeReference<List<AuthorizationDetail>>() {
+            });
+        } catch (Exception e) {
+            logger.warnf(e, "Invalid authorization_details format: %s", authorizationDetailsParam);
+            throwInvalidRequest("Invalid authorization_details format");
+            throw new IllegalStateException("Unreachable");
+        }
+    }
+
+    private void validateAuthorizationDetail(AuthorizationDetail detail, List<String> supportedFormats, Map<String, SupportedCredentialConfiguration> supportedCredentials, List<String> authorizationServers, String issuerIdentifier) {
+        String type = detail.getType();
+        String credentialConfigurationId = detail.getCredentialConfigurationId();
+        String format = detail.getFormat();
+        String vct = detail.getVct();
+
+        // If authorization_servers is present, locations must be set to issuer identifier
+        if (authorizationServers != null && !authorizationServers.isEmpty() && TYPE_OPENID_CREDENTIAL.equals(type)) {
+            List<String> locations = detail.getLocations();
+            if (locations == null || locations.size() != 1 || !issuerIdentifier.equals(locations.get(0))) {
+                logger.warnf("Invalid locations field in authorization_details: %s, expected: %s", locations, issuerIdentifier);
+                throwInvalidRequest("Invalid authorization_details");
+            }
+        }
+
+        // Validate type
+        if (!TYPE_OPENID_CREDENTIAL.equals(type)) {
+            logger.warnf("Invalid authorization_details type: %s", type);
+            throwInvalidRequest("Invalid authorization_details");
+        }
+
+        // Ensure exactly one of credential_configuration_id or format is present
+        if ((credentialConfigurationId == null && format == null) || (credentialConfigurationId != null && format != null)) {
+            logger.warnf("Exactly one of credential_configuration_id or format must be present. credentialConfigurationId: %s, format: %s", credentialConfigurationId, format);
+            throwInvalidRequest("Invalid authorization_details");
+        }
+
+        if (credentialConfigurationId != null) {
+            // Validate credential_configuration_id
+            SupportedCredentialConfiguration config = supportedCredentials.get(credentialConfigurationId);
+            if (config == null) {
+                logger.warnf("Unsupported credential_configuration_id: %s", credentialConfigurationId);
+                throwInvalidRequest("Invalid credential configuration");
+            }
+        } else {
+            // Validate format
+            if (!supportedFormats.contains(format)) {
+                logger.warnf("Unsupported format: %s", format);
+                throwInvalidRequest("Invalid credential format");
+            }
+
+            // Validate vct
+            if (vct != null) {
+                boolean vctSupported = supportedCredentials.values().stream()
+                        .filter(config -> format.equals(config.getFormat()))
+                        .anyMatch(config -> vct.equals(config.getVct()));
+                if (!vctSupported) {
+                    logger.warnf("Unsupported vct for format %s: %s", format, vct);
+                    throwInvalidRequest("Invalid credential configuration");
+                }
+            }
+        }
+    }
+
+    private AuthorizationDetailResponse buildAuthorizationDetailResponse(AuthorizationDetail detail, UserSessionModel userSession, Map<String, SupportedCredentialConfiguration> supportedCredentials, List<String> supportedFormats) {
+        String credentialConfigurationId = detail.getCredentialConfigurationId();
+        String format = detail.getFormat();
+        String vct = detail.getVct();
+
+        if (credentialConfigurationId != null) {
+            // Check for existing credential identifier
+            String noteKey = "credential_identifier_" + credentialConfigurationId;
+            List<String> credentialIdentifiers = new ArrayList<>();
+            synchronized (userSession) {
+                String existingIdentifier = userSession.getNote(noteKey);
+                if (existingIdentifier != null) {
+                    credentialIdentifiers.add(existingIdentifier);
+                } else {
+                    String newIdentifier = UUID.randomUUID().toString();
+                    credentialIdentifiers.add(newIdentifier);
+                    userSession.setNote(noteKey, newIdentifier);
+                }
+            }
+            // Prepare response details
+            AuthorizationDetailResponse responseDetail = new AuthorizationDetailResponse();
+            responseDetail.setType(TYPE_OPENID_CREDENTIAL);
+            responseDetail.setCredentialConfigurationId(credentialConfigurationId);
+            responseDetail.setCredentialIdentifiers(credentialIdentifiers);
+            return responseDetail;
+        } else {
+            // Check for existing credential identifier
+            String noteKey = "credential_identifier_" + format;
+            List<String> credentialIdentifiers = new ArrayList<>();
+            synchronized (userSession) {
+                String existingIdentifier = userSession.getNote(noteKey);
+                if (existingIdentifier != null) {
+                    credentialIdentifiers.add(existingIdentifier);
+                } else {
+                    String newIdentifier = UUID.randomUUID().toString();
+                    credentialIdentifiers.add(newIdentifier);
+                    userSession.setNote(noteKey, newIdentifier);
+                }
+            }
+            // Prepare response details with validated format
+            AuthorizationDetailResponse responseDetail = new AuthorizationDetailResponse();
+            responseDetail.setType(TYPE_OPENID_CREDENTIAL);
+            responseDetail.setFormat(format);
+            responseDetail.setVct(vct);
+            responseDetail.setCredentialIdentifiers(credentialIdentifiers);
+            return responseDetail;
+        }
+    }
+
+    private void throwInvalidRequest(String errorDescription) {
+        event.error(Errors.INVALID_REQUEST);
+        throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_REQUEST, errorDescription, Response.Status.BAD_REQUEST);
     }
 
     @Override
