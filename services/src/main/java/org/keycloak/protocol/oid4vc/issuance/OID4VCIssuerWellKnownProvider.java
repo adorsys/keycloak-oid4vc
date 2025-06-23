@@ -17,10 +17,10 @@
 
 package org.keycloak.protocol.oid4vc.issuance;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
 import jakarta.ws.rs.core.UriInfo;
 import org.keycloak.crypto.KeyUse;
 import org.keycloak.crypto.KeyWrapper;
+import org.keycloak.jose.jwe.JWEConstants;
 import org.keycloak.models.KeyManager;
 import org.keycloak.models.KeycloakContext;
 import org.keycloak.models.KeycloakSession;
@@ -33,6 +33,7 @@ import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.CredentialBuilder
 import org.keycloak.protocol.oid4vc.issuance.signing.CredentialSigner;
 import org.keycloak.protocol.oid4vc.issuance.signing.CredentialSignerFactory;
 import org.keycloak.protocol.oid4vc.model.CredentialIssuer;
+import org.keycloak.protocol.oid4vc.model.CredentialResponseEncryptionMetadata;
 import org.keycloak.protocol.oid4vc.model.OID4VCClient;
 import org.keycloak.protocol.oid4vc.model.SupportedCredentialConfiguration;
 import org.keycloak.services.Urls;
@@ -40,6 +41,7 @@ import org.keycloak.urls.UrlType;
 import org.keycloak.wellknown.WellKnownProvider;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -75,10 +77,55 @@ public class OID4VCIssuerWellKnownProvider implements WellKnownProvider {
                 .setNonceEndpoint(getNonceEndpoint(keycloakSession.getContext()))
                 .setCredentialsSupported(getSupportedCredentials(keycloakSession))
                 .setAuthorizationServers(List.of(getIssuer(keycloakSession.getContext())))
-                .setCredentialResponseEncryption(new CredentialIssuer.CredentialResponseEncryption()
-                        .setAlgValuesSupported(List.of("RSA-OAEP"))
-                        .setEncValuesSupported(List.of("A256GCM"))
-                        .setEncryptionRequired(false));
+                .setCredentialResponseEncryption(getCredentialResponseEncryption(keycloakSession));
+    }
+
+    /**
+     * Returns the credential response encryption metadata for the issuer.
+     *
+     * @param session The Keycloak session
+     * @return The credential response encryption metadata
+     */
+    public static CredentialResponseEncryptionMetadata getCredentialResponseEncryption(KeycloakSession session) {
+        RealmModel realm = session.getContext().getRealm();
+        CredentialResponseEncryptionMetadata metadata = new CredentialResponseEncryptionMetadata();
+
+        // Set defaults if attributes not present
+        metadata.setAlgValuesSupported(getSupportedEncryptionAlgorithms(realm));
+        metadata.setEncValuesSupported(getSupportedEncryptionMethods(realm));
+        metadata.setEncryptionRequired(isEncryptionRequired(realm));
+
+        return metadata;
+    }
+
+    /**
+     * Returns the supported encryption algorithms from realm attributes.
+     */
+    private static List<String> getSupportedEncryptionAlgorithms(RealmModel realm) {
+        String algs = realm.getAttribute("oid4vci.encryption.algs");
+        if (algs == null || algs.isEmpty()) {
+            return List.of(JWEConstants.RSA_OAEP);
+        }
+        return Arrays.asList(algs.split(","));
+    }
+
+    /**
+     * Returns the supported encryption methods from realm attributes.
+     */
+    private static List<String> getSupportedEncryptionMethods(RealmModel realm) {
+        String encs = realm.getAttribute("oid4vci.encryption.encs");
+        if (encs == null || encs.isEmpty()) {
+            return List.of(JWEConstants.A256GCM);
+        }
+        return Arrays.asList(encs.split(","));
+    }
+
+    /**
+     * Returns whether encryption is required from realm attributes.
+     */
+    private static boolean isEncryptionRequired(RealmModel realm) {
+        String required = realm.getAttribute("oid4vci.encryption.required");
+        return Boolean.parseBoolean(required);
     }
 
     /**

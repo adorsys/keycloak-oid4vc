@@ -17,18 +17,29 @@
 
 package org.keycloak.testsuite.oid4vc.issuance.signing;
 
+import jakarta.ws.rs.client.Client;
+import jakarta.ws.rs.client.WebTarget;
+import jakarta.ws.rs.core.Response;
+import jakarta.ws.rs.core.UriBuilder;
 import org.junit.Test;
 import org.junit.experimental.runners.Enclosed;
 import org.junit.runner.RunWith;
 import org.keycloak.common.util.MultivaluedHashMap;
 import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerWellKnownProvider;
+import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerWellKnownProviderFactory;
 import org.keycloak.protocol.oid4vc.model.CredentialIssuer;
 import org.keycloak.protocol.oid4vc.model.Format;
 import org.keycloak.representations.idm.ClientRepresentation;
 import org.keycloak.representations.idm.RealmRepresentation;
+import org.keycloak.services.resources.RealmsResource;
 import org.keycloak.testsuite.arquillian.SuiteContext;
 import org.keycloak.testsuite.client.KeycloakTestingClient;
+import org.keycloak.testsuite.util.AdminClientUtil;
+import org.keycloak.testsuite.util.oauth.OAuthClient;
+import org.keycloak.util.JsonSerialization;
 
+import java.io.IOException;
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -121,6 +132,42 @@ public class OID4VCIssuerWellKnownProviderTest {
         testClient.setAttributes(new HashMap<>(clientAttributes));
         testRealm.setAttributes(new HashMap<>(realmAttributes));
         extendConfigureTestRealm(testRealm, testClient);
+    }
+
+    public static class TestEncryptionMetadata extends OID4VCTest {
+
+        @Test
+        public void testIssuerMetadataIncludesEncryptionSupport() throws IOException {
+            try (Client client = AdminClientUtil.createResteasyClient()) {
+                UriBuilder builder = UriBuilder.fromUri(OAuthClient.AUTH_SERVER_ROOT);
+                URI oid4vciDiscoveryUri = RealmsResource.wellKnownProviderUrl(builder)
+                        .build(TEST_REALM_NAME, OID4VCIssuerWellKnownProviderFactory.PROVIDER_ID);
+                WebTarget oid4vciDiscoveryTarget = client.target(oid4vciDiscoveryUri);
+
+                try (Response discoveryResponse = oid4vciDiscoveryTarget.request().get()) {
+                    CredentialIssuer oid4vciIssuerConfig = JsonSerialization.readValue(
+                            discoveryResponse.readEntity(String.class), CredentialIssuer.class);
+
+                    assertNotNull("Encryption support should be advertised in metadata",
+                            oid4vciIssuerConfig.getCredentialResponseEncryption());
+                    assertFalse("Supported algorithms should not be empty",
+                            oid4vciIssuerConfig.getCredentialResponseEncryption().getAlgValuesSupported().isEmpty());
+                    assertFalse("Supported encryption methods should not be empty",
+                            oid4vciIssuerConfig.getCredentialResponseEncryption().getEncValuesSupported().isEmpty());
+                }
+            }
+        }
+
+        @Override
+        public void configureTestRealm(RealmRepresentation testRealm) {
+            // Configure realm with encryption support if needed
+            Map<String, String> realmAttributes = new HashMap<>();
+            realmAttributes.put("vc.credential_response_encryption_alg_values_supported", "RSA-OAEP,RSA-OAEP-256");
+            realmAttributes.put("vc.credential_response_encryption_enc_values_supported", "A256GCM,A128CBC-HS256");
+            testRealm.setAttributes(realmAttributes);
+
+            extendConfigureTestRealm(testRealm, getTestClient("did:web:test.org"));
+        }
     }
 
     public static void testCredentialConfig(SuiteContext suiteContext, KeycloakTestingClient testingClient) {
