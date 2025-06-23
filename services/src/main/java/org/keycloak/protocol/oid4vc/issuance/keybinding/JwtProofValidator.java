@@ -54,6 +54,7 @@ public class JwtProofValidator extends AbstractProofValidator {
 
     public static final String PROOF_JWT_TYP = "openid4vci-proof+jwt";
     private static final String CRYPTOGRAPHIC_BINDING_METHOD_JWK = "jwk";
+    private static final String KEY_ATTESTATION_CLAIM = "key_attestation";
 
     protected JwtProofValidator(KeycloakSession keycloakSession) {
         super(keycloakSession);
@@ -105,6 +106,14 @@ public class JwtProofValidator extends AbstractProofValidator {
         // Parsing the Proof as an access token shall work, as a proof is a strict subset of an access token.
         AccessToken proofPayload = JsonSerialization.readValue(jwsInput.getContent(), AccessToken.class);
         validateProofPayload(vcIssuanceContext, proofPayload);
+
+        Map<String, Object> customClaims = JsonSerialization.mapper.readValue(jwsInput.getContent(), Map.class);
+        if (customClaims.containsKey(KEY_ATTESTATION_CLAIM)) {
+            Object keyAttestation = customClaims.get(KEY_ATTESTATION_CLAIM);
+            if (keyAttestation == null) {
+                throw new VCIssuerException("The 'key_attestation' claim is present in the JWT proof but is null.");
+            }
+        }
 
         SignatureVerifierContext signatureVerifierContext = getVerifier(jwk, jwsHeader.getAlgorithm().name());
         if (signatureVerifierContext == null) {
