@@ -1,17 +1,13 @@
 package org.keycloak.protocol.oid4vc.issuance.keybinding;
 
 import org.keycloak.models.KeycloakSession;
-import org.keycloak.protocol.oid4vc.issuance.VCIssuanceContext;
-import org.keycloak.protocol.oid4vc.issuance.VCIssuerException;
-import org.keycloak.protocol.oid4vc.model.AttestationProof;
-import org.keycloak.protocol.oid4vc.model.Proof;
-import org.keycloak.jose.jwk.JWK;
+import org.keycloak.protocol.oid4vc.model.ProofType;
 
 
-public class AttestationProofValidatorFactory extends AbstractProofValidator {
+public class AttestationProofValidatorFactory implements ProofValidatorFactory {
 
    @Override
-   public String getProofType(){
+   public String getId(){
     return ProofType.ATTESTATION;
    }
 

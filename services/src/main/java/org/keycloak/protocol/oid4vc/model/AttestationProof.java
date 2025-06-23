@@ -51,4 +51,4 @@ public class AttestationProof implements Proof {
         this.attestation = attestation;
         return this;
     }
-} 
+}
