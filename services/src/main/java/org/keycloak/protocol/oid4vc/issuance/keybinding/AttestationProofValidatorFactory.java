@@ -16,4 +16,4 @@ public class AttestationProofValidatorFactory implements ProofValidatorFactory {
     return new AttestationProofValidator(session);
    }
    
-} 
+}
