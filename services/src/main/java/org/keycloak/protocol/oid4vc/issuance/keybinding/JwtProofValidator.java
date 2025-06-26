@@ -115,8 +115,6 @@ public class JwtProofValidator extends AbstractProofValidator {
             if (keyAttestation == null) {
                 throw new VCIssuerException("The 'key_attestation' claim is present in the JWT proof but is null.");
             }
-            // Validate the attestation and ensure the proof's JWK is attested
-            validateKeyAttestation(keyAttestation.toString(), jwk, vcIssuanceContext);
         }
 
         SignatureVerifierContext signatureVerifierContext = getVerifier(jwk, jwsHeader.getAlgorithm().name());
@@ -128,48 +126,6 @@ public class JwtProofValidator extends AbstractProofValidator {
         }
 
         return jwk;
-    }
-
-    private void validateKeyAttestation(String keyAttestation, JWK proofJwk, VCIssuanceContext vcIssuanceContext) throws JWSInputException, VerificationException, IOException {
-        JWSInput attestationInput = new JWSInput(keyAttestation);
-        JWSHeader attestationHeader = attestationInput.getHeader();
-
-        // Verify attestation type
-        Optional.ofNullable(attestationHeader.getType())
-                .filter("keyattestation+jwt"::equals)
-                .orElseThrow(() -> new VCIssuerException("Key attestation JWT type must be keyattestation+jwt"));
-
-        // Verify signature
-        SignatureVerifierContext verifier = getTrustedVerifier(attestationHeader);
-        if (!verifier.verify(attestationInput.getEncodedSignatureInput().getBytes(StandardCharsets.UTF_8), attestationInput.getSignature())) {
-            throw new VCIssuerException("Invalid key attestation signature");
-        }
-
-        // Extract attested_keys
-        Map<String, Object> attestationPayload = JsonSerialization.mapper.readValue(attestationInput.getContent(), Map.class);
-        List<Map<String, Object>> attestedKeys = (List<Map<String, Object>>) attestationPayload.get("attested_keys");
-        if (attestedKeys == null || attestedKeys.isEmpty()) {
-            throw new VCIssuerException("No attested_keys in key attestation");
-        }
-
-        // Check if proofJwk is in attested_keys
-        boolean keyFound = attestedKeys.stream()
-                .map(keyMap -> JsonSerialization.mapper.convertValue(keyMap, JWK.class))
-                .anyMatch(jwk -> Objects.equals(jwk.getPublicKeyUse(), proofJwk.getPublicKeyUse()) &&
-                        Objects.equals(jwk.getKeyType(), proofJwk.getKeyType()) &&
-                        Objects.equals(jwk.getKeyId(), proofJwk.getKeyId()));
-        if (!keyFound) {
-            throw new VCIssuerException("Proof signing key not in attested_keys");
-        }
-    }
-
-    private SignatureVerifierContext getTrustedVerifier(JWSHeader jwsHeader) throws VCIssuerException {
-        KeyAttestationTrustStore trustStore = keycloakSession.getProvider(KeyAttestationTrustStore.class);
-        if (trustStore == null) {
-            throw new VCIssuerException("No key attestation trust store configured");
-        }
-        return trustStore.getVerifier(jwsHeader.getAlgorithm().name())
-                .orElseThrow(() -> new VCIssuerException("No trusted verifier for algorithm: " + jwsHeader.getAlgorithm().name()));
     }
 
     private void checkCryptographicKeyBinding(VCIssuanceContext vcIssuanceContext) {
@@ -272,8 +228,8 @@ public class JwtProofValidator extends AbstractProofValidator {
         KeycloakContext keycloakContext = keycloakSession.getContext();
         CNonceHandler cNonceHandler = keycloakSession.getProvider(CNonceHandler.class);
         cNonceHandler.verifyCNonce(proofPayload.getNonce(),
-                                   List.of(OID4VCIssuerWellKnownProvider.getCredentialsEndpoint(keycloakContext)),
-                                   Map.of(JwtCNonceHandler.SOURCE_ENDPOINT,
-                                          OID4VCIssuerWellKnownProvider.getNonceEndpoint(keycloakContext)));
+                List.of(OID4VCIssuerWellKnownProvider.getCredentialsEndpoint(keycloakContext)),
+                Map.of(JwtCNonceHandler.SOURCE_ENDPOINT,
+                        OID4VCIssuerWellKnownProvider.getNonceEndpoint(keycloakContext)));
     }
 }

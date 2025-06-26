@@ -31,10 +31,10 @@ public interface ProofValidator extends Provider {
     }
 
     /**
-     * Validates a client-provided key binding proof.
+     * Validates a client-provided key binding proof(s).
      *
      * @param vcIssuanceContext the issuance context with credential request and config
-     * @return the JWK to bind to the credential
+     * @return a list of {@link org.keycloak.jose.jwk.JWK} instances to be bound to the issued credential(s)
      */
     List<JWK> validateProof(VCIssuanceContext vcIssuanceContext) throws VCIssuerException;
 }
