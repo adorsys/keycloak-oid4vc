@@ -451,8 +451,6 @@ public class OID4VCIssuerEndpoint {
 
         Object theCredential = getCredential(authResult, supportedCredentialConfiguration, credentialRequestVO);
         if (SUPPORTED_FORMATS.contains(requestedFormat)) {
-            // Handle credential response encryption if requested
-            // {@see https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#name-credential-request}
             responseVO.setCredential(theCredential);
         } else {
             throw new BadRequestException(getErrorResponse(ErrorType.UNSUPPORTED_CREDENTIAL_TYPE));
@@ -481,7 +479,7 @@ public class OID4VCIssuerEndpoint {
     private String encryptCredentialResponse(CredentialResponse response, CredentialResponseEncryption encryptionParams) {
         // Validate input parameters
         if (encryptionParams == null || encryptionParams.getAlg() == null || encryptionParams.getEnc() == null || encryptionParams.getJwk() == null) {
-            LOGGER.debugf("Invalid encryption parameters: alg=%s, enc=%s, jwk provided=%b",
+            LOGGER.debugf("Invalid encryption parameters: alg=%s, enc=%s, jwk=%s. None of them were expected null",
                     encryptionParams != null ? encryptionParams.getAlg() : null,
                     encryptionParams != null ? encryptionParams.getEnc() : null,
                     encryptionParams != null && encryptionParams.getJwk() != null);
