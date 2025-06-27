@@ -41,8 +41,11 @@ import java.util.Optional;
  */
 public class AttestationProofValidator extends AbstractProofValidator {
 
-    public AttestationProofValidator(KeycloakSession session) {
+    private final AttestationKeyResolver keyResolver;
+
+    public AttestationProofValidator(KeycloakSession session, AttestationKeyResolver keyResolver) {
         super(session);
+        this.keyResolver = keyResolver;
     }
 
     @Override
@@ -52,30 +55,29 @@ public class AttestationProofValidator extends AbstractProofValidator {
         } catch (IOException | GeneralSecurityException | VerificationException e) {
             throw new VCIssuerException("Failed to validate attestation proof", e);
         } catch (JWSInputException e) {
-            throw new RuntimeException(e);
+            throw new RuntimeException("Invalid JWS input", e);
         }
     }
 
     private List<JWK> validateAttestationProof(VCIssuanceContext vcIssuanceContext)
             throws IOException, GeneralSecurityException, VerificationException, JWSInputException {
+
         AttestationProof proof = extractAttestationProof(vcIssuanceContext);
         String jwt = Optional.ofNullable(proof.getAttestation())
                 .orElseThrow(() -> new VCIssuerException("Attestation JWT is missing"));
 
         return AttestationValidatorUtil.validateAttestationJwt(
-                jwt, keycloakSession, vcIssuanceContext
+                jwt, keycloakSession, vcIssuanceContext, keyResolver
         );
     }
 
     private AttestationProof extractAttestationProof(VCIssuanceContext vcIssuanceContext)
             throws VCIssuerException {
 
-        SupportedCredentialConfiguration config = Optional.ofNullable(
-                        vcIssuanceContext.getCredentialConfig())
+        SupportedCredentialConfiguration config = Optional.ofNullable(vcIssuanceContext.getCredentialConfig())
                 .orElseThrow(() -> new VCIssuerException("Credential configuration is missing"));
 
-        if (config.getProofTypesSupported() == null
-                || config.getProofTypesSupported().getAttestation() == null) {
+        if (config.getProofTypesSupported() == null || config.getProofTypesSupported().getAttestation() == null) {
             throw new VCIssuerException("Attestation proof type not supported");
         }
 

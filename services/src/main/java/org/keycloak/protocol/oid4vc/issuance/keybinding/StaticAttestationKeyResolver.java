@@ -17,28 +17,30 @@
 
 package org.keycloak.protocol.oid4vc.issuance.keybinding;
 
+import org.jboss.logging.Logger;
 import org.keycloak.jose.jwk.JWK;
-import org.keycloak.models.KeycloakSession;
-import org.keycloak.protocol.oid4vc.model.ProofType;
 
 import java.util.Map;
 
 /**
+ * Simple static implementation of AttestationKeyResolver using an in-memory trusted map.
+ *
  * @author <a href="mailto:Rodrick.Awambeng@adorsys.com">Rodrick Awambeng</a>
  */
-public class AttestationProofValidatorFactory implements ProofValidatorFactory {
+public class StaticAttestationKeyResolver implements AttestationKeyResolver {
+    private static final Logger logger = Logger.getLogger(StaticAttestationKeyResolver.class);
+    private final Map<String, JWK> trustedKeys;
 
-    @Override
-    public String getId() {
-        return ProofType.ATTESTATION;
+    public StaticAttestationKeyResolver(Map<String, JWK> trustedKeys) {
+        this.trustedKeys = trustedKeys;
     }
 
     @Override
-    public ProofValidator create(KeycloakSession session) {
-        // TODO: Load trusted keys from config, DB, or env
-        Map<String, JWK> trustedKeys = Map.of(); // empty for now
-
-        AttestationKeyResolver resolver = new StaticAttestationKeyResolver(trustedKeys);
-        return new AttestationProofValidator(session, resolver);
+    public JWK resolveKey(String kid, Map<String, Object> header, Map<String, Object> payload) {
+        JWK key = trustedKeys.get(kid);
+        if (key == null) {
+            logger.warnf("Key with kid '%s' not found in trusted static key registry", kid);
+        }
+        return key;
     }
 }

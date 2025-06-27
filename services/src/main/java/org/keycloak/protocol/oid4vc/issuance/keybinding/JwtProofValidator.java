@@ -56,9 +56,11 @@ public class JwtProofValidator extends AbstractProofValidator {
     public static final String PROOF_JWT_TYP = "openid4vci-proof+jwt";
     private static final String CRYPTOGRAPHIC_BINDING_METHOD_JWK = "jwk";
     private static final String KEY_ATTESTATION_CLAIM = "key_attestation";
+    private final AttestationKeyResolver keyResolver;
 
-    protected JwtProofValidator(KeycloakSession keycloakSession) {
+    public JwtProofValidator(KeycloakSession keycloakSession, AttestationKeyResolver keyResolver) {
         super(keycloakSession);
+        this.keyResolver = keyResolver;
     }
 
     private static Proof getProof(VCIssuanceContext vcIssuanceContext) {
@@ -134,7 +136,8 @@ public class JwtProofValidator extends AbstractProofValidator {
             }
             // Validate the key_attestation JWT using the shared utility
             List<JWK> attestedKeys = AttestationValidatorUtil.validateAttestationJwt(
-                    keyAttestation.toString(), keycloakSession, vcIssuanceContext);
+                    keyAttestation.toString(), keycloakSession, vcIssuanceContext, keyResolver);
+
             // Ensure the proof JWK is among the attested keys
             boolean found = attestedKeys.stream().anyMatch(attested -> attested.equals(jwk));
             if (!found) {

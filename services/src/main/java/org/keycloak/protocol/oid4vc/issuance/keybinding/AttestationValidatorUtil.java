@@ -70,31 +70,45 @@ import java.util.Set;
 public class AttestationValidatorUtil {
 
     private static final String ATTESTATION_JWT_TYP = "keyattestation+jwt";
-    private static final String CACERTS_PATH =
-            System.getProperty("java.home") + "/lib/security/cacerts";
+    private static final String CACERTS_PATH = System.getProperty("java.home") + "/lib/security/cacerts";
     private static final char[] DEFAULT_TRUSTSTORE_PASSWORD = "changeit".toCharArray();
 
-    /**
-     * Validates the attestation JWT and returns the list of attested JWKs.
-     * Throws VCIssuerException if validation fails.
-     */
     public static List<JWK> validateAttestationJwt(
             String attestationJwt,
             KeycloakSession keycloakSession,
-            VCIssuanceContext vcIssuanceContext
+            VCIssuanceContext vcIssuanceContext,
+            AttestationKeyResolver keyResolver
     ) throws IOException, JWSInputException, VerificationException, GeneralSecurityException {
+
         if (attestationJwt == null || attestationJwt.isEmpty()) {
             throw new VCIssuerException("Attestation JWT is missing");
         }
 
         JWSInput jwsInput = new JWSInput(attestationJwt);
         JWSHeader header = jwsInput.getHeader();
+        validateJwsHeader(header);
 
-        validateJwsHeader(vcIssuanceContext, header);
-
-        SignatureVerifierContext verifier = verifierFromX5CChain(
-                header.getX5c(), header.getAlgorithm().name(), keycloakSession
+        Map<String, Object> rawHeader = JsonSerialization.mapper.readValue(
+                jwsInput.getEncodedHeader(), new TypeReference<>() {}
         );
+
+        Map<String, Object> payload = JsonSerialization.mapper.readValue(
+                jwsInput.getContent(), new TypeReference<>() {}
+        );
+
+        SignatureVerifierContext verifier;
+
+        if (header.getX5c() != null && !header.getX5c().isEmpty()) {
+            verifier = verifierFromX5CChain(header.getX5c(), header.getAlgorithm().name(), keycloakSession);
+        } else if (header.getKeyId() != null && !header.getKeyId().isEmpty()) {
+            JWK resolvedJwk = keyResolver.resolveKey(header.getKeyId(), rawHeader, payload);
+            if (resolvedJwk == null) {
+                throw new VCIssuerException("Could not resolve public key for kid: " + header.getKeyId());
+            }
+            verifier = verifierFromResolvedJWK(resolvedJwk, header.getAlgorithm().name(), keycloakSession);
+        } else {
+            throw new VCIssuerException("Neither x5c nor kid present in attestation JWT header; cannot resolve public key");
+        }
 
         if (!verifier.verify(
                 jwsInput.getEncodedSignatureInput().getBytes(StandardCharsets.UTF_8),
@@ -103,32 +117,25 @@ public class AttestationValidatorUtil {
             throw new VCIssuerException("Could not verify signature of attestation JWT");
         }
 
-        Map<String, Object> payload = JsonSerialization.mapper.readValue(
-                jwsInput.getContent(), new TypeReference<>() {
-                }
-        );
-
         validateAttestationPayload(keycloakSession, vcIssuanceContext, payload);
 
-        List<Map<String, Object>> keyMaps =
-                (List<Map<String, Object>>) payload.get("attested_keys");
-
-        if (keyMaps == null || keyMaps.isEmpty()) {
+        Object keysClaim = payload.get("attested_keys");
+        if (!(keysClaim instanceof List<?> keyList) || keyList.isEmpty()) {
             throw new VCIssuerException("No attested_keys found in attestation payload");
         }
 
         List<JWK> jwks = new ArrayList<>();
-        for (Map<String, Object> keyMap : keyMaps) {
+        for (Object keyMap : keyList) {
+            if (!(keyMap instanceof Map)) {
+                throw new VCIssuerException("Invalid JWK format in attested_keys");
+            }
             jwks.add(JsonSerialization.mapper.convertValue(keyMap, JWK.class));
         }
 
         return jwks;
     }
 
-    private static void validateJwsHeader(
-            VCIssuanceContext vcIssuanceContext,
-            JWSHeader header
-    ) {
+    private static void validateJwsHeader(JWSHeader header) {
         String alg = Optional.ofNullable(header.getAlgorithm())
                 .map(Enum::name)
                 .orElseThrow(() -> new VCIssuerException("Missing algorithm in JWS header"));
@@ -143,8 +150,9 @@ public class AttestationValidatorUtil {
             String alg,
             KeycloakSession keycloakSession
     ) throws GeneralSecurityException, IOException, VerificationException {
-        if (x5cList == null || x5cList.isEmpty()) {
-            throw new VCIssuerException("Missing x5c header in attestation JWT");
+
+        if (x5cList.isEmpty()) {
+            throw new VCIssuerException("Empty x5c header in attestation JWT");
         }
 
         CertificateFactory cf = CertificateFactory.getInstance("X.509");
@@ -158,6 +166,55 @@ public class AttestationValidatorUtil {
         }
 
         CertPath certPath = cf.generateCertPath(certChain);
+        Set<TrustAnchor> anchors = loadTrustAnchorsFromDefaultTrustStore();
+
+        PKIXParameters params = new PKIXParameters(anchors);
+        params.setRevocationEnabled(false);
+
+        CertPathValidator.getInstance("PKIX").validate(certPath, params);
+
+        PublicKey publicKey = certChain.get(0).getPublicKey();
+        JWK certJwk = convertPublicKeyToJWK(publicKey, alg, certChain);
+
+        return verifierFromResolvedJWK(certJwk, alg, keycloakSession);
+    }
+
+    private static SignatureVerifierContext verifierFromResolvedJWK(
+            JWK jwk,
+            String alg,
+            KeycloakSession session
+    ) throws VerificationException {
+
+        SignatureProvider provider = session.getProvider(SignatureProvider.class, alg);
+        KeyWrapper wrapper = new KeyWrapper();
+        wrapper.setType(jwk.getKeyType());
+        wrapper.setAlgorithm(alg);
+        wrapper.setUse(KeyUse.SIG);
+
+        if (jwk.getOtherClaims().get("crv") != null) {
+            wrapper.setCurve((String) jwk.getOtherClaims().get("crv"));
+        }
+
+        wrapper.setPublicKey(JWKParser.create(jwk).toPublicKey());
+        return provider.verifier(wrapper);
+    }
+
+    private static JWK convertPublicKeyToJWK(
+            PublicKey key,
+            String alg,
+            List<X509Certificate> certChain
+    ) {
+        if (key instanceof RSAPublicKey rsa) {
+            return JWKBuilder.create().algorithm(alg).rsa(rsa, certChain);
+        } else if (key instanceof ECPublicKey ec) {
+            return JWKBuilder.create().algorithm(alg).ec(ec, certChain, null);
+        } else {
+            throw new VCIssuerException("Unsupported public key type in certificate: " + key.getClass().getName());
+        }
+    }
+
+    private static Set<TrustAnchor> loadTrustAnchorsFromDefaultTrustStore()
+            throws GeneralSecurityException, IOException {
 
         KeyStore trustStore = KeyStore.getInstance(KeyStore.getDefaultType());
         try (InputStream in = new FileInputStream(CACERTS_PATH)) {
@@ -175,45 +232,7 @@ public class AttestationValidatorUtil {
             }
         }
 
-        PKIXParameters params = new PKIXParameters(anchors);
-        params.setRevocationEnabled(false);
-
-        CertPathValidator.getInstance("PKIX").validate(certPath, params);
-
-        X509Certificate leaf = certChain.get(0);
-        PublicKey publicKey = leaf.getPublicKey();
-        JWK certJwk;
-
-        if (publicKey instanceof RSAPublicKey rsa) {
-            certJwk = JWKBuilder.create()
-                    .algorithm(alg)
-                    .rsa(rsa, List.of(leaf));
-        } else if (publicKey instanceof ECPublicKey ec) {
-            certJwk = JWKBuilder.create()
-                    .algorithm(alg)
-                    .ec(ec, List.of(leaf), null);
-        } else {
-            throw new VCIssuerException(
-                    "Unsupported public key type in certificate chain: " + publicKey.getClass()
-            );
-        }
-
-        SignatureProvider signatureProvider =
-                keycloakSession.getProvider(SignatureProvider.class, alg);
-
-        KeyWrapper keyWrapper = new KeyWrapper();
-        keyWrapper.setType(certJwk.getKeyType());
-        keyWrapper.setAlgorithm(alg);
-
-        if (certJwk.getOtherClaims().get("crv") != null) {
-            keyWrapper.setCurve((String) certJwk.getOtherClaims().get("crv"));
-        }
-
-        JWKParser parser = JWKParser.create(certJwk);
-        keyWrapper.setPublicKey(parser.toPublicKey());
-        keyWrapper.setUse(KeyUse.SIG);
-
-        return signatureProvider.verifier(keyWrapper);
+        return anchors;
     }
 
     private static void validateAttestationPayload(
@@ -221,6 +240,7 @@ public class AttestationValidatorUtil {
             VCIssuanceContext vcIssuanceContext,
             Map<String, Object> payload
     ) throws VCIssuerException, VerificationException {
+
         if (!payload.containsKey("iat")) {
             throw new VCIssuerException("Missing 'iat' claim in attestation");
         }
@@ -240,25 +260,16 @@ public class AttestationValidatorUtil {
                                 keycloakSession.getContext()))
         );
 
-        Object keyStorageClaim = payload.get("key_storage");
-        if (keyStorageClaim != null) {
-            try {
-                ISO18045ResistanceLevel.fromValue(keyStorageClaim.toString());
-            } catch (Exception e) {
-                throw new VCIssuerException(
-                        "Invalid 'key_storage' value in attestation: " + keyStorageClaim, e
-                );
-            }
-        }
+        validateResistanceLevel(payload.get("key_storage"), "key_storage");
+        validateResistanceLevel(payload.get("user_authentication"), "user_authentication");
+    }
 
-        Object userAuthClaim = payload.get("user_authentication");
-        if (userAuthClaim != null) {
+    private static void validateResistanceLevel(Object claimValue, String claimName) {
+        if (claimValue != null) {
             try {
-                ISO18045ResistanceLevel.fromValue(userAuthClaim.toString());
+                ISO18045ResistanceLevel.fromValue(claimValue.toString());
             } catch (Exception e) {
-                throw new VCIssuerException(
-                        "Invalid 'user_authentication' value in attestation: " + userAuthClaim, e
-                );
+                throw new VCIssuerException("Invalid '" + claimName + "' value: " + claimValue, e);
             }
         }
     }
