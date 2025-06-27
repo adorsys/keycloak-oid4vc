@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Red Hat, Inc. and/or its affiliates
+ * Copyright 2025 Red Hat, Inc. and/or its affiliates
  * and other contributors as indicated by the @author tags.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,10 +21,12 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 /**
- * Represents an attestation proof for Credential Request in OID4VCI (Section 8.2.1.1).
+ * Represents an attestation proof for Credential Request in OID4VCI (Section 8.2.1.3).
  * This is used for the "attestation" proof type, as per the OpenID4VCI specification.
  *
- * @see <a href="https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#name-attestation-proof-type">OID4VCI Attestation Proof Type</a>
+ * @author <a href="mailto:Rodrick.Awambeng@adorsys.com">Rodrick Awambeng</a>
+ * @see <a href="https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#name-attestation-proof-type">
+ * OID4VCI Attestation Proof Type</a>
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class AttestationProof implements Proof {

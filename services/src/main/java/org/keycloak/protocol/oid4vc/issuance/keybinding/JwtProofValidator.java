@@ -39,6 +39,7 @@ import org.keycloak.util.JsonSerialization;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.security.GeneralSecurityException;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -60,6 +61,19 @@ public class JwtProofValidator extends AbstractProofValidator {
         super(keycloakSession);
     }
 
+    private static Proof getProof(VCIssuanceContext vcIssuanceContext) {
+        Proof proofObject = vcIssuanceContext.getCredentialRequest().getProof();
+        if (proofObject == null) {
+            throw new VCIssuerException("Credential configuration requires a proof of type: " + ProofType.JWT);
+        }
+
+        if (!(proofObject instanceof JwtProof)) {
+            throw new VCIssuerException("Wrong proof type. Expected JwtProof, but got: " + proofObject.getClass().getSimpleName());
+        }
+
+        return (Proof) proofObject;
+    }
+
     @Override
     public List<JWK> validateProof(VCIssuanceContext vcIssuanceContext) throws VCIssuerException {
         try {
@@ -67,6 +81,8 @@ public class JwtProofValidator extends AbstractProofValidator {
             return jwk != null ? List.of(jwk) : List.of();
         } catch (JWSInputException | VerificationException | IOException e) {
             throw new VCIssuerException("Could not validate JWT proof", e);
+        } catch (GeneralSecurityException e) {
+            throw new RuntimeException(e);
         }
     }
 
@@ -85,7 +101,8 @@ public class JwtProofValidator extends AbstractProofValidator {
      * @throws IllegalStateException: is credential type badly configured
      * @throws IOException
      */
-    private JWK validateJwtProof(VCIssuanceContext vcIssuanceContext) throws VCIssuerException, JWSInputException, VerificationException, IOException {
+    private JWK validateJwtProof(VCIssuanceContext vcIssuanceContext) throws VCIssuerException, JWSInputException,
+            VerificationException, IOException, GeneralSecurityException {
 
         Optional<Proof> optionalProof = getProofFromContext(vcIssuanceContext);
 
@@ -115,13 +132,22 @@ public class JwtProofValidator extends AbstractProofValidator {
             if (keyAttestation == null) {
                 throw new VCIssuerException("The 'key_attestation' claim is present in the JWT proof but is null.");
             }
+            // Validate the key_attestation JWT using the shared utility
+            List<JWK> attestedKeys = AttestationValidatorUtil.validateAttestationJwt(
+                    keyAttestation.toString(), keycloakSession, vcIssuanceContext);
+            // Ensure the proof JWK is among the attested keys
+            boolean found = attestedKeys.stream().anyMatch(attested -> attested.equals(jwk));
+            if (!found) {
+                throw new VCIssuerException("The proof JWK is not among the attested_keys in the key_attestation JWT.");
+            }
         }
 
         SignatureVerifierContext signatureVerifierContext = getVerifier(jwk, jwsHeader.getAlgorithm().name());
         if (signatureVerifierContext == null) {
             throw new VCIssuerException("No verifier configured for " + jwsHeader.getAlgorithm());
         }
-        if (!signatureVerifierContext.verify(jwsInput.getEncodedSignatureInput().getBytes(StandardCharsets.UTF_8), jwsInput.getSignature())) {
+        if (!signatureVerifierContext.verify(jwsInput.getEncodedSignatureInput().getBytes(StandardCharsets.UTF_8),
+                jwsInput.getSignature())) {
             throw new VCIssuerException("Could not verify signature of provided proof");
         }
 
@@ -131,7 +157,8 @@ public class JwtProofValidator extends AbstractProofValidator {
     private void checkCryptographicKeyBinding(VCIssuanceContext vcIssuanceContext) {
         // Make sure we are dealing with a jwk proof.
         if (vcIssuanceContext.getCredentialConfig().getCryptographicBindingMethodsSupported() == null ||
-                !vcIssuanceContext.getCredentialConfig().getCryptographicBindingMethodsSupported().contains(CRYPTOGRAPHIC_BINDING_METHOD_JWK)) {
+                !vcIssuanceContext.getCredentialConfig().getCryptographicBindingMethodsSupported()
+                        .contains(CRYPTOGRAPHIC_BINDING_METHOD_JWK)) {
             throw new IllegalStateException("This SD-JWT implementation only supports jwk as cryptographic binding method");
         }
     }
@@ -150,19 +177,6 @@ public class JwtProofValidator extends AbstractProofValidator {
 
                     return Optional.of(proof);
                 });
-    }
-
-    private static Proof getProof(VCIssuanceContext vcIssuanceContext) {
-        Proof proofObject = vcIssuanceContext.getCredentialRequest().getProof();
-        if (proofObject == null) {
-            throw new VCIssuerException("Credential configuration requires a proof of type: " + ProofType.JWT);
-        }
-
-        if (!(proofObject instanceof JwtProof)) {
-            throw new VCIssuerException("Wrong proof type. Expected JwtProof, but got: " + proofObject.getClass().getSimpleName());
-        }
-
-        return (Proof) proofObject;
     }
 
     private JWSInput getJwsInput(JwtProof proof) throws JWSInputException {
