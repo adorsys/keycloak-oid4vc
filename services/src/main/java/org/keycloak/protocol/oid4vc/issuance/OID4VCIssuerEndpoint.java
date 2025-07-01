@@ -478,25 +478,11 @@ public class OID4VCIssuerEndpoint {
      */
     private String encryptCredentialResponse(CredentialResponse response, CredentialResponseEncryption encryptionParams) {
         // Validate input parameters
-        if (encryptionParams == null || encryptionParams.getAlg() == null || encryptionParams.getEnc() == null || encryptionParams.getJwk() == null) {
-            LOGGER.debugf("Invalid encryption parameters: alg=%s, enc=%s, jwk=%s. None of them were expected null",
-                    encryptionParams != null ? encryptionParams.getAlg() : null,
-                    encryptionParams != null ? encryptionParams.getEnc() : null,
-                    encryptionParams != null && encryptionParams.getJwk() != null);
-            throw new BadRequestException(getErrorResponse(ErrorType.INVALID_ENCRYPTION_PARAMETERS,
-                    "Missing required encryption parameters (alg, enc, or jwk)."));
-        }
+        validateEncryptionParameters(encryptionParams);
 
         String alg = encryptionParams.getAlg();
         String enc = encryptionParams.getEnc();
         JWK jwk = encryptionParams.getJwk();
-
-        // Validate JWK suitability for encryption
-        if (!isValidJwkForEncryption(jwk, alg)) {
-            LOGGER.debug("Invalid JWK: Not suitable for encryption or incorrect algorithm/use");
-            throw new BadRequestException(getErrorResponse(ErrorType.INVALID_ENCRYPTION_PARAMETERS,
-                    "Invalid JWK: Must be suitable for encryption with correct algorithm and use."));
-        }
 
         // Parse public key
         PublicKey publicKey;
@@ -541,6 +527,30 @@ public class OID4VCIssuerEndpoint {
                                     .setErrorDescription("Encryption operation failed"))
                             .type(MediaType.APPLICATION_JSON)
                             .build());
+        }
+    }
+
+    /**
+     * validate the encryption parameters for a credential response.
+     *
+     * @param encryptionParams The encryption parameters to validate
+     * @throws BadRequestException If the encryption parameters are invalid
+     */
+    private void validateEncryptionParameters(CredentialResponseEncryption encryptionParams) {
+        if (encryptionParams == null || encryptionParams.getAlg() == null ||
+                encryptionParams.getEnc() == null || encryptionParams.getJwk() == null) {
+            LOGGER.debugf("Invalid encryption parameters: alg=%s, enc=%s, jwk=%s. None of them were expected null",
+                    encryptionParams != null ? encryptionParams.getAlg() : null,
+                    encryptionParams != null ? encryptionParams.getEnc() : null,
+                    encryptionParams != null && encryptionParams.getJwk() != null);
+            throw new BadRequestException(getErrorResponse(ErrorType.INVALID_ENCRYPTION_PARAMETERS,
+                    "Missing required encryption parameters (alg, enc, or jwk)."));
+        }
+
+        if (!isValidJwkForEncryption(encryptionParams.getJwk(), encryptionParams.getAlg())) {
+            LOGGER.debug("Invalid JWK: Not suitable for encryption or incorrect algorithm/use");
+            throw new BadRequestException(getErrorResponse(ErrorType.INVALID_ENCRYPTION_PARAMETERS,
+                    "Invalid JWK: Must be suitable for encryption with correct algorithm and use."));
         }
     }
 
