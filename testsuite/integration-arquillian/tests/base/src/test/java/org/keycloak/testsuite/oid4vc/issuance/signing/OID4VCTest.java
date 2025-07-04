@@ -652,4 +652,22 @@ public abstract class OID4VCTest extends AbstractTestRealmKeycloakTest {
         return context;
     }
 
+    protected static VCIssuanceContext createVCIssuanceContextForAttestation(KeycloakSession session) {
+        VCIssuanceContext context = createVCIssuanceContext(session);
+
+        // Create a credential configuration that supports attestation proof type
+        SupportedCredentialConfiguration config = context.getCredentialConfig();
+
+        // Set up proof types to support attestation
+        ProofTypesSupported proofTypesSupported = new ProofTypesSupported();
+        ProofTypeMetadata attestationMetadata = new ProofTypeMetadata();
+        attestationMetadata.setProofSigningAlgValuesSupported(List.of("ES256"));
+        proofTypesSupported.setAttestation(attestationMetadata);
+
+        config.setProofTypesSupported(proofTypesSupported);
+
+        return context;
+    }
+
+
 }

@@ -36,7 +36,6 @@ import org.keycloak.OAuth2Constants;
 import org.keycloak.TokenVerifier;
 import org.keycloak.common.VerificationException;
 import org.keycloak.common.util.Base64Url;
-import org.keycloak.common.util.KeyUtils;
 import org.keycloak.crypto.ECDSASignatureSignerContext;
 import org.keycloak.crypto.KeyWrapper;
 import org.keycloak.jose.jwk.JWK;
@@ -47,14 +46,15 @@ import org.keycloak.oid4vci.Oid4VciConstants;
 import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerEndpoint;
 import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerWellKnownProvider;
 import org.keycloak.protocol.oid4vc.issuance.VCIssuanceContext;
-import org.keycloak.protocol.oid4vc.issuance.VCIssuerException;
 import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.SdJwtCredentialBuilder;
 import org.keycloak.protocol.oid4vc.issuance.keybinding.AttestationKeyResolver;
+import org.keycloak.protocol.oid4vc.issuance.keybinding.AttestationProofValidator;
 import org.keycloak.protocol.oid4vc.issuance.keybinding.CNonceHandler;
 import org.keycloak.protocol.oid4vc.issuance.keybinding.JwtCNonceHandler;
 import org.keycloak.protocol.oid4vc.issuance.keybinding.JwtProofValidator;
 import org.keycloak.protocol.oid4vc.issuance.keybinding.StaticAttestationKeyResolver;
 import org.keycloak.protocol.oid4vc.issuance.mappers.OID4VCGeneratedIdMapper;
+import org.keycloak.protocol.oid4vc.model.AttestationProof;
 import org.keycloak.protocol.oid4vc.model.CredentialIssuer;
 import org.keycloak.protocol.oid4vc.model.CredentialOfferURI;
 import org.keycloak.protocol.oid4vc.model.CredentialRequest;
@@ -64,6 +64,9 @@ import org.keycloak.protocol.oid4vc.model.Format;
 import org.keycloak.protocol.oid4vc.model.ISO18045ResistanceLevel;
 import org.keycloak.protocol.oid4vc.model.JwtProof;
 import org.keycloak.protocol.oid4vc.model.Proof;
+import org.keycloak.protocol.oid4vc.model.ProofTypeMetadata;
+import org.keycloak.protocol.oid4vc.model.ProofTypesSupported;
+import org.keycloak.protocol.oid4vc.model.SupportedCredentialConfiguration;
 import org.keycloak.protocol.oidc.grants.PreAuthorizedCodeGrantTypeFactory;
 import org.keycloak.protocol.oidc.representations.OIDCConfigurationRepresentation;
 import org.keycloak.representations.JsonWebToken;
@@ -85,6 +88,7 @@ import java.util.stream.Collectors;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.keycloak.protocol.oid4vc.issuance.keybinding.AttestationValidatorUtil.ATTESTATION_JWT_TYP;
@@ -273,6 +277,31 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
         String token = getBearerToken(oauth);
         withCausePropagation(() -> testingClient.server(TEST_REALM_NAME).run((KeycloakSession session) ->
                 testInvalidKeyStorageResistanceLevel(session, token, cNonce)));
+    }
+
+    @Test
+    public void testCredentialIssuanceWithAttestationProofConfiguration() {
+        String cNonce = getCNonce();
+        String token = getBearerToken(oauth);
+        testingClient.server(TEST_REALM_NAME).run((KeycloakSession session) ->
+                testAttestationProofConfiguration(session, token, cNonce));
+    }
+
+    private static void testAttestationProofConfiguration(KeycloakSession session, String token, String cNonce) throws VerificationException {
+        // Test that the credential configuration properly supports attestation proof type
+        VCIssuanceContext context = createVCIssuanceContextForAttestation(session);
+
+        SupportedCredentialConfiguration config = context.getCredentialConfig();
+        assertNotNull("Credential config should exist", config);
+
+        ProofTypesSupported proofTypes = config.getProofTypesSupported();
+        assertNotNull("Proof types should be supported", proofTypes);
+        assertNotNull("Attestation proof type should be supported", proofTypes.getAttestation());
+
+        ProofTypeMetadata attestationMetadata = proofTypes.getAttestation();
+        assertNotNull("Attestation metadata should exist", attestationMetadata);
+        assertNotNull("Signing algorithms should be supported", attestationMetadata.getProofSigningAlgValuesSupported());
+        assertTrue("ES256 should be supported", attestationMetadata.getProofSigningAlgValuesSupported().contains("ES256"));
     }
 
     private static void testAttestationProofType(KeycloakSession session, String token, String cNonce) throws VerificationException {
