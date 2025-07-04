@@ -56,8 +56,9 @@ public class ProofTypeMetadata {
         return keyAttestationsRequired;
     }
 
-    public void setKeyAttestationsRequired(KeyAttestationsRequired keyAttestationsRequired) {
+    public ProofTypeMetadata setKeyAttestationsRequired(KeyAttestationsRequired keyAttestationsRequired) {
         this.keyAttestationsRequired = keyAttestationsRequired;
+        return this;
     }
 
     @Override

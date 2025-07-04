@@ -69,7 +69,7 @@ import java.util.Set;
  */
 public class AttestationValidatorUtil {
 
-    private static final String ATTESTATION_JWT_TYP = "keyattestation+jwt";
+    public static final String ATTESTATION_JWT_TYP = "keyattestation+jwt";
     private static final String CACERTS_PATH = System.getProperty("java.home") + "/lib/security/cacerts";
     private static final char[] DEFAULT_TRUSTSTORE_PASSWORD = "changeit".toCharArray();
 
@@ -88,13 +88,13 @@ public class AttestationValidatorUtil {
         JWSHeader header = jwsInput.getHeader();
         validateJwsHeader(header);
 
+        String payloadStr = new String(jwsInput.getContent(), StandardCharsets.UTF_8);
+
         Map<String, Object> rawHeader = JsonSerialization.mapper.readValue(
                 jwsInput.getEncodedHeader(), new TypeReference<>() {}
         );
 
-        Map<String, Object> payload = JsonSerialization.mapper.readValue(
-                jwsInput.getContent(), new TypeReference<>() {}
-        );
+        Map<String, Object> payload = JsonSerialization.mapper.readValue(payloadStr, new TypeReference<>() {});
 
         SignatureVerifierContext verifier;
 
@@ -238,8 +238,11 @@ public class AttestationValidatorUtil {
     private static void validateAttestationPayload(
             KeycloakSession keycloakSession,
             VCIssuanceContext vcIssuanceContext,
-            Map<String, Object> payload
-    ) throws VCIssuerException, VerificationException {
+            Map<String, Object> payload) throws VCIssuerException, VerificationException {
+
+        if (payload == null) {
+            throw new VCIssuerException("Missing attestation payload");
+        }
 
         if (!payload.containsKey("iat")) {
             throw new VCIssuerException("Missing 'iat' claim in attestation");
@@ -250,6 +253,9 @@ public class AttestationValidatorUtil {
                 .orElseThrow(() -> new VCIssuerException("Missing 'nonce' in attestation"));
 
         CNonceHandler cNonceHandler = keycloakSession.getProvider(CNonceHandler.class);
+        if (cNonceHandler == null) {
+            throw new VCIssuerException("No CNonceHandler available");
+        }
 
         cNonceHandler.verifyCNonce(
                 nonce,
@@ -260,8 +266,16 @@ public class AttestationValidatorUtil {
                                 keycloakSession.getContext()))
         );
 
-        validateResistanceLevel(payload.get("key_storage"), "key_storage");
-        validateResistanceLevel(payload.get("user_authentication"), "user_authentication");
+        // Add null checks for resistance levels
+        Object keyStorage = payload.get("key_storage");
+        Object userAuth = payload.get("user_authentication");
+
+        if (keyStorage != null) {
+            validateResistanceLevel(keyStorage, "key_storage");
+        }
+        if (userAuth != null) {
+            validateResistanceLevel(userAuth, "user_authentication");
+        }
     }
 
     private static void validateResistanceLevel(Object claimValue, String claimName) {

@@ -62,8 +62,9 @@ public class ProofTypesSupported {
         return attestation;
     }
 
-    public void setAttestation(ProofTypeMetadata attestation) {
+    public ProofTypesSupported setAttestation(ProofTypeMetadata attestation) {
         this.attestation = attestation;
+        return this;
     }
 
     public String toJsonString(){

@@ -51,11 +51,21 @@ public class AttestationProofValidator extends AbstractProofValidator {
     @Override
     public List<JWK> validateProof(VCIssuanceContext vcIssuanceContext) throws VCIssuerException {
         try {
-            return validateAttestationProof(vcIssuanceContext);
-        } catch (IOException | GeneralSecurityException | VerificationException e) {
+            AttestationProof proof = extractAttestationProof(vcIssuanceContext);
+            String jwt = Optional.ofNullable(proof.getAttestation())
+                    .orElseThrow(() -> new VCIssuerException("Attestation JWT is missing"));
+
+            // Validate attestation and get attested keys
+            List<JWK> attestedKeys = AttestationValidatorUtil.validateAttestationJwt(
+                    jwt, keycloakSession, vcIssuanceContext, keyResolver);
+
+            if (attestedKeys == null || attestedKeys.isEmpty()) {
+                throw new VCIssuerException("No valid attested keys found in attestation proof");
+            }
+
+            return attestedKeys;
+        } catch (Exception e) {
             throw new VCIssuerException("Failed to validate attestation proof", e);
-        } catch (JWSInputException e) {
-            throw new RuntimeException("Invalid JWS input", e);
         }
     }
 
@@ -67,8 +77,7 @@ public class AttestationProofValidator extends AbstractProofValidator {
                 .orElseThrow(() -> new VCIssuerException("Attestation JWT is missing"));
 
         return AttestationValidatorUtil.validateAttestationJwt(
-                jwt, keycloakSession, vcIssuanceContext, keyResolver
-        );
+                jwt, keycloakSession, vcIssuanceContext, keyResolver);
     }
 
     private AttestationProof extractAttestationProof(VCIssuanceContext vcIssuanceContext)
