@@ -40,6 +40,7 @@ import org.keycloak.common.util.SecretGenerator;
 import org.keycloak.component.ComponentFactory;
 import org.keycloak.component.ComponentModel;
 import org.keycloak.events.EventBuilder;
+import org.keycloak.jose.jwk.JWK;
 import org.keycloak.models.AuthenticatedClientSessionModel;
 import org.keycloak.models.ClientModel;
 import org.keycloak.models.ClientScopeModel;
@@ -72,6 +73,7 @@ import org.keycloak.protocol.oid4vc.model.OfferUriType;
 import org.keycloak.protocol.oid4vc.model.PreAuthorizedCode;
 import org.keycloak.protocol.oid4vc.model.PreAuthorizedGrant;
 import org.keycloak.protocol.oid4vc.model.Proof;
+import org.keycloak.protocol.oid4vc.model.ProofType;
 import org.keycloak.protocol.oid4vc.model.SupportedCredentialConfiguration;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
 import org.keycloak.protocol.oidc.grants.PreAuthorizedCodeGrantType;
@@ -653,10 +655,19 @@ public class OID4VCIssuerEndpoint {
             throw new BadRequestException(String.format("Unable to validate proofs of type %s", proofType));
         }
 
-        // Validate proof and bind public key to credential
+        // Validate proof and bind public key(s) to credential
         try {
-            Optional.ofNullable(proofValidator.validateProof(vcIssuanceContext))
-                    .ifPresent(jwk -> vcIssuanceContext.getCredentialBody().addKeyBinding(jwk));
+            List<JWK> jwks = proofValidator.validateProof(vcIssuanceContext);
+            if (ProofType.ATTESTATION.equals(proof.getProofType())) {
+                if (jwks == null || jwks.isEmpty()) {
+                    throw new BadRequestException("Attestation proof requires at least one attested key");
+                }
+            }
+            if (jwks != null) {
+                for (JWK jwk : jwks) {
+                    vcIssuanceContext.getCredentialBody().addKeyBinding(jwk);
+                }
+            }
         } catch (VCIssuerException e) {
             throw new BadRequestException("Could not validate provided proof", e);
         }
