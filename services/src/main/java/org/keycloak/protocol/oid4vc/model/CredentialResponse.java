@@ -29,7 +29,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class CredentialResponse {
 
-    // concrete type depends on the format
+    // Concrete type depends on the format
     private Object credential;
 
     @JsonProperty("notification_id")
