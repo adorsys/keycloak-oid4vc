@@ -28,10 +28,10 @@ import org.keycloak.models.KeycloakSession;
 import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerWellKnownProvider;
 import org.keycloak.protocol.oid4vc.issuance.VCIssuanceContext;
 import org.keycloak.protocol.oid4vc.issuance.VCIssuerException;
-import org.keycloak.protocol.oid4vc.model.ErrorType;
 import org.keycloak.protocol.oid4vc.model.JwtProof;
 import org.keycloak.protocol.oid4vc.model.Proof;
 import org.keycloak.protocol.oid4vc.model.ProofType;
+import org.keycloak.protocol.oid4vc.model.ProofTypeJWT;
 import org.keycloak.protocol.oid4vc.model.ProofTypesSupported;
 import org.keycloak.protocol.oid4vc.model.SupportedCredentialConfiguration;
 import org.keycloak.representations.AccessToken;
@@ -216,24 +216,11 @@ public class JwtProofValidator extends AbstractProofValidator {
         Optional.ofNullable(proofPayload.getIat())
                 .orElseThrow(() -> new VCIssuerException("Missing proof issuing time. iat claim must be provided."));
 
-        try {
-            KeycloakContext keycloakContext = keycloakSession.getContext();
-            CNonceHandler cNonceHandler = keycloakSession.getProvider(CNonceHandler.class);
-            if (cNonceHandler == null) {
-                throw new VCIssuerException("CNonceHandler not available", ErrorType.INVALID_PROOF);
-            }
-            String nonce = proofPayload.getNonce();
-            if (nonce == null) {
-                throw new VCIssuerException("Missing nonce in proof payload", ErrorType.INVALID_NONCE);
-            }
-            cNonceHandler.verifyCNonce(
-                    nonce,
-                    List.of(OID4VCIssuerWellKnownProvider.getCredentialsEndpoint(keycloakContext)),
-                    Map.of(JwtCNonceHandler.SOURCE_ENDPOINT,
-                            OID4VCIssuerWellKnownProvider.getNonceEndpoint(keycloakContext)));
-        } catch (Exception e) {
-            // Treat any exception from verifyCNonce as an invalid nonce
-            throw new VCIssuerException("Invalid nonce: " + e.getMessage(), ErrorType.INVALID_NONCE, e);
-        }
+        KeycloakContext keycloakContext = keycloakSession.getContext();
+        CNonceHandler cNonceHandler = keycloakSession.getProvider(CNonceHandler.class);
+        cNonceHandler.verifyCNonce(proofPayload.getNonce(),
+                List.of(OID4VCIssuerWellKnownProvider.getCredentialsEndpoint(keycloakContext)),
+                Map.of(JwtCNonceHandler.SOURCE_ENDPOINT,
+                        OID4VCIssuerWellKnownProvider.getNonceEndpoint(keycloakContext)));
     }
 }
