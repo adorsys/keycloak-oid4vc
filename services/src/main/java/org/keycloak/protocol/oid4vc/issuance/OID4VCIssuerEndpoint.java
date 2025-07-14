@@ -168,10 +168,10 @@ public class OID4VCIssuerEndpoint {
     private Map<String, CredentialBuilder> loadCredentialBuilders(KeycloakSession keycloakSession) {
         KeycloakSessionFactory keycloakSessionFactory = keycloakSession.getKeycloakSessionFactory();
         return keycloakSessionFactory.getProviderFactoriesStream(CredentialBuilder.class)
-                                     .map(factory -> (CredentialBuilderFactory) factory)
-                                     .map(factory -> factory.create(keycloakSession, null))
-                                     .collect(Collectors.toMap(CredentialBuilder::getSupportedFormat,
-                                                               credentialBuilder ->  credentialBuilder));
+                .map(factory -> (CredentialBuilderFactory) factory)
+                .map(factory -> factory.create(keycloakSession, null))
+                .collect(Collectors.toMap(CredentialBuilder::getSupportedFormat,
+                        credentialBuilder ->  credentialBuilder));
     }
 
     /**
@@ -303,16 +303,16 @@ public class OID4VCIssuerEndpoint {
             if (Arrays.stream(accessToken.getScope().split(" "))
                     .noneMatch(tokenScope -> tokenScope.equals(requestedCredential.getScope()))) {
                 LOGGER.debugf("Scope check failure: required scope = %s, " +
-                                      "scope in access token = %s.",
-                              requestedCredential.getName(), accessToken.getScope());
+                                "scope in access token = %s.",
+                        requestedCredential.getName(), accessToken.getScope());
                 throw new CorsErrorResponseException(cors,
                         ErrorType.UNSUPPORTED_CREDENTIAL_TYPE.toString(),
                         "Scope check failure",
                         Response.Status.BAD_REQUEST);
             } else {
                 LOGGER.debugf("Scope check success: required scope = %s, #" +
-                                      "scope in access token = %s.",
-                              requestedCredential.getScope(), accessToken.getScope());
+                                "scope in access token = %s.",
+                        requestedCredential.getScope(), accessToken.getScope());
             }
         } else {
             clientSession.removeNote(PreAuthorizedCodeGrantType.VC_ISSUANCE_FLOW);
@@ -332,8 +332,14 @@ public class OID4VCIssuerEndpoint {
 
         cors = Cors.builder().auth().allowedMethods("POST").auth().exposedHeaders(Cors.ACCESS_CONTROL_ALLOW_METHODS);
 
-        // do first to fail fast on auth
+        // Do first to fail fast on auth
         AuthenticationManager.AuthResult authResult = getAuthResult();
+
+        // Validate that proof and proofs are not both present
+        if (credentialRequestVO.getProof() != null && credentialRequestVO.getProofs() != null) {
+            LOGGER.debug("Both proof and proofs parameters are present in the request, which is not allowed.");
+            throw new BadRequestException(getErrorResponse(ErrorType.INVALID_CREDENTIAL_REQUEST));
+        }
 
         // Both credential_configuration_id and credential_identifier are optional.
         // If the credential_configuration_id is present, credential_identifier can't be present.
@@ -345,13 +351,13 @@ public class OID4VCIssuerEndpoint {
         // Check if at least one of both is available.
         if (requestedCredentialConfigurationId == null && requestedCredentialIdentifier == null) {
             LOGGER.debugf("Missing both credential_configuration_id and credential_identifier. " +
-                                  "At least one must be specified.");
+                    "At least one must be specified.");
             throw new BadRequestException(getErrorResponse(ErrorType.MISSING_CREDENTIAL_IDENTIFIER_AND_CONFIGURATION_ID));
         }
 
         CredentialScopeModel requestedCredential = credentialRequestVO.findCredentialScope(session).orElseThrow(() -> {
             LOGGER.debugf("Credential for request '%s' not found.",
-                          credentialRequestVO.toString());
+                    credentialRequestVO.toString());
             return new BadRequestException(getErrorResponse(ErrorType.UNSUPPORTED_CREDENTIAL_TYPE));
         });
 
@@ -360,12 +366,32 @@ public class OID4VCIssuerEndpoint {
         SupportedCredentialConfiguration supportedCredential =
                 OID4VCIssuerWellKnownProvider.toSupportedCredentialConfiguration(session, requestedCredential);
 
-        Object theCredential = getCredential(authResult, supportedCredential, credentialRequestVO);
-
         CredentialResponse responseVO = new CredentialResponse();
-        responseVO
-                    .addCredential(theCredential)
-                    .setNotificationId(generateNotificationId());
+        responseVO.setNotificationId(generateNotificationId());
+
+        // Handle multiple credentials if proofs are provided, otherwise handle a single credential
+        if (credentialRequestVO.getProofs() != null && !credentialRequestVO.getProofs().isEmpty()) {
+            Map<String, Proof[]> proofs = credentialRequestVO.getProofs();
+            if (proofs.size() > 1) {
+                LOGGER.debug("Multiple proof types in a single request are not supported.");
+                throw new BadRequestException(getErrorResponse(ErrorType.INVALID_CREDENTIAL_REQUEST));
+            }
+            Map.Entry<String, Proof[]> proofEntry = proofs.entrySet().iterator().next();
+            Proof[] proofArray = proofEntry.getValue();
+            for (Proof proof : proofArray) {
+                CredentialRequest singleCredentialRequest = new CredentialRequest()
+                        .setCredentialConfigurationId(credentialRequestVO.getCredentialConfigurationId())
+                        .setCredentialIdentifier(credentialRequestVO.getCredentialIdentifier())
+                        .setCredentialDefinition(credentialRequestVO.getCredentialDefinition())
+                        .setProof(proof);
+                Object credential = getCredential(authResult, supportedCredential, singleCredentialRequest);
+                responseVO.addCredential(credential);
+            }
+        } else {
+            Object theCredential = getCredential(authResult, supportedCredential, credentialRequestVO);
+            responseVO.addCredential(theCredential);
+        }
+
         return Response.ok().entity(responseVO).build();
     }
 
@@ -433,7 +459,7 @@ public class OID4VCIssuerEndpoint {
 
         // Retrieve matching credential signer
         CredentialSigner<?> credentialSigner = session.getProvider(CredentialSigner.class,
-                                                                   credentialConfig.getFormat());
+                credentialConfig.getFormat());
 
         return Optional.ofNullable(credentialSigner)
                 .map(signer -> signer.signCredential(
@@ -524,7 +550,7 @@ public class OID4VCIssuerEndpoint {
 
         // Build format-specific credential
         CredentialBody credentialBody = this.findCredentialBuilder(credentialConfig)
-                                            .buildCredentialBody(vc, credentialConfig.getCredentialBuildConfig());
+                .buildCredentialBody(vc, credentialConfig.getCredentialBuildConfig());
 
         return new VCIssuanceContext()
                 .setAuthResult(authResult)
@@ -544,18 +570,20 @@ public class OID4VCIssuerEndpoint {
         }
 
         String proofType = proof.getProofType();
-
+        LOGGER.debugf("Validating proof of type: %s", proofType);
         ProofValidator proofValidator = session.getProvider(ProofValidator.class, proofType);
         if (proofValidator == null) {
-            throw new BadRequestException(String.format("Unable to validate proofs of type %s", proofType));
+            LOGGER.debugf("No proof validator found for type: %s", proofType);
+            throw new BadRequestException(getErrorResponse(ErrorType.INVALID_PROOF));
         }
 
-        // Validate proof and bind public key to credential
         try {
             Optional.ofNullable(proofValidator.validateProof(vcIssuanceContext))
                     .ifPresent(jwk -> vcIssuanceContext.getCredentialBody().addKeyBinding(jwk));
         } catch (VCIssuerException e) {
-            throw new BadRequestException("Could not validate provided proof", e);
+            ErrorType errorType = e.getErrorType();
+            LOGGER.debugf("Proof validation failed: %s, ErrorType: %s", e.getMessage(), errorType, e);
+            throw new BadRequestException(getErrorResponse(errorType != null ? errorType : ErrorType.INVALID_PROOF), e);
         }
     }
 
