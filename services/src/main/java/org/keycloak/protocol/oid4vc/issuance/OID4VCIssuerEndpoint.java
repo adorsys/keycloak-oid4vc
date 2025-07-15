@@ -381,7 +381,7 @@ public class OID4VCIssuerEndpoint {
         // Validate that proof and proofs are not both present
         if (credentialRequestVO.getProof() != null && credentialRequestVO.getProofs() != null) {
             LOGGER.debug("Both proof and proofs parameters are present in the request, which is not allowed.");
-            throw new BadRequestException(getErrorResponse(ErrorType.INVALID_CREDENTIAL_REQUEST));
+            throw new BadRequestException(getErrorResponse(ErrorType.INVALID_PROOF));
         }
 
         // checkClientEnabled call after authentication
@@ -420,18 +420,32 @@ public class OID4VCIssuerEndpoint {
             Map<String, Proof[]> proofs = credentialRequestVO.getProofs();
             if (proofs.size() > 1) {
                 LOGGER.debug("Multiple proof types in a single request are not supported.");
-                throw new BadRequestException(getErrorResponse(ErrorType.INVALID_CREDENTIAL_REQUEST));
+                throw new BadRequestException(getErrorResponse(ErrorType.INVALID_PROOF));
             }
             Map.Entry<String, Proof[]> proofEntry = proofs.entrySet().iterator().next();
             Proof[] proofArray = proofEntry.getValue();
             for (Proof proof : proofArray) {
-                CredentialRequest singleCredentialRequest = new CredentialRequest()
-                        .setCredentialConfigurationId(credentialRequestVO.getCredentialConfigurationId())
-                        .setCredentialIdentifier(credentialRequestVO.getCredentialIdentifier())
-                        .setCredentialDefinition(credentialRequestVO.getCredentialDefinition())
-                        .setProof(proof);
-                Object credential = getCredential(authResult, supportedCredential, singleCredentialRequest);
-                responseVO.addCredential(credential);
+                try {
+                    CredentialRequest singleCredentialRequest = new CredentialRequest()
+                            .setCredentialConfigurationId(credentialRequestVO.getCredentialConfigurationId())
+                            .setCredentialIdentifier(credentialRequestVO.getCredentialIdentifier())
+                            .setCredentialDefinition(credentialRequestVO.getCredentialDefinition())
+                            .setProof(proof);
+                    Object credential = getCredential(authResult, supportedCredential, singleCredentialRequest);
+                    responseVO.addCredential(credential);
+                } catch (BadRequestException e) {
+                    if (e.getResponse().getEntity() instanceof ErrorResponse errorResponse &&
+                            errorResponse.getError() == ErrorType.INVALID_NONCE) {
+                        throw e; // Re-throw invalid_nonce errors immediately
+                    }
+                    // For other errors, continue processing other proofs
+                    LOGGER.debugf("Failed to process one of the proofs: %s", e.getMessage());
+                }
+            }
+
+            if (responseVO.getCredentials().isEmpty()) {
+                // All proofs failed - return the last error
+                throw new BadRequestException(getErrorResponse(ErrorType.INVALID_PROOF));
             }
         } else {
             Object theCredential = getCredential(authResult, supportedCredential, credentialRequestVO);
@@ -627,7 +641,7 @@ public class OID4VCIssuerEndpoint {
             Optional.ofNullable(proofValidator.validateProof(vcIssuanceContext))
                     .ifPresent(jwk -> vcIssuanceContext.getCredentialBody().addKeyBinding(jwk));
         } catch (VCIssuerException e) {
-            throw new BadRequestException("Could not validate provided proof", e);
+            throw new BadRequestException(e.getMessage(), getErrorResponse(e.getErrorType()));
         }
     }
 
