@@ -31,7 +31,7 @@ import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 
 /**
- * Represents a  CredentialRequest according to OID4VCI
+ * Represents a CredentialRequest according to OID4VCI
  * {@see https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#name-credential-request}
  *
  * @author <a href="https://github.com/wistefan">Stefan Wiedemann</a>
@@ -52,6 +52,14 @@ public class CredentialRequest {
             @JsonSubTypes.Type(value = LdpVpProof.class, name = ProofType.LD_PROOF)
     })
     private Proof proof;
+
+    @JsonProperty("proofs")
+    @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "proof_type")
+    @JsonSubTypes({
+            @JsonSubTypes.Type(value = JwtProof.class, name = ProofType.JWT),
+            @JsonSubTypes.Type(value = LdpVpProof.class, name = ProofType.LD_PROOF)
+    })
+    private Map<String, Proof[]> proofs;
 
     // See: https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#name-format-identifier-3
     @JsonProperty("credential_definition")
@@ -81,6 +89,15 @@ public class CredentialRequest {
 
     public CredentialRequest setProof(Proof proof) {
         this.proof = proof;
+        return this;
+    }
+
+    public Map<String, Proof[]> getProofs() {
+        return proofs;
+    }
+
+    public CredentialRequest setProofs(Map<String, Proof[]> proofs) {
+        this.proofs = proofs;
         return this;
     }
 
