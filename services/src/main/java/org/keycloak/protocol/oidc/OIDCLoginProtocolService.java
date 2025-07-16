@@ -30,15 +30,18 @@ import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriBuilder;
 import jakarta.ws.rs.core.UriInfo;
 
+import org.jboss.resteasy.reactive.NoCache;
+import org.keycloak.common.Profile;
+import org.keycloak.http.HttpRequest;
 import org.keycloak.OAuthErrorException;
 import org.keycloak.common.ClientConnection;
 import org.keycloak.events.EventBuilder;
 import org.keycloak.forms.login.LoginFormsProvider;
-import org.keycloak.http.HttpRequest;
 import org.keycloak.jose.jwk.JSONWebKeySet;
 import org.keycloak.models.Constants;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
+import org.keycloak.protocol.oauth2.attestation.AttestationChallengeEndpoint;
 import org.keycloak.protocol.oidc.endpoints.AuthorizationEndpoint;
 import org.keycloak.protocol.oidc.endpoints.LoginStatusIframeEndpoint;
 import org.keycloak.protocol.oidc.endpoints.LogoutEndpoint;
@@ -52,8 +55,6 @@ import org.keycloak.services.CorsErrorResponseException;
 import org.keycloak.services.cors.Cors;
 import org.keycloak.services.resources.RealmsResource;
 import org.keycloak.services.util.CacheControlUtil;
-
-import org.jboss.resteasy.reactive.NoCache;
 
 import static jakarta.ws.rs.core.HttpHeaders.CONTENT_TYPE;
 
@@ -177,6 +178,19 @@ public class OIDCLoginProtocolService {
     @Path("token")
     public Object token() {
         return new TokenEndpoint(session, tokenManager, event);
+    }
+
+    /**
+     * Attestation based Client Authentication Challenge Endpoint
+     * @return
+     */
+    @Path("challenge")
+    public Object challenge() {
+        if (Profile.isFeatureEnabled(Profile.Feature.OAUTH_ABCA)) {
+            return new AttestationChallengeEndpoint(session, event);
+        } else {
+            return Response.status(Response.Status.NOT_FOUND).build();
+        }
     }
 
     @Path("login-status-iframe.html")
