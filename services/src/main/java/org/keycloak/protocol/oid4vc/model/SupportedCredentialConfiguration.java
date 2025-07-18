@@ -22,6 +22,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import org.apache.commons.collections4.ListUtils;
 import org.keycloak.models.oid4vci.CredentialScopeModel;
 import org.keycloak.models.KeycloakSession;
+import org.keycloak.constants.Oid4VciConstants;
 
 import java.util.Collections;
 import java.util.List;
@@ -35,28 +36,28 @@ import java.util.Optional;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class SupportedCredentialConfiguration {
 
-    public static final String DOT_SEPARATOR = ".";
+    public static final String DOT_SEPARATOR = Oid4VciConstants.DOT_SEPARATOR;
 
     @JsonIgnore
-    private static final String FORMAT_KEY = "format";
+    private static final String FORMAT_KEY = Oid4VciConstants.FORMAT_KEY;
     @JsonIgnore
-    private static final String SCOPE_KEY = "scope";
+    private static final String SCOPE_KEY = Oid4VciConstants.SCOPE_KEY;
     @JsonIgnore
-    private static final String CRYPTOGRAPHIC_BINDING_METHODS_SUPPORTED_KEY = "cryptographic_binding_methods_supported";
+    private static final String CRYPTOGRAPHIC_BINDING_METHODS_SUPPORTED_KEY = Oid4VciConstants.CRYPTOGRAPHIC_BINDING_METHODS_SUPPORTED_KEY;
     @JsonIgnore
-    private static final String CREDENTIAL_SIGNING_ALG_VALUES_SUPPORTED_KEY = "credential_signing_alg_values_supported";
+    private static final String CREDENTIAL_SIGNING_ALG_VALUES_SUPPORTED_KEY = Oid4VciConstants.CREDENTIAL_SIGNING_ALG_VALUES_SUPPORTED_KEY;
     @JsonIgnore
-    private static final String DISPLAY_KEY = "display";
+    private static final String DISPLAY_KEY = Oid4VciConstants.DISPLAY_KEY;
     @JsonIgnore
-    private static final String PROOF_TYPES_SUPPORTED_KEY = "proof_types_supported";
+    private static final String PROOF_TYPES_SUPPORTED_KEY = Oid4VciConstants.PROOF_TYPES_SUPPORTED_KEY;
     @JsonIgnore
-    private static final String CLAIMS_KEY = "claims";
+    private static final String CLAIMS_KEY = Oid4VciConstants.CLAIMS_KEY;
     @JsonIgnore
-    public static final String VERIFIABLE_CREDENTIAL_TYPE_KEY = "vct";
+    public static final String VERIFIABLE_CREDENTIAL_TYPE_KEY = Oid4VciConstants.VERIFIABLE_CREDENTIAL_TYPE_KEY;
     @JsonIgnore
-    private static final String CREDENTIAL_DEFINITION_KEY = "credential_definition";
+    private static final String CREDENTIAL_DEFINITION_KEY = Oid4VciConstants.CREDENTIAL_DEFINITION_KEY;
     @JsonIgnore
-    public static final String CREDENTIAL_BUILD_CONFIG_KEY = "credential_build_config";
+    public static final String CREDENTIAL_BUILD_CONFIG_KEY = Oid4VciConstants.CREDENTIAL_BUILD_CONFIG_KEY;
 
     private String id;
 

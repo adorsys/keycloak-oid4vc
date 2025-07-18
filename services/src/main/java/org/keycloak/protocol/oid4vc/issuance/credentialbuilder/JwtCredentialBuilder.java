@@ -23,14 +23,15 @@ import org.keycloak.protocol.oid4vc.model.CredentialBuildConfig;
 import org.keycloak.protocol.oid4vc.model.Format;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
 import org.keycloak.representations.JsonWebToken;
+import org.keycloak.constants.Oid4VciConstants;
 
 import java.time.Instant;
 import java.util.Optional;
 
 public class JwtCredentialBuilder implements CredentialBuilder {
 
-    private static final String VC_CLAIM_KEY = "vc";
-    private static final String ID_CLAIM_KEY = "id";
+    private static final String VC_CLAIM_KEY = Oid4VciConstants.VC_CLAIM_KEY;
+    private static final String ID_CLAIM_KEY = Oid4VciConstants.ID_CLAIM_KEY;
 
     private final TimeProvider timeProvider;
 

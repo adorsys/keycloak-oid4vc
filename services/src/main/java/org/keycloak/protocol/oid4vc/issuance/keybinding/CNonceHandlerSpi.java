@@ -21,13 +21,14 @@ package org.keycloak.protocol.oid4vc.issuance.keybinding;
 import org.keycloak.provider.Provider;
 import org.keycloak.provider.ProviderFactory;
 import org.keycloak.provider.Spi;
+import org.keycloak.constants.Oid4VciConstants;
 
 /**
  * @author Pascal Knüppel
  */
 public class CNonceHandlerSpi implements Spi {
 
-    public static final String SPI_NAME = "oid4vci-c-nonce-spi";
+    public static final String SPI_NAME = Oid4VciConstants.SPI_NAME_C_NONCE;
 
     @Override
     public boolean isInternal() {

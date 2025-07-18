@@ -17,6 +17,7 @@
 package org.keycloak.protocol.oid4vc.issuance;
 
 import org.keycloak.Config;
+import org.keycloak.constants.Oid4VciConstants;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.KeycloakSessionFactory;
 import org.keycloak.protocol.oid4vc.OID4VCEnvironmentProviderFactory;
@@ -32,7 +33,7 @@ import org.keycloak.wellknown.WellKnownProviderFactory;
  */
 public class JWTVCIssuerWellKnownProviderFactory implements WellKnownProviderFactory, OID4VCEnvironmentProviderFactory {
 
-    public static final String PROVIDER_ID = "jwt-vc-issuer";
+    public static final String PROVIDER_ID = Oid4VciConstants.PROVIDER_ID_JWT_VC_ISSUER;
 
     @Override
     public WellKnownProvider create(KeycloakSession session) {
@@ -56,6 +57,6 @@ public class JWTVCIssuerWellKnownProviderFactory implements WellKnownProviderFac
 
     @Override
     public String getId() {
-        return PROVIDER_ID;
+        return Oid4VciConstants.PROVIDER_ID_JWT_VC_ISSUER;
     }
 }

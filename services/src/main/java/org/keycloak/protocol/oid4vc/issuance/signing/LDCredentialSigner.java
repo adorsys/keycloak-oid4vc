@@ -29,6 +29,7 @@ import org.keycloak.protocol.oid4vc.issuance.signing.vcdm.LinkedDataCryptographi
 import org.keycloak.protocol.oid4vc.model.CredentialBuildConfig;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
 import org.keycloak.protocol.oid4vc.model.vcdm.LdProof;
+import org.keycloak.constants.Oid4VciConstants;
 
 import java.io.IOException;
 import java.time.Instant;
@@ -45,8 +46,8 @@ public class LDCredentialSigner extends AbstractCredentialSigner<VerifiableCrede
 
     private static final Logger LOGGER = Logger.getLogger(LDCredentialSigner.class);
 
-    public static final String PROOF_PURPOSE_ASSERTION = "assertionMethod";
-    public static final String PROOF_KEY = "proof";
+    public static final String PROOF_PURPOSE_ASSERTION = Oid4VciConstants.PROOF_PURPOSE_ASSERTION;
+    public static final String PROOF_KEY = Oid4VciConstants.PROOF_KEY;
 
     private final TimeProvider timeProvider;
 
@@ -91,7 +92,7 @@ public class LDCredentialSigner extends AbstractCredentialSigner<VerifiableCrede
         byte[] signature = suite.getSignature(verifiableCredential);
 
         LdProof ldProof = new LdProof();
-        ldProof.setProofPurpose(PROOF_PURPOSE_ASSERTION);
+        ldProof.setProofPurpose(Oid4VciConstants.PROOF_PURPOSE_ASSERTION);
         ldProof.setType(suite.getProofType());
         ldProof.setCreated(Date.from(Instant.ofEpochSecond(timeProvider.currentTimeSeconds())));
         ldProof.setVerificationMethod(keyId);
@@ -99,7 +100,7 @@ public class LDCredentialSigner extends AbstractCredentialSigner<VerifiableCrede
         try {
             var proofValue = Base64.encodeBytes(signature, Base64.URL_SAFE);
             ldProof.setProofValue(proofValue);
-            verifiableCredential.setAdditionalProperties(PROOF_KEY, ldProof);
+            verifiableCredential.setAdditionalProperties(Oid4VciConstants.PROOF_KEY, ldProof);
             return verifiableCredential;
         } catch (IOException e) {
             throw new CredentialSignerException("Was not able to encode the signature.", e);
