@@ -39,6 +39,7 @@ import org.jboss.logging.Logger;
 import org.keycloak.common.util.SecretGenerator;
 import org.keycloak.component.ComponentFactory;
 import org.keycloak.component.ComponentModel;
+import org.keycloak.constants.Oid4VciConstants;
 import org.keycloak.events.Errors;
 import org.keycloak.events.EventBuilder;
 import org.keycloak.models.AuthenticatedClientSessionModel;
@@ -114,11 +115,11 @@ public class OID4VCIssuerEndpoint {
     private static final String CODE_LIFESPAN_REALM_ATTRIBUTE_KEY = "preAuthorizedCodeLifespanS";
     private static final int DEFAULT_CODE_LIFESPAN_S = 30;
 
-    public static final String NONCE_PATH = "nonce";
-    public static final String CREDENTIAL_PATH = "credential";
-    public static final String CREDENTIAL_OFFER_PATH = "credential-offer/";
-    public static final String RESPONSE_TYPE_IMG_PNG = "image/png";
-    public static final String CREDENTIAL_OFFER_URI_CODE_SCOPE = "credential-offer";
+    public static final String NONCE_PATH = Oid4VciConstants.NONCE_PATH;
+    public static final String CREDENTIAL_PATH = Oid4VciConstants.CREDENTIAL_PATH;
+    public static final String CREDENTIAL_OFFER_PATH = Oid4VciConstants.CREDENTIAL_OFFER_PATH;
+    public static final String RESPONSE_TYPE_IMG_PNG = Oid4VciConstants.RESPONSE_TYPE_IMG_PNG;
+    public static final String CREDENTIAL_OFFER_URI_CODE_SCOPE = Oid4VciConstants.CREDENTIAL_OFFER_URI_CODE_SCOPE;
     private final KeycloakSession session;
     private final AppAuthManager.BearerTokenAuthenticator bearerTokenAuthenticator;
     private final TimeProvider timeProvider;

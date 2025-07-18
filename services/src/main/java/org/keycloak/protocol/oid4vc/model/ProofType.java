@@ -17,6 +17,7 @@
 
 package org.keycloak.protocol.oid4vc.model;
 
+import org.keycloak.constants.Oid4VciConstants;
 
 /**
  * Enum to provide potential proof types for holder-binding
@@ -25,7 +26,9 @@ package org.keycloak.protocol.oid4vc.model;
  */
 public final class ProofType {
 
-    public static final String JWT = "jwt";
-    public static final String LD_PROOF = "ldp_vp";
+    // Use Oid4VciConstants.PROOF_TYPE_JWT and Oid4VciConstants.PROOF_TYPE_LD_PROOF where needed
+
+    public static final String JWT = Oid4VciConstants.PROOF_TYPE_JWT;
+    public static final String LD_PROOF = Oid4VciConstants.PROOF_TYPE_LD_PROOF;
 
 }

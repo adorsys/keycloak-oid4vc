@@ -24,6 +24,7 @@ import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
 import org.keycloak.sdjwt.DisclosureSpec;
 import org.keycloak.sdjwt.SdJwt;
 import org.keycloak.sdjwt.SdJwtUtils;
+import org.keycloak.constants.Oid4VciConstants;
 
 import java.util.List;
 import java.util.Map;
@@ -31,8 +32,8 @@ import java.util.stream.IntStream;
 
 public class SdJwtCredentialBuilder implements CredentialBuilder {
 
-    public static final String ISSUER_CLAIM = "iss";
-    public static final String VERIFIABLE_CREDENTIAL_TYPE_CLAIM = "vct";
+    public static final String ISSUER_CLAIM = Oid4VciConstants.ISSUER_CLAIM;
+    public static final String VERIFIABLE_CREDENTIAL_TYPE_CLAIM = Oid4VciConstants.VERIFIABLE_CREDENTIAL_TYPE_CLAIM;
 
     public SdJwtCredentialBuilder() {
     }

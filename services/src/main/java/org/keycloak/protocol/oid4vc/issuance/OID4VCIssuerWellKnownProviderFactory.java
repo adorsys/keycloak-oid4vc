@@ -23,6 +23,7 @@ import org.keycloak.models.KeycloakSessionFactory;
 import org.keycloak.protocol.oid4vc.OID4VCEnvironmentProviderFactory;
 import org.keycloak.wellknown.WellKnownProvider;
 import org.keycloak.wellknown.WellKnownProviderFactory;
+import org.keycloak.constants.Oid4VciConstants;
 
 /**
  * {@link  WellKnownProviderFactory} implementation for the OID4VCI metadata
@@ -33,7 +34,7 @@ import org.keycloak.wellknown.WellKnownProviderFactory;
  */
 public class OID4VCIssuerWellKnownProviderFactory implements WellKnownProviderFactory, OID4VCEnvironmentProviderFactory {
 
-    public static final String PROVIDER_ID = "openid-credential-issuer";
+    public static final String PROVIDER_ID = Oid4VciConstants.PROVIDER_ID_WELL_KNOWN;
 
     @Override
     public WellKnownProvider create(KeycloakSession session) {

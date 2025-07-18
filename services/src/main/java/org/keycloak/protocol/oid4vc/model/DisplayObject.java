@@ -22,6 +22,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
+import org.keycloak.constants.Oid4VciConstants;
 import org.keycloak.models.oid4vci.CredentialScopeModel;
 import org.keycloak.util.JsonSerialization;
 import org.keycloak.utils.StringUtil;
@@ -48,17 +49,17 @@ public class DisplayObject {
     private static final Logger LOGGER = LoggerFactory.getLogger(DisplayObject.class);
 
     @JsonIgnore
-    private static final String NAME_KEY = "name";
+    private static final String NAME_KEY = Oid4VciConstants.NAME_KEY;
     @JsonIgnore
-    private static final String LOCALE_KEY = "locale";
+    private static final String LOCALE_KEY = Oid4VciConstants.LOCALE_KEY;
     @JsonIgnore
-    private static final String LOGO_KEY = "logo";
+    private static final String LOGO_KEY = Oid4VciConstants.LOGO_KEY;
     @JsonIgnore
-    private static final String DESCRIPTION_KEY = "description";
+    private static final String DESCRIPTION_KEY = Oid4VciConstants.DESCRIPTION_KEY;
     @JsonIgnore
-    private static final String BG_COLOR_KEY = "background_color";
+    private static final String BG_COLOR_KEY = Oid4VciConstants.BG_COLOR_KEY;
     @JsonIgnore
-    private static final String TEXT_COLOR_KEY = "text_color";
+    private static final String TEXT_COLOR_KEY = Oid4VciConstants.TEXT_COLOR_KEY;
 
     @JsonProperty(DisplayObject.NAME_KEY)
     private String name;

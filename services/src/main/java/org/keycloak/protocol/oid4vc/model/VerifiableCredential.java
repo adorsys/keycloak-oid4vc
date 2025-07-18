@@ -30,6 +30,7 @@ import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.node.TextNode;
 import org.keycloak.util.JsonSerialization;
+import org.keycloak.constants.Oid4VciConstants;
 
 import java.io.IOException;
 import java.net.URI;
@@ -49,8 +50,8 @@ import java.util.Optional;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class VerifiableCredential {
 
-    public static final String VC_CONTEXT_V1 = "https://www.w3.org/ns/credentials/v1";
-    public static final String VC_CONTEXT_V2 = "https://www.w3.org/ns/credentials/v2";
+    public static final String VC_CONTEXT_V1 = Oid4VciConstants.VC_CONTEXT_V1;
+    public static final String VC_CONTEXT_V2 = Oid4VciConstants.VC_CONTEXT_V2;
 
     /**
      * @context: The value of the @context property MUST be an ordered set where the first item is a URL with the value

@@ -23,6 +23,7 @@ import org.keycloak.models.UserSessionModel;
 import org.keycloak.protocol.ProtocolMapper;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
 import org.keycloak.provider.ProviderConfigProperty;
+import org.keycloak.constants.Oid4VciConstants;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -38,14 +39,11 @@ import java.util.Set;
  */
 public class OID4VCContextMapper extends OID4VCMapper {
 
-    public static final String MAPPER_ID = "oid4vc-context-mapper";
-    public static final String TYPE_KEY = "context";
-
     private static final List<ProviderConfigProperty> CONFIG_PROPERTIES = new ArrayList<>();
 
     static {
         ProviderConfigProperty contextPropertyNameConfig = new ProviderConfigProperty();
-        contextPropertyNameConfig.setName(TYPE_KEY);
+        contextPropertyNameConfig.setName(Oid4VciConstants.TYPE_KEY_CONTEXT);
         contextPropertyNameConfig.setLabel("Verifiable Credentials Context");
         contextPropertyNameConfig.setHelpText("Context of the credential.");
         contextPropertyNameConfig.setType(ProviderConfigProperty.STRING_TYPE);
@@ -53,6 +51,8 @@ public class OID4VCContextMapper extends OID4VCMapper {
         CONFIG_PROPERTIES.add(contextPropertyNameConfig);
     }
 
+    public static final String MAPPER_ID = Oid4VciConstants.MAPPER_ID_CONTEXT;
+    public static final String TYPE_KEY = Oid4VciConstants.TYPE_KEY_CONTEXT;
 
     @Override
     protected List<ProviderConfigProperty> getIndividualConfigProperties() {
@@ -71,7 +71,7 @@ public class OID4VCContextMapper extends OID4VCMapper {
 
     @Override
     public List<String> getMetadataAttributePath() {
-        return List.of(TYPE_KEY);
+        return List.of(Oid4VciConstants.TYPE_KEY_CONTEXT);
     }
 
     public void setClaimsForCredential(VerifiableCredential verifiableCredential,
@@ -81,7 +81,7 @@ public class OID4VCContextMapper extends OID4VCMapper {
         if (verifiableCredential.getContext() != null) {
             contexts = new HashSet<>(verifiableCredential.getContext());
         }
-        contexts.add(mapperModel.getConfig().get(TYPE_KEY));
+        contexts.add(mapperModel.getConfig().get(Oid4VciConstants.TYPE_KEY_CONTEXT));
         verifiableCredential.setContext(new ArrayList<>(contexts));
     }
 
@@ -107,6 +107,6 @@ public class OID4VCContextMapper extends OID4VCMapper {
 
     @Override
     public String getId() {
-        return MAPPER_ID;
+        return Oid4VciConstants.MAPPER_ID_CONTEXT;
     }
 }

@@ -36,6 +36,7 @@ import org.keycloak.protocol.oid4vc.model.ProofTypesSupported;
 import org.keycloak.protocol.oid4vc.model.SupportedCredentialConfiguration;
 import org.keycloak.representations.AccessToken;
 import org.keycloak.util.JsonSerialization;
+import org.keycloak.constants.Oid4VciConstants;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -52,8 +53,9 @@ import java.util.Optional;
  */
 public class JwtProofValidator extends AbstractProofValidator {
 
-    public static final String PROOF_JWT_TYP = "openid4vci-proof+jwt";
     private static final String CRYPTOGRAPHIC_BINDING_METHOD_JWK = "jwk";
+
+    public static final String PROOF_JWT_TYP = Oid4VciConstants.PROOF_JWT_TYP;
 
     protected JwtProofValidator(KeycloakSession keycloakSession) {
         super(keycloakSession);

@@ -22,10 +22,13 @@ import org.keycloak.models.UserSessionModel;
 import org.keycloak.protocol.ProtocolMapper;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
 import org.keycloak.provider.ProviderConfigProperty;
+import org.keycloak.constants.Oid4VciConstants;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+
+import static org.keycloak.constants.Oid4VciConstants.CLAIM_NAME;
 
 /**
  * Allows to add statically configured claims to the credential subject
@@ -33,10 +36,6 @@ import java.util.Map;
  * @author <a href="https://github.com/wistefan">Stefan Wiedemann</a>
  */
 public class OID4VCStaticClaimMapper extends OID4VCMapper {
-
-    public static final String MAPPER_ID = "oid4vc-static-claim-mapper";
-
-    public static final String STATIC_CLAIM_KEY = "staticValue";
 
     private static final List<ProviderConfigProperty> CONFIG_PROPERTIES = new ArrayList<>();
 
@@ -49,7 +48,7 @@ public class OID4VCStaticClaimMapper extends OID4VCMapper {
         CONFIG_PROPERTIES.add(subjectPropertyNameConfig);
 
         ProviderConfigProperty claimValueConfig = new ProviderConfigProperty();
-        claimValueConfig.setName(STATIC_CLAIM_KEY);
+        claimValueConfig.setName(Oid4VciConstants.STATIC_CLAIM_KEY);
         claimValueConfig.setLabel("Static Claim Value");
         claimValueConfig.setHelpText("Value to be set for the property.");
         claimValueConfig.setType(ProviderConfigProperty.STRING_TYPE);
@@ -70,7 +69,7 @@ public class OID4VCStaticClaimMapper extends OID4VCMapper {
     public void setClaimsForSubject(Map<String, Object> claims, UserSessionModel userSessionModel) {
         List<String> attributePath = getMetadataAttributePath();
         String propertyName = attributePath.get(attributePath.size() - 1);
-        String staticValue = mapperModel.getConfig().get(STATIC_CLAIM_KEY);
+        String staticValue = mapperModel.getConfig().get(Oid4VciConstants.STATIC_CLAIM_KEY);
         claims.put(propertyName, staticValue);
     }
 
@@ -91,6 +90,9 @@ public class OID4VCStaticClaimMapper extends OID4VCMapper {
 
     @Override
     public String getId() {
-        return MAPPER_ID;
+        return Oid4VciConstants.MAPPER_ID_STATIC_CLAIM;
     }
+
+    public static final String MAPPER_ID = Oid4VciConstants.MAPPER_ID_STATIC_CLAIM;
+    public static final String STATIC_CLAIM_KEY = Oid4VciConstants.STATIC_CLAIM_KEY;
 }

@@ -56,11 +56,11 @@ import java.util.Random;
  */
 public class JwtCNonceHandler implements CNonceHandler {
 
-    public static final String SOURCE_ENDPOINT = "source_endpoint";
-
     public static final int NONCE_DEFAULT_LENGTH = 50;
 
     public static final int NONCE_LENGTH_RANDOM_OFFSET = 15;
+
+    public static final String SOURCE_ENDPOINT = Oid4VciConstants.SOURCE_ENDPOINT;
 
     private static final Logger logger = LoggerFactory.getLogger(JwtCNonceHandler.class);
 
