@@ -22,6 +22,7 @@ import jakarta.ws.rs.client.Invocation;
 import jakarta.ws.rs.client.WebTarget;
 import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.MediaType;
+import com.fasterxml.jackson.core.type.TypeReference;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriBuilder;
 import org.apache.http.HttpStatus;
@@ -35,6 +36,7 @@ import org.keycloak.common.util.CertificateUtils;
 import org.keycloak.common.util.KeyUtils;
 import org.keycloak.common.util.MultivaluedHashMap;
 import org.keycloak.common.util.PemUtils;
+import org.keycloak.constants.Oid4VciConstants;
 import org.keycloak.crypto.ECDSASignatureSignerContext;
 import org.keycloak.crypto.KeyUse;
 import org.keycloak.crypto.KeyWrapper;
@@ -56,12 +58,13 @@ import org.keycloak.protocol.oid4vc.model.ISO18045ResistanceLevel;
 import org.keycloak.protocol.oid4vc.model.JwtProof;
 import org.keycloak.protocol.oid4vc.model.KeyAttestationsRequired;
 import org.keycloak.protocol.oid4vc.model.NonceResponse;
-import org.keycloak.protocol.oid4vc.model.ProofTypeMetadata;
-import org.keycloak.protocol.oid4vc.model.ProofTypesSupported;
 import org.keycloak.protocol.oid4vc.model.SupportedCredentialConfiguration;
+import org.keycloak.protocol.oid4vc.model.SupportedProofTypeData;
+import org.keycloak.protocol.oid4vc.model.ProofTypesSupported;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
 import org.keycloak.representations.AccessToken;
 import org.keycloak.representations.idm.ClientRepresentation;
+import org.keycloak.representations.idm.ClientScopeRepresentation;
 import org.keycloak.representations.idm.ComponentExportRepresentation;
 import org.keycloak.representations.idm.ProtocolMapperRepresentation;
 import org.keycloak.representations.idm.RoleRepresentation;
@@ -112,6 +115,14 @@ public abstract class OID4VCTest extends AbstractTestRealmKeycloakTest {
     protected static final Instant TEST_ISSUANCE_DATE = Instant.ofEpochSecond(1000);
 
     protected static final KeyWrapper RSA_KEY = getRsaKey();
+
+    protected static final String sdJwtTypeCredentialScopeName = "sd-jwt-credential";
+    protected static final String sdJwtTypeCredentialConfigurationIdName = "sd-jwt-credential-config-id";
+
+    protected static final String jwtTypeCredentialScopeName = "jwt-credential";
+    protected static final String jwtTypeCredentialConfigurationIdName = "jwt-credential-config-id";
+
+    protected static final String TEST_CREDENTIAL_MAPPERS_FILE = "/oid4vc/test-credential-mappers.json";
 
     protected static CredentialSubject getCredentialSubject(Map<String, Object> claims) {
         CredentialSubject credentialSubject = new CredentialSubject();
@@ -227,19 +238,6 @@ public abstract class OID4VCTest extends AbstractTestRealmKeycloakTest {
         return clientRepresentation;
     }
 
-    public static Map<String, String> getTestCredentialDefinitionAttributes() {
-        return Map.of(
-                "vc.test-credential.expiry_in_s", "100",
-                "vc.test-credential.format", Format.JWT_VC,
-                "vc.test-credential.scope", "VerifiableCredential",
-                "vc.test-credential.claims", "{ \"firstName\": {\"mandatory\": false, \"display\": [{\"name\": \"First Name\", \"locale\": \"en-US\"}, {\"name\": \"名前\", \"locale\": \"ja-JP\"}]}, \"lastName\": {\"mandatory\": false}, \"email\": {\"mandatory\": false} }",
-                "vc.test-credential.display.0","{\n  \"name\": \"Test Credential\"\n}",
-                "vc.test-credential.credential_build_config.token_jws_type", "JWT",
-                "vc.test-credential.credential_build_config.signing_algorithm", "RS256"
-                // Moved sd-jwt specific attributes to: org.keycloak.testsuite.oid4vc.issuance.signing.OID4VCSdJwtIssuingEndpointTest.getTestCredentialSigningProvider
-        );
-    }
-
     protected ComponentExportRepresentation getEdDSAKeyProvider() {
         ComponentExportRepresentation componentExportRepresentation = new ComponentExportRepresentation();
         componentExportRepresentation.setName("eddsa-generated");
@@ -267,86 +265,69 @@ public abstract class OID4VCTest extends AbstractTestRealmKeycloakTest {
         return componentExportRepresentation;
     }
 
-    public void addProtocolMappersToClientScope(String scopeId, String scopeName, String clientId) {
-        List<ProtocolMapperRepresentation> protocolMappers = getProtocolMappers(scopeName, clientId);
+    public void addProtocolMappersToClientScope(ClientScopeRepresentation clientScope,
+                                                List<ProtocolMapperRepresentation> protocolMappers) {
+        String scopeId = clientScope.getId();
+        String scopeName = clientScope.getName();
 
-        if (!protocolMappers.isEmpty()) {
-            ClientScopeResource clientScopeResource = testRealm().clientScopes().get(scopeId);
-            ProtocolMappersResource protocolMappersResource = clientScopeResource.getProtocolMappers();
+        if (protocolMappers.isEmpty()) {
+            return;
+        }
 
-            for (ProtocolMapperRepresentation protocolMapper : protocolMappers) {
-                Response response = protocolMappersResource.createMapper(protocolMapper);
-                if (response.getStatus() != 201) {
-                    LOGGER.errorf("Failed to create protocol mapper: {} for scope: {}", protocolMapper, scopeName);
-                }
+        ClientScopeResource clientScopeResource = testRealm().clientScopes().get(scopeId);
+        ProtocolMappersResource protocolMappersResource = clientScopeResource.getProtocolMappers();
+
+        for (ProtocolMapperRepresentation protocolMapper : protocolMappers) {
+            Response response = protocolMappersResource.createMapper(protocolMapper);
+            if (response.getStatus() != 201) {
+                LOGGER.errorf("Failed to create protocol mapper: {} for scope: {}", protocolMapper, scopeName);
             }
         }
     }
 
-    private List<ProtocolMapperRepresentation> getProtocolMappers(String scopeName, String clientId) {
-        final String TEST_CREDENTIAL = "test-credential";
-        final String VERIFIABLE_CREDENTIAL = "VerifiableCredential";
-
-        return switch (scopeName) {
-            case TEST_CREDENTIAL -> List.of(
-                    getRoleMapper(clientId, TEST_CREDENTIAL),
-                    getUserAttributeMapper("email", "email", TEST_CREDENTIAL),
-                    getUserAttributeMapper("firstName", "firstName", TEST_CREDENTIAL),
-                    getUserAttributeMapper("lastName", "lastName", TEST_CREDENTIAL),
-                    getJtiGeneratedIdMapper(TEST_CREDENTIAL),
-                    getStaticClaimMapper(TEST_CREDENTIAL, TEST_CREDENTIAL),
-                    getIssuedAtTimeMapper(null, ChronoUnit.HOURS.name(), "COMPUTE", TEST_CREDENTIAL),
-                    getIssuedAtTimeMapper("nbf", null, "COMPUTE", TEST_CREDENTIAL)
-            );
-            case VERIFIABLE_CREDENTIAL -> List.of(
-                    getRoleMapper(clientId, VERIFIABLE_CREDENTIAL),
-                    getUserAttributeMapper("email", "email", VERIFIABLE_CREDENTIAL),
-                    getIdMapper(VERIFIABLE_CREDENTIAL),
-                    getStaticClaimMapper(scopeName, VERIFIABLE_CREDENTIAL)
-            );
-            default -> List.of(); // No mappers for unknown scopes
-        };
+    public List<ProtocolMapperRepresentation> getProtocolMappers(String scopeName) {
+        return List.of(
+                getRoleMapper(),
+                getUserAttributeMapper("email", "email"),
+                getUserAttributeMapper("firstName", "firstName"),
+                getUserAttributeMapper("lastName", "lastName"),
+                getJtiGeneratedIdMapper(),
+                getStaticClaimMapper(scopeName),
+                getIssuedAtTimeMapper("iat", ChronoUnit.HOURS.name(), "COMPUTE"),
+                getIssuedAtTimeMapper("nbf", null, "COMPUTE"));
     }
 
-    public static ProtocolMapperRepresentation getRoleMapper(String clientId, String supportedCredentialTypes) {
+    public static ProtocolMapperRepresentation getRoleMapper() {
         ProtocolMapperRepresentation protocolMapperRepresentation = new ProtocolMapperRepresentation();
         protocolMapperRepresentation.setName("role-mapper");
         protocolMapperRepresentation.setId(UUID.randomUUID().toString());
-        protocolMapperRepresentation.setProtocol("oid4vc");
+        protocolMapperRepresentation.setProtocol(Oid4VciConstants.OID4VC_PROTOCOL);
         protocolMapperRepresentation.setProtocolMapper("oid4vc-target-role-mapper");
         protocolMapperRepresentation.setConfig(
-                Map.of(
-                        "subjectProperty", "roles",
-                        "clientId", clientId,
-                        "supportedCredentialTypes", supportedCredentialTypes)
+                Map.of("claim.name", "roles")
         );
         return protocolMapperRepresentation;
     }
 
-    public static ProtocolMapperRepresentation getIdMapper(String supportedCredentialTypes) {
+    public static ProtocolMapperRepresentation getIdMapper() {
         ProtocolMapperRepresentation protocolMapperRepresentation = new ProtocolMapperRepresentation();
         protocolMapperRepresentation.setName("id-mapper");
-        protocolMapperRepresentation.setProtocol("oid4vc");
+        protocolMapperRepresentation.setProtocol(Oid4VciConstants.OID4VC_PROTOCOL);
         protocolMapperRepresentation.setId(UUID.randomUUID().toString());
         protocolMapperRepresentation.setProtocolMapper("oid4vc-subject-id-mapper");
-        protocolMapperRepresentation.setConfig(
-                Map.of(
-                        "supportedCredentialTypes", supportedCredentialTypes)
-        );
+        protocolMapperRepresentation.setConfig(Map.of());
         return protocolMapperRepresentation;
     }
 
-    public static ProtocolMapperRepresentation getStaticClaimMapper(String scope, String supportedCredentialTypes) {
+    public static ProtocolMapperRepresentation getStaticClaimMapper(String scopeName) {
         ProtocolMapperRepresentation protocolMapperRepresentation = new ProtocolMapperRepresentation();
         protocolMapperRepresentation.setName(UUID.randomUUID().toString());
-        protocolMapperRepresentation.setProtocol("oid4vc");
+        protocolMapperRepresentation.setProtocol(Oid4VciConstants.OID4VC_PROTOCOL);
         protocolMapperRepresentation.setId(UUID.randomUUID().toString());
         protocolMapperRepresentation.setProtocolMapper("oid4vc-static-claim-mapper");
         protocolMapperRepresentation.setConfig(
-                Map.of(
-                        "subjectProperty", scope,
-                        "staticValue", "true",
-                        "supportedCredentialTypes", supportedCredentialTypes)
+                Map.of("claim.name", "scope-name",
+                        "staticValue", scopeName)
         );
         return protocolMapperRepresentation;
     }
@@ -425,32 +406,30 @@ public abstract class OID4VCTest extends AbstractTestRealmKeycloakTest {
         }
     }
 
-    protected ProtocolMapperRepresentation getUserAttributeMapper(String subjectProperty, String attributeName, String supportedCredentialTypes) {
+    protected ProtocolMapperRepresentation getUserAttributeMapper(String subjectProperty, String attributeName) {
         ProtocolMapperRepresentation protocolMapperRepresentation = new ProtocolMapperRepresentation();
-        protocolMapperRepresentation.setName(supportedCredentialTypes + "-" + attributeName + "-mapper");
-        protocolMapperRepresentation.setProtocol("oid4vc");
+        protocolMapperRepresentation.setName(attributeName + "-mapper");
+        protocolMapperRepresentation.setProtocol(Oid4VciConstants.OID4VC_PROTOCOL);
         protocolMapperRepresentation.setId(UUID.randomUUID().toString());
         protocolMapperRepresentation.setProtocolMapper("oid4vc-user-attribute-mapper");
         protocolMapperRepresentation.setConfig(
                 Map.of(
-                        "subjectProperty", subjectProperty,
-                        "userAttribute", attributeName,
-                        "supportedCredentialTypes", supportedCredentialTypes)
+                        "claim.name", subjectProperty,
+                        "userAttribute", attributeName)
         );
         return protocolMapperRepresentation;
     }
 
-    protected ProtocolMapperRepresentation getIssuedAtTimeMapper(String subjectProperty, String truncateToTimeUnit, String valueSource, String supportedCredentialTypes) {
+    protected ProtocolMapperRepresentation getIssuedAtTimeMapper(String subjectProperty, String truncateToTimeUnit, String valueSource) {
         ProtocolMapperRepresentation protocolMapperRepresentation = new ProtocolMapperRepresentation();
-        protocolMapperRepresentation.setName(supportedCredentialTypes + "-" + subjectProperty + "-oid4vc-issued-at-time-claim-mapper");
-        protocolMapperRepresentation.setProtocol("oid4vc");
+        protocolMapperRepresentation.setName(subjectProperty + "-oid4vc-issued-at-time-claim-mapper");
+        protocolMapperRepresentation.setProtocol(Oid4VciConstants.OID4VC_PROTOCOL);
         protocolMapperRepresentation.setId(UUID.randomUUID().toString());
         protocolMapperRepresentation.setProtocolMapper("oid4vc-issued-at-time-claim-mapper");
 
         Map<String, String> configMap = new HashMap<>();
-        configMap.put("supportedCredentialTypes", supportedCredentialTypes);
         Optional.ofNullable(subjectProperty)
-                .ifPresent(value -> configMap.put(OID4VCIssuedAtTimeClaimMapper.SUBJECT_PROPERTY_CONFIG_KEY, value));
+                .ifPresent(value -> configMap.put(OID4VCIssuedAtTimeClaimMapper.CLAIM_NAME, value));
         Optional.ofNullable(truncateToTimeUnit)
                 .ifPresent(value -> configMap.put(OID4VCIssuedAtTimeClaimMapper.TRUNCATE_TO_TIME_UNIT_KEY, value));
         Optional.ofNullable(valueSource)
@@ -501,7 +480,7 @@ public abstract class OID4VCTest extends AbstractTestRealmKeycloakTest {
     public static String getCNonce() {
         UriBuilder builder = UriBuilder.fromUri(OAuthClient.AUTH_SERVER_ROOT);
         URI oid4vcUri = RealmsResource.protocolUrl(builder).build(AbstractTestRealmKeycloakTest.TEST_REALM_NAME,
-                                                                  OID4VCLoginProtocolFactory.PROTOCOL_ID);
+                OID4VCLoginProtocolFactory.PROTOCOL_ID);
         String nonceUrl = String.format("%s/%s", oid4vcUri.toString(), OID4VCIssuerEndpoint.NONCE_PATH);
 
         String nonceResponseString;
@@ -510,10 +489,10 @@ public abstract class OID4VCTest extends AbstractTestRealmKeycloakTest {
             WebTarget nonceTarget = client.target(nonceUrl);
             // the nonce endpoint must be unprotected, and therefore it must be accessible without any authentication
             Invocation.Builder nonceInvocationBuilder = nonceTarget.request()
-                                                                   // just making sure that no authentication is added
-                                                                   // by interceptors or similar
-                                                                   .header(HttpHeaders.AUTHORIZATION, null)
-                                                                   .header(HttpHeaders.COOKIE, null);
+                    // just making sure that no authentication is added
+                    // by interceptors or similar
+                    .header(HttpHeaders.AUTHORIZATION, null)
+                    .header(HttpHeaders.COOKIE, null);
 
             try (Response response = nonceInvocationBuilder.post(null)) {
                 Assert.assertEquals(HttpStatus.SC_OK, response.getStatus());
@@ -540,12 +519,6 @@ public abstract class OID4VCTest extends AbstractTestRealmKeycloakTest {
         }
     }
 
-    protected static KeyWrapper generateTestKey(String keyId) {
-        KeyWrapper keyWrapper = getECKey(keyId);
-        keyWrapper.setKid(keyId != null ? keyId : KeyUtils.createKeyId(keyWrapper.getPublicKey()));
-        return keyWrapper;
-    }
-
     public static String generateJwtProofWithKey(String aud, String nonce, KeyWrapper keyWrapper) {
         String originalKid = keyWrapper.getKid();
 
@@ -558,7 +531,6 @@ public abstract class OID4VCTest extends AbstractTestRealmKeycloakTest {
         return generateUnsignedJwtProof(jwk, aud, nonce)
                 .sign(new ECDSASignatureSignerContext(keyWrapper));
     }
-
 
     protected static String createValidAttestationJwt(KeycloakSession session, KeyWrapper attestationKey, JWK proofJwk, String cNonce) {
         Map<String, Object> attestationPayload = new HashMap<>();
@@ -579,91 +551,49 @@ public abstract class OID4VCTest extends AbstractTestRealmKeycloakTest {
                 .sign(new ECDSASignatureSignerContext(attestationKey));
     }
 
-    protected static JwtProof createJwtProofWithAttestation(KeycloakSession session, KeyWrapper proofKey, String cNonce, String attestationJwt) {
-        JWK proofJwk = JWKBuilder.create()
-                .algorithm("ES256")
-                .ec(proofKey.getPublicKey());
-
-        Map<String, Object> proofPayload = new HashMap<>();
-        proofPayload.put("aud", getCredentialIssuer(session));
-        proofPayload.put("nonce", cNonce);
-        proofPayload.put("iat", TIME_PROVIDER.currentTimeSeconds());
-        proofPayload.put("key_attestation", attestationJwt);
-
-        return new JwtProof()
-                .setJwt(
-                        new JWSBuilder()
-                                .type(JwtProofValidator.PROOF_JWT_TYP)
-                                .jwk(proofJwk)
-                                .jsonContent(proofPayload)
-                                .sign(new ECDSASignatureSignerContext(proofKey)));
-    }
-
-    static String createAttestationJwtWithMultipleKeys(KeycloakSession session, KeyWrapper attestationKey, List<JWK> proofJwks, String cNonce) {
-        Map<String, Object> attestationPayload = new HashMap<>();
-        attestationPayload.put("aud", getCredentialIssuer(session));
-        attestationPayload.put("nonce", cNonce);
-        attestationPayload.put("iat", TIME_PROVIDER.currentTimeSeconds());
-        attestationPayload.put("attested_keys", proofJwks);
-
-        return new JWSBuilder()
-                .type(JWT)
-                .kid(attestationKey.getKid())
-                .jsonContent(attestationPayload)
-                .sign(new ECDSASignatureSignerContext(attestationKey));
-    }
-
-    protected static String createAttestationJwt(KeycloakSession session, KeyWrapper attestationKey, JWK proofJwk, String cNonce) {
-        Map<String, Object> attestationPayload = new HashMap<>();
-        attestationPayload.put("aud", getCredentialIssuer(session));
-        attestationPayload.put("nonce", cNonce);
-        attestationPayload.put("iat", TIME_PROVIDER.currentTimeSeconds());
-        attestationPayload.put("attested_keys", List.of(proofJwk));
-
-        return new JWSBuilder()
-                .type(JWT)
-                .kid(attestationKey.getKid())
-                .jsonContent(attestationPayload)
-                .sign(new ECDSASignatureSignerContext(attestationKey));
-    }
-
-
-
     protected static VCIssuanceContext createVCIssuanceContext(KeycloakSession session) {
         VCIssuanceContext context = new VCIssuanceContext();
         SupportedCredentialConfiguration config = new SupportedCredentialConfiguration()
                 .setFormat(Format.SD_JWT_VC)
                 .setVct("https://credentials.example.com/test-credential")
                 .setCryptographicBindingMethodsSupported(List.of("jwk"))
-                .setProofTypesSupported(new ProofTypesSupported()
-                        .setJwt(new ProofTypeMetadata().setProofSigningAlgValuesSupported(List.of("ES256")))
-                        .setAttestation(new ProofTypeMetadata()
-                                .setProofSigningAlgValuesSupported(List.of("ES256"))
-                                .setKeyAttestationsRequired(new KeyAttestationsRequired()
-                                        .setKeyStorage(List.of(ISO18045ResistanceLevel.HIGH))
-                                        .setUserAuthentication(List.of(ISO18045ResistanceLevel.HIGH)))));
+                .setProofTypesSupported(ProofTypesSupported.parse(session, List.of("ES256")));
 
         context.setCredentialConfig(config)
                 .setCredentialRequest(new CredentialRequest());
         return context;
     }
 
-    protected static VCIssuanceContext createVCIssuanceContextForAttestation(KeycloakSession session) {
-        VCIssuanceContext context = createVCIssuanceContext(session);
-
-        // Create a credential configuration that supports attestation proof type
-        SupportedCredentialConfiguration config = context.getCredentialConfig();
-
-        // Set up proof types to support attestation
-        ProofTypesSupported proofTypesSupported = new ProofTypesSupported();
-        ProofTypeMetadata attestationMetadata = new ProofTypeMetadata();
-        attestationMetadata.setProofSigningAlgValuesSupported(List.of("ES256"));
-        proofTypesSupported.setAttestation(attestationMetadata);
-
-        config.setProofTypesSupported(proofTypesSupported);
-
-        return context;
+    public static <T> T fromJsonString(String representation, Class<T> clazz)
+    {
+        try {
+            return JsonSerialization.readValue(representation, clazz);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
+    public static <T> T fromJsonString(String representation, TypeReference<T> typeReference)
+    {
+        if (representation == null) {
+            return null;
+        }
+        try {
+            return JsonSerialization.readValue(representation, typeReference);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
 
+    public static String toJsonString(Object object)
+    {
+        if (object == null) {
+            return null;
+        }
+        try {
+            return JsonSerialization.writeValueAsString(object);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
 }

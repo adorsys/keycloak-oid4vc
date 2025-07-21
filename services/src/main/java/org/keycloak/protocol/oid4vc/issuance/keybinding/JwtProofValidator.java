@@ -31,9 +31,9 @@ import org.keycloak.protocol.oid4vc.issuance.VCIssuerException;
 import org.keycloak.protocol.oid4vc.model.JwtProof;
 import org.keycloak.protocol.oid4vc.model.Proof;
 import org.keycloak.protocol.oid4vc.model.ProofType;
-import org.keycloak.protocol.oid4vc.model.ProofTypeMetadata;
 import org.keycloak.protocol.oid4vc.model.ProofTypesSupported;
 import org.keycloak.protocol.oid4vc.model.SupportedCredentialConfiguration;
+import org.keycloak.protocol.oid4vc.model.SupportedProofTypeData;
 import org.keycloak.representations.AccessToken;
 import org.keycloak.util.JsonSerialization;
 
@@ -41,6 +41,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -77,10 +78,14 @@ public class JwtProofValidator extends AbstractProofValidator {
     }
 
     @Override
+    public String getProofType() {
+        return ProofType.JWT;
+    }
+
     public List<JWK> validateProof(VCIssuanceContext vcIssuanceContext) throws VCIssuerException {
         try {
             JWK jwk = validateJwtProof(vcIssuanceContext);
-            return jwk != null ? List.of(jwk) : List.of();
+            return Collections.singletonList(jwk);
         } catch (JWSInputException | VerificationException | IOException e) {
             throw new VCIssuerException("Could not validate JWT proof", e);
         } catch (GeneralSecurityException e) {
@@ -170,7 +175,7 @@ public class JwtProofValidator extends AbstractProofValidator {
         return Optional.ofNullable(vcIssuanceContext.getCredentialConfig())
                 .map(SupportedCredentialConfiguration::getProofTypesSupported)
                 .flatMap(proofTypesSupported -> {
-                    Optional.ofNullable(proofTypesSupported.getJwt())
+                    Optional.ofNullable(proofTypesSupported.getSupportedProofTypes().get("jwt"))
                             .orElseThrow(() -> new VCIssuerException("SD-JWT supports only jwt proof type."));
 
                     Proof proof = getProof(vcIssuanceContext);
@@ -202,8 +207,9 @@ public class JwtProofValidator extends AbstractProofValidator {
         // The Algorithm enum class does not list the none value anyway.
         Optional.ofNullable(vcIssuanceContext.getCredentialConfig())
                 .map(SupportedCredentialConfiguration::getProofTypesSupported)
-                .map(ProofTypesSupported::getJwt)
-                .map(ProofTypeMetadata::getProofSigningAlgValuesSupported)
+                .map(ProofTypesSupported::getSupportedProofTypes)
+                .map(proofTypeData -> proofTypeData.get("jwt"))
+                .map(SupportedProofTypeData::getSigningAlgorithmsSupported)
                 .filter(supportedAlgs -> supportedAlgs.contains(jwsHeader.getAlgorithm().name()))
                 .orElseThrow(() -> new VCIssuerException("Proof signature algorithm not supported: " + jwsHeader.getAlgorithm().name()));
 

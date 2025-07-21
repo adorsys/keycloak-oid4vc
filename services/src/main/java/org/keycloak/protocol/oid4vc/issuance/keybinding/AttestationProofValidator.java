@@ -25,6 +25,7 @@ import org.keycloak.protocol.oid4vc.issuance.VCIssuanceContext;
 import org.keycloak.protocol.oid4vc.issuance.VCIssuerException;
 import org.keycloak.protocol.oid4vc.model.AttestationProof;
 import org.keycloak.protocol.oid4vc.model.Proof;
+import org.keycloak.protocol.oid4vc.model.ProofType;
 import org.keycloak.protocol.oid4vc.model.SupportedCredentialConfiguration;
 
 import java.io.IOException;
@@ -49,6 +50,11 @@ public class AttestationProofValidator extends AbstractProofValidator {
     }
 
     @Override
+    public String getProofType() {
+        return ProofType.JWT;
+    }
+
+    @Override
     public List<JWK> validateProof(VCIssuanceContext vcIssuanceContext) throws VCIssuerException {
         try {
             AttestationProof proof = extractAttestationProof(vcIssuanceContext);
@@ -69,24 +75,13 @@ public class AttestationProofValidator extends AbstractProofValidator {
         }
     }
 
-    private List<JWK> validateAttestationProof(VCIssuanceContext vcIssuanceContext)
-            throws IOException, GeneralSecurityException, VerificationException, JWSInputException {
-
-        AttestationProof proof = extractAttestationProof(vcIssuanceContext);
-        String jwt = Optional.ofNullable(proof.getAttestation())
-                .orElseThrow(() -> new VCIssuerException("Attestation JWT is missing"));
-
-        return AttestationValidatorUtil.validateAttestationJwt(
-                jwt, keycloakSession, vcIssuanceContext, keyResolver);
-    }
-
     private AttestationProof extractAttestationProof(VCIssuanceContext vcIssuanceContext)
             throws VCIssuerException {
 
         SupportedCredentialConfiguration config = Optional.ofNullable(vcIssuanceContext.getCredentialConfig())
                 .orElseThrow(() -> new VCIssuerException("Credential configuration is missing"));
 
-        if (config.getProofTypesSupported() == null || config.getProofTypesSupported().getAttestation() == null) {
+        if (config.getProofTypesSupported() == null || config.getProofTypesSupported().getSupportedProofTypes().get("attestation") == null) {
             throw new VCIssuerException("Attestation proof type not supported");
         }
 

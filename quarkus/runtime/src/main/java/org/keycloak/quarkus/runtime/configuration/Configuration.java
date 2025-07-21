@@ -89,6 +89,10 @@ public final class Configuration {
                 .isPresent();
     }
 
+    public static boolean isInitialized() {
+        return config != null;
+    }
+
     public static synchronized SmallRyeConfig getConfig() {
         if (config == null) {
             config = ConfigUtils.emptyConfigBuilder().addDiscoveredSources().build();
@@ -109,10 +113,6 @@ public final class Configuration {
 
     public static Map<String, String> getRawPersistedProperties() {
         return PersistedConfigSource.getInstance().getProperties();
-    }
-
-    public static String getRawValue(String propertyName) {
-        return getConfig().getRawValue(propertyName);
     }
 
     public static Iterable<String> getPropertyNames() {

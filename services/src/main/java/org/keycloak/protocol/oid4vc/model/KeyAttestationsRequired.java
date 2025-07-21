@@ -37,6 +37,13 @@ public class KeyAttestationsRequired {
 
     @JsonProperty("user_authentication")
     private List<ISO18045ResistanceLevel> userAuthentication;
+    
+    /**
+     * Default constructor for Jackson deserialization
+     */
+    public KeyAttestationsRequired() {
+        // Default constructor for Jackson deserialization
+    }
 
     public List<ISO18045ResistanceLevel> getKeyStorage() {
         return keyStorage;

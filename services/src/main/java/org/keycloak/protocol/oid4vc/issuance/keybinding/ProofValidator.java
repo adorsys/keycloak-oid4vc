@@ -30,6 +30,8 @@ public interface ProofValidator extends Provider {
     default void close() {
     }
 
+    String getProofType();
+
     /**
      * Validates a client-provided key binding proof(s).
      *

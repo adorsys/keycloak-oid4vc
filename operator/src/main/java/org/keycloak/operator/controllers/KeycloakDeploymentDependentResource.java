@@ -151,13 +151,17 @@ public class KeycloakDeploymentDependentResource extends CRUDKubernetesDependent
 
         var existingDeployment = ContextUtils.getCurrentStatefulSet(context).orElse(null);
 
+        String serviceName = KeycloakDiscoveryServiceDependentResource.getName(primary);
         if (existingDeployment != null) {
             // copy the existing annotations to keep the status consistent
             CRDUtils.findUpdateReason(existingDeployment).ifPresent(r -> baseDeployment.getMetadata().getAnnotations()
                     .put(Constants.KEYCLOAK_UPDATE_REASON_ANNOTATION, r));
             CRDUtils.fetchIsRecreateUpdate(existingDeployment).ifPresent(b -> baseDeployment.getMetadata()
                     .getAnnotations().put(Constants.KEYCLOAK_RECREATE_UPDATE_ANNOTATION, b.toString()));
+            serviceName = existingDeployment.getSpec().getServiceName();
         }
+
+        baseDeployment.getSpec().setServiceName(serviceName);
 
         var updateType = ContextUtils.getUpdateType(context);
 
@@ -287,7 +291,6 @@ public class KeycloakDeploymentDependentResource extends CRUDKubernetesDependent
                         .editOrNewSpec().withImagePullSecrets(keycloakCR.getSpec().getImagePullSecrets()).endSpec()
                     .endTemplate()
                     .withReplicas(keycloakCR.getSpec().getInstances())
-                    .withServiceName(KeycloakDiscoveryServiceDependentResource.getName(keycloakCR))
                 .endSpec();
 
         var specBuilder = baseDeploymentBuilder.editSpec().editTemplate().editOrNewSpec();
@@ -326,7 +329,7 @@ public class KeycloakDeploymentDependentResource extends CRUDKubernetesDependent
         containerBuilder.addToArgs(0, "-Djgroups.bind.address=$(%s)".formatted(POD_IP));
 
         // probes
-        var protocol = isTlsConfigured(keycloakCR) ? "HTTPS" : "HTTP";
+        var protocol = isManagementHttps(keycloakCR) ? "HTTPS" : "HTTP";
         var port = HttpManagementSpec.managementPort(keycloakCR);
         var readinessOptionalSpec = Optional.ofNullable(keycloakCR.getSpec().getReadinessProbeSpec());
         var livenessOptionalSpec = Optional.ofNullable(keycloakCR.getSpec().getLivenessProbeSpec());
@@ -388,6 +391,11 @@ public class KeycloakDeploymentDependentResource extends CRUDKubernetesDependent
                 .withProtocol(Constants.KEYCLOAK_SERVICE_PROTOCOL)
             .endPort()
             .endContainer().endSpec().endTemplate().endSpec().build();
+    }
+
+    private boolean isManagementHttps(Keycloak keycloakCR) {
+        return isTlsConfigured(keycloakCR) && keycloakCR.getSpec().getAdditionalOptions().stream()
+                .noneMatch(v -> "http-management-scheme".equals(v.getName()) && "http".equals(v.getValue()));
     }
 
     private void handleScheduling(Keycloak keycloakCR, Map<String, String> labels, PodSpecFluent<?> specBuilder) {
