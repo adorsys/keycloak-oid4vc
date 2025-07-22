@@ -52,6 +52,7 @@ import { ClientPoliciesTab, toClientPolicies } from "./routes/ClientPolicies";
 import { RealmSettingsTab, toRealmSettings } from "./routes/RealmSettings";
 import { SecurityDefenses } from "./security-defences/SecurityDefenses";
 import { UserProfileTab } from "./user-profile/UserProfileTab";
+import { RealmSettingsOid4vciTab } from "./RealmSettingsOid4vciTab";
 
 export interface UIRealmRepresentation extends RealmRepresentation {
   upConfig?: UserProfileConfig;
@@ -235,6 +236,22 @@ export const RealmSettingsTabs = () => {
         ),
       );
     }
+    if (r.attributes) {
+      if (
+        r.attributes["oid4vc.nonce-lifetime-seconds"] !== undefined &&
+        typeof r.attributes["oid4vc.nonce-lifetime-seconds"] !== "string"
+      ) {
+        r.attributes["oid4vc.nonce-lifetime-seconds"] =
+          r.attributes["oid4vc.nonce-lifetime-seconds"].toString();
+      }
+      if (
+        r.attributes["preAuthorizedCodeLifespanS"] !== undefined &&
+        typeof r.attributes["preAuthorizedCodeLifespanS"] !== "string"
+      ) {
+        r.attributes["preAuthorizedCodeLifespanS"] =
+          r.attributes["preAuthorizedCodeLifespanS"].toString();
+      }
+    }
 
     try {
       const savedRealm: UIRealmRepresentation = {
@@ -287,6 +304,7 @@ export const RealmSettingsTabs = () => {
   const clientPoliciesTab = useTab("client-policies");
   const userProfileTab = useTab("user-profile");
   const userRegistrationTab = useTab("user-registration");
+  const oid4vciTab = useTab("oid4vci-attributes");
   const { hasAccess, hasSomeAccess } = useAccess();
   const canViewOrManageEvents =
     hasAccess("view-realm") && hasSomeAccess("view-events", "manage-events");
@@ -461,6 +479,15 @@ export const RealmSettingsTabs = () => {
               {...userRegistrationTab}
             >
               <UserRegistration />
+            </Tab>
+          )}
+          {isFeatureEnabled(Feature.OpenId4VCI) && (
+            <Tab
+              title={<TabTitleText>{t("oid4vciAttributes")}</TabTitleText>}
+              data-testid="rs-oid4vci-attributes-tab"
+              {...oid4vciTab}
+            >
+              <RealmSettingsOid4vciTab realm={realm!} save={save} />
             </Tab>
           )}
         </RoutableTabs>
