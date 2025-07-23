@@ -1,0 +1,41 @@
+[[oid4vp-authentication]]
+== Authenticate users with verifiable credentials over OpenID4VP
+
+[IMPORTANT]
+====
+This is an experimental feature and should not be used in production.
+Backward compatibility is not guaranteed, and future updates may introduce breaking changes.
+====
+
+=== Introduction
+
+{project_name} implements experimental support for authenticating users as they present verifiable credentials issued to them by itself.
+This is done over https://openid.net/specs/openid-4-verifiable-presentations-1_0-20.html[OpenID for Verifiable Presentation (OpenID4VP)].
+This chapter describes how to interact with this feature.
+
+=== What is covered in this chapter
+
+- Enabling user authentication over OpenID4VP
+- Initiating the flow by retrieving an authentication request
+
+=== Enabling user authentication over OpenID4VP
+
+To enable user authentication over OpenID4VP, make sure to add the following flags to the startup command:
+
+[source,bash]
+----
+--features=oid4vc-vpauth,oid4vc-vci
+----
+
+Verify activation by checking the server logs.
+The second `oid4vc-vci` feature must equally be activated because the feature relies on {project_name} being able to link:../oid4vci/vc-issuer-configuration.adoc[issue verifiable credentials] to users itself.
+
+=== Initiating the flow by retrieving an authentication request
+
+To retrieve an authentication request, send a GET request to the `/oid4vp/auth` endpoint.
+The endpoint returns an OpenID4VP authorization request link that can be used to initiate the authentication flow, either directly or by generating a QR code from it.
+
+[source,bash]
+----
+GET /realms/<realm>/oid4vp/auth/request
+----
