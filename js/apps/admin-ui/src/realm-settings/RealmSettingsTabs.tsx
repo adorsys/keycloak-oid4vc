@@ -237,12 +237,24 @@ export const RealmSettingsTabs = () => {
       );
     }
     if (r.attributes) {
+      // Handle nested vc object created by React Hook Form
+      if (r.attributes["vc"] && typeof r.attributes["vc"] === "object") {
+        const vcObj = r.attributes["vc"] as Record<string, any>;
+        Object.keys(vcObj).forEach((key) => {
+          const flatKey = `vc.${key}`;
+          r.attributes![flatKey] = vcObj[key]?.toString() || vcObj[key];
+        });
+        // Remove the nested object
+        delete r.attributes["vc"];
+      }
+
+      // Convert OID4VCI attributes to strings if they're not already
       if (
-        r.attributes["oid4vc.nonce-lifetime-seconds"] !== undefined &&
-        typeof r.attributes["oid4vc.nonce-lifetime-seconds"] !== "string"
+        r.attributes["vc.c-nonce-lifetime-seconds"] !== undefined &&
+        typeof r.attributes["vc.c-nonce-lifetime-seconds"] !== "string"
       ) {
-        r.attributes["oid4vc.nonce-lifetime-seconds"] =
-          r.attributes["oid4vc.nonce-lifetime-seconds"].toString();
+        r.attributes["vc.c-nonce-lifetime-seconds"] =
+          r.attributes["vc.c-nonce-lifetime-seconds"].toString();
       }
       if (
         r.attributes["preAuthorizedCodeLifespanS"] !== undefined &&

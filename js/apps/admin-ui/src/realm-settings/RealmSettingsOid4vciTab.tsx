@@ -42,7 +42,7 @@ export const RealmSettingsOid4vciTab = ({
               }
             >
               <Controller
-                name="attributes.oid4vc.nonce-lifetime-seconds"
+                name="attributes.vc.c-nonce-lifetime-seconds"
                 control={form.control}
                 rules={{ required: true, min: 1 }}
                 render={({ field }) => (
