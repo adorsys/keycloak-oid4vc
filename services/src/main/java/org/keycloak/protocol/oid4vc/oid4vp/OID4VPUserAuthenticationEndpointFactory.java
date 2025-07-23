@@ -34,7 +34,7 @@ import org.keycloak.services.resource.RealmResourceProviderFactory;
 public class OID4VPUserAuthenticationEndpointFactory
         implements RealmResourceProviderFactory, OID4VPEnvironmentProviderFactory {
 
-    public static final String PROVIDER_ID = "oid4vp-user-authentication";
+    public static final String PROVIDER_ID = "oid4vp-auth";
 
     @Override
     public String getId() {

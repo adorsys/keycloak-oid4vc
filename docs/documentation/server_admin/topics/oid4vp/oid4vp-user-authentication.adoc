@@ -32,10 +32,10 @@ The second `oid4vc-vci` feature must equally be activated because the feature re
 
 === Initiating the flow by retrieving an authentication request
 
-To retrieve an authentication request, send a GET request to the `/oid4vp/auth` endpoint.
+To retrieve an authentication request, send a GET request to the `/oid4vp-auth` endpoint.
 The endpoint returns an OpenID4VP authorization request link that can be used to initiate the authentication flow, either directly or by generating a QR code from it.
 
 [source,bash]
 ----
-GET /realms/<realm>/oid4vp/auth/request
+GET /realms/<realm>/oid4vp-auth/request
 ----

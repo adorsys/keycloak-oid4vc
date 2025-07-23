@@ -1,0 +1,92 @@
+/*
+ * Copyright 2025 Red Hat, Inc. and/or its affiliates
+ * and other contributors as indicated by the @author tags.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.keycloak.protocol.oid4vc.oid4vp.service;
+
+import org.keycloak.protocol.oid4vc.oid4vp.OID4VPUserAuthenticationEndpointFactory;
+import org.keycloak.protocol.oid4vc.oid4vp.model.prex.Constraints;
+import org.keycloak.protocol.oid4vc.oid4vp.model.prex.Field;
+import org.keycloak.protocol.oid4vc.oid4vp.model.prex.Filter;
+import org.keycloak.protocol.oid4vc.oid4vp.model.prex.InputDescriptor;
+import org.keycloak.protocol.oid4vc.oid4vp.model.prex.PresentationDefinition;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+
+/**
+ * Constructs a presentation definition for requesting an SD-JWT credential.
+ *
+ * @author <a href="mailto:Ingrid.Kamga@adorsys.com">Ingrid Kamga</a>
+ */
+public class SdJwtCredentialPresenter {
+
+    private static final String VCT_PATH = "$.vct";
+    private static final String CLAIM_PATH_TEMPLATE = "$.%s";
+
+    /**
+     * Constructs a presentation definition requiring the disclosure of some claims.
+     */
+    public PresentationDefinition generatePresentationDefinition(
+            String issuerVct, List<String> requiredClaims
+    ) {
+        var def = this.prebuildPresentationDefinition(issuerVct);
+
+        // Set a unique identifier
+        def.setId(UUID.randomUUID().toString());
+
+        // Update field list with required claims
+        var fieldList = def.getInputDescriptors().get(0).getConstraints().getFields();
+        requiredClaims.forEach(claim -> {
+            String path = String.format(CLAIM_PATH_TEMPLATE, claim);
+
+            var field = new Field();
+            field.setPath(List.of(path));
+
+            fieldList.add(field);
+        });
+
+        return def;
+    }
+
+    /**
+     * Constructs a template presentation definition specifying no claims to disclose.
+     */
+    public PresentationDefinition prebuildPresentationDefinition(String issuerVct) {
+        var template = new PresentationDefinition();
+        template.setName(OID4VPUserAuthenticationEndpointFactory.PROVIDER_ID);
+
+        var descriptor = new InputDescriptor();
+        descriptor.setId(UUID.randomUUID().toString());
+        template.setInputDescriptors(List.of(descriptor));
+
+        var constraints = new Constraints();
+        constraints.setLimitDisclosure(Constraints.LimitDisclosure.REQUIRED);
+        descriptor.setConstraints(constraints);
+
+        var field = new Field();
+        field.setPath(List.of(VCT_PATH));
+        constraints.setFields(new ArrayList<>(List.of(field)));
+
+        var filter = new Filter();
+        filter.setType(Filter.SimpleTypes.STRING);
+        filter.setConst(issuerVct);
+        field.setFilter(filter);
+
+        return template;
+    }
+}

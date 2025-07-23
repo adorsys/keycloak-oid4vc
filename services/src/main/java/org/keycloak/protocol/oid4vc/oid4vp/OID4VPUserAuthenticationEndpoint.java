@@ -27,7 +27,6 @@ import org.keycloak.events.EventBuilder;
 import org.keycloak.events.EventType;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.protocol.AuthorizationEndpointBase;
-import org.keycloak.services.cors.Cors;
 import org.keycloak.services.resource.RealmResourceProvider;
 
 /**
@@ -42,25 +41,39 @@ public class OID4VPUserAuthenticationEndpoint extends AuthorizationEndpointBase 
 
     private static final Logger logger = Logger.getLogger(OID4VPUserAuthenticationEndpoint.class);
 
-    private Cors cors;
-
     public OID4VPUserAuthenticationEndpoint(KeycloakSession session, EventBuilder event) {
         super(session, event);
     }
 
-    @Path("")
+    /**
+     * Generates an OpenID4VP authentication request for user authentication.
+     */
     @GET
+    @Path("/request")
     @Produces(MediaType.TEXT_PLAIN)
-    public Response getAuthenticationRequestLink() {
-        cors = Cors.builder().auth().allowedMethods("GET").auth().exposedHeaders(Cors.ACCESS_CONTROL_ALLOW_METHODS);
-
+    public Response getAuthenticationRequest() {
         logger.trace("Initiating user authentication over OpenID4VP...");
         event.event(EventType.OID4VP_INIT_AUTH);
 
         // Implement the logic for handling user authentication over OpenID4VP here.
         // This is a placeholder implementation and should be replaced with actual logic.
 
-        return cors.add(Response.ok().entity("User authentication request handled successfully"));
+        return Response.ok()
+                .entity("User authentication request handled successfully")
+                .build();
+    }
+
+    /**
+     * Deferences request URIs into signed request objects.
+     */
+    @GET
+    @Path("/request.jwt/{requestId}")
+    @Produces(MediaType.TEXT_PLAIN)
+    public Response getSignedRequestObject() {
+        logger.trace("Resolving request URI to signed request object...");
+        return Response.ok()
+                .entity("Signed request object for request ID")
+                .build();
     }
 
     @Override
