@@ -71,6 +71,7 @@ import org.keycloak.protocol.oid4vc.model.OfferUriType;
 import org.keycloak.protocol.oid4vc.model.PreAuthorizedCode;
 import org.keycloak.protocol.oid4vc.model.PreAuthorizedGrant;
 import org.keycloak.protocol.oid4vc.model.Proof;
+import org.keycloak.protocol.oid4vc.model.ProofType;
 import org.keycloak.protocol.oid4vc.model.SupportedCredentialConfiguration;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
 import org.keycloak.protocol.oidc.grants.PreAuthorizedCodeGrantType;
@@ -90,7 +91,9 @@ import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -407,51 +410,30 @@ public class OID4VCIssuerEndpoint {
             return new BadRequestException(getErrorResponse(ErrorType.UNSUPPORTED_CREDENTIAL_TYPE));
         });
 
-        checkScope(requestedCredential);
+        CredentialResponse responseVO = new CredentialResponse();
+        List<Object> issuedCredentials = new ArrayList<>();
+        List<Proof> proofs = credentialRequestVO.getProofs() != null
+                ? Arrays.asList(credentialRequestVO.getProofs().getOrDefault(ProofType.JWT, new Proof[0]))
+                : (credentialRequestVO.getProof() != null ? List.of(credentialRequestVO.getProof()) : Collections.emptyList());
 
+        checkScope(requestedCredential);
         SupportedCredentialConfiguration supportedCredential =
                 OID4VCIssuerWellKnownProvider.toSupportedCredentialConfiguration(session, requestedCredential);
 
-        CredentialResponse responseVO = new CredentialResponse();
-        responseVO.setNotificationId(generateNotificationId());
-
-        // Handle multiple credentials if proofs are provided, otherwise handle a single credential
-        if (credentialRequestVO.getProofs() != null && !credentialRequestVO.getProofs().isEmpty()) {
-            Map<String, Proof[]> proofs = credentialRequestVO.getProofs();
-            if (proofs.size() > 1) {
-                LOGGER.debug("Multiple proof types in a single request are not supported.");
-                throw new BadRequestException(getErrorResponse(ErrorType.INVALID_PROOF));
-            }
-            Map.Entry<String, Proof[]> proofEntry = proofs.entrySet().iterator().next();
-            Proof[] proofArray = proofEntry.getValue();
-            for (Proof proof : proofArray) {
-                try {
-                    CredentialRequest singleCredentialRequest = new CredentialRequest()
-                            .setCredentialConfigurationId(credentialRequestVO.getCredentialConfigurationId())
-                            .setCredentialIdentifier(credentialRequestVO.getCredentialIdentifier())
-                            .setCredentialDefinition(credentialRequestVO.getCredentialDefinition())
-                            .setProof(proof);
-                    Object credential = getCredential(authResult, supportedCredential, singleCredentialRequest);
-                    responseVO.addCredential(credential);
-                } catch (BadRequestException e) {
-                    if (e.getResponse().getEntity() instanceof ErrorResponse errorResponse &&
-                            errorResponse.getError() == ErrorType.INVALID_NONCE) {
-                        throw e; // Re-throw invalid_nonce errors immediately
-                    }
-                    // For other errors, continue processing other proofs
-                    LOGGER.debugf("Failed to process one of the proofs: %s", e.getMessage());
-                }
-            }
-
-            if (responseVO.getCredentials().isEmpty()) {
-                // All proofs failed - return the last error
-                throw new BadRequestException(getErrorResponse(ErrorType.INVALID_PROOF));
-            }
+        if (proofs.isEmpty()) {
+            Object theCredential = getCredential(authResult, supportedCredential, credentialRequestVO.setProof(null));
+            issuedCredentials.add(theCredential);
         } else {
-            Object theCredential = getCredential(authResult, supportedCredential, credentialRequestVO);
-            responseVO.addCredential(theCredential);
+            for (Proof proof : proofs) {
+                Object theCredential = getCredential(authResult, supportedCredential, credentialRequestVO.setProof(proof));
+                issuedCredentials.add(theCredential);
+            }
         }
 
+        responseVO.setCredentials(issuedCredentials.stream()
+                        .map(cred -> new CredentialResponse.Credential().setCredential(cred))
+                        .collect(Collectors.toList()))
+                .setNotificationId(generateNotificationId());
         return Response.ok().entity(responseVO).build();
     }
 
