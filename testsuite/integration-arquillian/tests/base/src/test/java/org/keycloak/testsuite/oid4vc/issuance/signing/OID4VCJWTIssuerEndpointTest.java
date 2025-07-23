@@ -614,18 +614,24 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
 
         testingClient.server(TEST_REALM_NAME).run(session -> {
             try {
+                // Initialize logger
+                Logger logger = Logger.getLogger(OID4VCJWTIssuerEndpointTest.class);
+
                 AppAuthManager.BearerTokenAuthenticator authenticator = new AppAuthManager.BearerTokenAuthenticator(session);
                 authenticator.setTokenString(token);
                 String issuer = OID4VCIssuerWellKnownProvider.getIssuer(session.getContext());
 
-                JwtProof[] proofs = new JwtProof[2];
-                proofs[0] = new JwtProof().setJwt(generateJwtProof(issuer, cNonce));
-                proofs[1] = new JwtProof().setJwt(generateJwtProof(issuer, cNonce));
+                String[] proofs = new String[2];
+                proofs[0] = generateJwtProof(issuer, cNonce);
+                proofs[1] = generateJwtProof(issuer, cNonce);
 
                 CredentialRequest request = new CredentialRequest()
                         .setCredentialConfigurationId(jwtTypeCredentialClientScope.getAttributes()
                                 .get(CredentialScopeModel.CONFIGURATION_ID))
                         .setProofs(Collections.singletonMap(ProofType.JWT, proofs));
+
+                // Log the proofs structure
+                logger.infof("Proofs structure in CredentialRequest: %s", request.toString());
 
                 OID4VCIssuerEndpoint endpoint = prepareIssuerEndpoint(session, authenticator);
 

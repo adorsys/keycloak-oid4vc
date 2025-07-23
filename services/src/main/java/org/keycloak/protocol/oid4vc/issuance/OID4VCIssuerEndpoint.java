@@ -37,8 +37,6 @@ import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.Response;
 import org.jboss.logging.Logger;
 import org.keycloak.common.util.SecretGenerator;
-import org.keycloak.component.ComponentFactory;
-import org.keycloak.component.ComponentModel;
 import org.keycloak.events.Errors;
 import org.keycloak.events.EventBuilder;
 import org.keycloak.models.AuthenticatedClientSessionModel;
@@ -66,6 +64,7 @@ import org.keycloak.protocol.oid4vc.model.CredentialsOffer;
 import org.keycloak.protocol.oid4vc.model.ErrorResponse;
 import org.keycloak.protocol.oid4vc.model.ErrorType;
 import org.keycloak.protocol.oid4vc.model.Format;
+import org.keycloak.protocol.oid4vc.model.JwtProof;
 import org.keycloak.protocol.oid4vc.model.NonceResponse;
 import org.keycloak.protocol.oid4vc.model.OfferUriType;
 import org.keycloak.protocol.oid4vc.model.PreAuthorizedCode;
@@ -413,7 +412,9 @@ public class OID4VCIssuerEndpoint {
         CredentialResponse responseVO = new CredentialResponse();
         List<Object> issuedCredentials = new ArrayList<>();
         List<Proof> proofs = credentialRequestVO.getProofs() != null
-                ? Arrays.asList(credentialRequestVO.getProofs().getOrDefault(ProofType.JWT, new Proof[0]))
+                ? Arrays.stream(credentialRequestVO.getProofs().getOrDefault(ProofType.JWT, new String[0]))
+                .map(JwtProof::new)
+                .collect(Collectors.toList())
                 : (credentialRequestVO.getProof() != null ? List.of(credentialRequestVO.getProof()) : Collections.emptyList());
 
         checkScope(requestedCredential);

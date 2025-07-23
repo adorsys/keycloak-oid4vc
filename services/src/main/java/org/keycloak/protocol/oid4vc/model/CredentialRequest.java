@@ -54,12 +54,7 @@ public class CredentialRequest {
     private Proof proof;
 
     @JsonProperty("proofs")
-    @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "proof_type")
-    @JsonSubTypes({
-            @JsonSubTypes.Type(value = JwtProof.class, name = ProofType.JWT),
-            @JsonSubTypes.Type(value = LdpVpProof.class, name = ProofType.LD_PROOF)
-    })
-    private Map<String, Proof[]> proofs;
+    private Map<String, String[]> proofs;
 
     // See: https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#name-format-identifier-3
     @JsonProperty("credential_definition")
@@ -92,11 +87,11 @@ public class CredentialRequest {
         return this;
     }
 
-    public Map<String, Proof[]> getProofs() {
+    public Map<String, String[]> getProofs() {
         return proofs;
     }
 
-    public CredentialRequest setProofs(Map<String, Proof[]> proofs) {
+    public CredentialRequest setProofs(Map<String, String[]> proofs) {
         this.proofs = proofs;
         return this;
     }
