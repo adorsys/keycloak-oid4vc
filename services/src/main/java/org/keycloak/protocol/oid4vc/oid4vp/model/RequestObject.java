@@ -20,6 +20,7 @@ package org.keycloak.protocol.oid4vc.oid4vp.model;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import org.keycloak.protocol.oid4vc.oid4vp.model.prex.PresentationDefinition;
+import org.keycloak.representations.JsonWebToken;
 
 /**
  * Request object payload for OpenID4VP Authorization Request.
@@ -29,7 +30,7 @@ import org.keycloak.protocol.oid4vc.oid4vp.model.prex.PresentationDefinition;
  * Authorization Request</a>
  */
 @JsonInclude(JsonInclude.Include.NON_EMPTY)
-public class RequestObject {
+public class RequestObject extends JsonWebToken {
 
     @JsonProperty("state")
     private String state;
@@ -52,18 +53,6 @@ public class RequestObject {
     @JsonProperty("client_id_scheme")
     private ClientIdScheme clientIdScheme;
 
-    @JsonProperty("aud")
-    private String aud;
-
-    @JsonProperty("iss")
-    private String iss;
-
-    @JsonProperty("exp")
-    private String exp;
-
-    @JsonProperty("iat")
-    private String iat;
-
     @JsonProperty("nonce")
     private String nonce;
 
@@ -75,4 +64,108 @@ public class RequestObject {
 
     @JsonProperty("client_metadata")
     private ClientMetadata clientMetadata;
+
+    public String getState() {
+        return state;
+    }
+
+    public RequestObject setState(String state) {
+        this.state = state;
+        return this;
+    }
+
+    public ResponseType getResponseType() {
+        return responseType;
+    }
+
+    public RequestObject setResponseType(ResponseType responseType) {
+        this.responseType = responseType;
+        return this;
+    }
+
+    public ResponseMode getResponseMode() {
+        return responseMode;
+    }
+
+    public RequestObject setResponseMode(ResponseMode responseMode) {
+        this.responseMode = responseMode;
+        return this;
+    }
+
+    public String getRedirectUri() {
+        return redirectUri;
+    }
+
+    public RequestObject setRedirectUri(String redirectUri) {
+        this.redirectUri = redirectUri;
+        return this;
+    }
+
+    public String getResponseUri() {
+        return responseUri;
+    }
+
+    public RequestObject setResponseUri(String responseUri) {
+        this.responseUri = responseUri;
+        return this;
+    }
+
+    public String getClientId() {
+        return clientId;
+    }
+
+    public RequestObject setClientId(String clientId) {
+        this.clientId = clientId;
+        return this;
+    }
+
+    public ClientIdScheme getClientIdScheme() {
+        return clientIdScheme;
+    }
+
+    public RequestObject setClientIdScheme(ClientIdScheme clientIdScheme) {
+        this.clientIdScheme = clientIdScheme;
+        return this;
+    }
+
+    public String getNonce() {
+        return nonce;
+    }
+
+    public RequestObject setNonce(String nonce) {
+        this.nonce = nonce;
+        return this;
+    }
+
+    public String getScope() {
+        return scope;
+    }
+
+    public RequestObject setScope(String scope) {
+        this.scope = scope;
+        return this;
+    }
+
+    public PresentationDefinition getPresentationDefinition() {
+        return presentationDefinition;
+    }
+
+    public RequestObject setPresentationDefinition(PresentationDefinition presentationDefinition) {
+        this.presentationDefinition = presentationDefinition;
+        return this;
+    }
+
+    public ClientMetadata getClientMetadata() {
+        return clientMetadata;
+    }
+
+    public RequestObject setClientMetadata(ClientMetadata clientMetadata) {
+        this.clientMetadata = clientMetadata;
+        return this;
+    }
+
+    public RequestObject setAudience(String... audience) {
+        this.audience = audience;
+        return this;
+    }
 }

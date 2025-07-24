@@ -18,6 +18,7 @@
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
+import org.keycloak.protocol.oid4vc.oid4vp.model.prex.Descriptor;
 
 import javax.annotation.processing.Generated;
 import java.util.ArrayList;

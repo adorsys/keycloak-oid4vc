@@ -41,16 +41,18 @@ public class ClientMetadata {
         return clientId;
     }
 
-    public void setClientId(String clientId) {
+    public ClientMetadata setClientId(String clientId) {
         this.clientId = clientId;
+        return this;
     }
 
     public VpFormat getVpFormat() {
         return vpFormat;
     }
 
-    public void setVpFormat(VpFormat vpFormat) {
+    public ClientMetadata setVpFormat(VpFormat vpFormat) {
         this.vpFormat = vpFormat;
+        return this;
     }
 
     public static class VpFormat extends ClaimFormat {

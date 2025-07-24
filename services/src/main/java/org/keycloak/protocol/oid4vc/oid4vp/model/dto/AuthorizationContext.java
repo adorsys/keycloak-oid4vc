@@ -57,35 +57,39 @@ public class AuthorizationContext {
     @JsonProperty(value = "request_object_jwt")
     private String requestObjectJwt;
 
-    public String getTransactionId() {
-        return transactionId;
-    }
-
-    public void setTransactionId(String transactionId) {
-        this.transactionId = transactionId;
-    }
-
     public String getAuthorizationRequest() {
         return authorizationRequest;
     }
 
-    public void setAuthorizationRequest(String authorizationRequest) {
+    public AuthorizationContext setAuthorizationRequest(String authorizationRequest) {
         this.authorizationRequest = authorizationRequest;
+        return this;
+    }
+
+    public String getTransactionId() {
+        return transactionId;
+    }
+
+    public AuthorizationContext setTransactionId(String transactionId) {
+        this.transactionId = transactionId;
+        return this;
     }
 
     public String getRequestId() {
         return requestId;
     }
 
-    public void setRequestId(String requestId) {
+    public AuthorizationContext setRequestId(String requestId) {
         this.requestId = requestId;
+        return this;
     }
 
     public String getRequestObjectJwt() {
         return requestObjectJwt;
     }
 
-    public void setRequestObjectJwt(String requestObjectJwt) {
+    public AuthorizationContext setRequestObjectJwt(String requestObjectJwt) {
         this.requestObjectJwt = requestObjectJwt;
+        return this;
     }
 }

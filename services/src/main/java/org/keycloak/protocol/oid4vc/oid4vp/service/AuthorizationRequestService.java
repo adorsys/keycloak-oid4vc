@@ -18,10 +18,22 @@
 package org.keycloak.protocol.oid4vc.oid4vp.service;
 
 import org.jboss.logging.Logger;
+import org.keycloak.OAuth2Constants;
+import org.keycloak.jose.jwe.JWEUtils;
+import org.keycloak.models.KeycloakSession;
+import org.keycloak.protocol.oid4vc.oid4vp.model.ClientIdScheme;
+import org.keycloak.protocol.oid4vc.oid4vp.model.ClientMetadata;
+import org.keycloak.protocol.oid4vc.oid4vp.model.RequestObject;
+import org.keycloak.protocol.oid4vc.oid4vp.model.ResponseMode;
+import org.keycloak.protocol.oid4vc.oid4vp.model.ResponseType;
 import org.keycloak.protocol.oid4vc.oid4vp.model.dto.AuthorizationContext;
+import org.keycloak.protocol.oid4vc.oid4vp.model.prex.PresentationDefinition;
 
+import java.math.BigInteger;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Dedicated service for creating OpenID4VP authorization requests for user authentication.
@@ -32,12 +44,24 @@ public class AuthorizationRequestService {
 
     private static final Logger logger = Logger.getLogger(AuthorizationRequestService.class);
 
+
+    public static final String VCT_CONFIG_DEFAULT = "https://credentials.example.com/identity_credential";
+    public static final int SECURE_RANDOM_ENTROPY = 20;
+
     // Note: "https://self-issued.me/v2" is a symbolic string and can be used
     // as an aud Claim value even when this specification is used standalone,
     // without SIOPv2.
     public static final String SYMBOLIC_AUD = "https://self-issued.me/v2";
 
     private final SdJwtCredentialPresenter sdJwtCredentialPresenter = new SdJwtCredentialPresenter();
+    private final ClientMetadata clientMetadata;
+    private final Map<String, String> sessionStore;
+
+    public AuthorizationRequestService(KeycloakSession session, Map<String, String> sessionStore) {
+        ClientMetadataDiscoveryService clientMetadataService = new ClientMetadataDiscoveryService(session);
+        this.clientMetadata = clientMetadataService.getClientMetadata();
+        this.sessionStore = sessionStore;
+    }
 
     /**
      * Creates a fresh authorization request for user authentication.
@@ -47,10 +71,21 @@ public class AuthorizationRequestService {
 
         // Construct presentation definition
         var presentationDefinition = sdJwtCredentialPresenter
-                .generatePresentationDefinition(configParams.getIssuerVct(), configParams.getRequiredClaims());
+                .generatePresentationDefinition(VCT_CONFIG_DEFAULT, List.of(OAuth2Constants.USERNAME));
 
         // Pursue creation process
         return concludeAuthorizationRequestOffer(configParams, presentationDefinition);
+    }
+
+    /**
+     * Generates a cryptographically secure random string.
+     */
+    public static String generateRandomString() {
+        // Generate a cryptographically secure random byte array
+        byte[] randomBytes = JWEUtils.generateSecret(20);
+
+        // Convert the random number to a hexadecimal string
+        return new BigInteger(1, randomBytes).toString(16);
     }
 
     /**
@@ -60,38 +95,26 @@ public class AuthorizationRequestService {
             RequestOfferConfigParamsDTO configParams,
             PresentationDefinition presentationDefinition
     ) {
-        // Build request object for response mode
-        EResponseMode responseMode = configParams.getResponseMode();
 
-        var templateRequest = templateRequestObject(presentationDefinition)
-                .responseMode(responseMode)
                 .state(SecureRandomGenerator.generateRandomString());
 
-        if (EResponseMode.FRAGMENT == responseMode) {
-            // Verifier client redirect URI
-            templateRequest.redirectUri(configParams.getRedirectUri());
-        } else if (EResponseMode.DIRECT_POST == responseMode) {
-            templateRequest.responseUri(verifierConfig.responseUri());
-        } else {
-            throw new UnsupportedOperationException(
-                    String.format("Provided response mode %s is not supported", responseMode)
-            );
-        }
+
 
         return createAuthorizationRequestLink(templateRequest.build(), configParams);
     }
 
     /**
-     * Returns a response mode agnostic starter for building request objects.
+     * Returns a starter for building request objects.
      */
-    private RequestObjectDTO.RequestObjectDTOBuilder templateRequestObject(PresentationDefinition presentationDefinition) {
-        return RequestObjectDTO.builder()
-                .responseType(EResponseType.VP_TOKEN)
-                .clientId(verifierConfig.clientId())
-                .clientIdScheme(EClientIdScheme.X509_SAN_DNS)
-                .aud(SYMBOLIC_AUD)
-                .presentationDefinition(presentationDefinition)
-                .clientMetadata(verifierConfig.clientMetadata());
+    private RequestObject templateRequestObject(PresentationDefinition presentationDefinition) {
+        return new RequestObject()
+                .setResponseMode(ResponseMode.DIRECT_POST)
+                .setResponseType(ResponseType.VP_TOKEN)
+                .setClientId(clientMetadata.getClientId())
+                .setClientIdScheme(ClientIdScheme.X509_SAN_DNS)
+                .setAudience(SYMBOLIC_AUD)
+                .setPresentationDefinition(presentationDefinition)
+                .setClientMetadata(clientMetadata);
     }
 
     private AuthorizationRequestOfferDTO createAuthorizationRequestLink(
