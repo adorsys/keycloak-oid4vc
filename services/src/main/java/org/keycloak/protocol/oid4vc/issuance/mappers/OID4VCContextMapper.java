@@ -24,7 +24,6 @@ import org.keycloak.protocol.ProtocolMapper;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
 import org.keycloak.provider.ProviderConfigProperty;
 
-
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -41,6 +40,7 @@ public class OID4VCContextMapper extends OID4VCMapper {
 
     public static final String MAPPER_ID = "oid4vc-context-mapper";
     public static final String TYPE_KEY = "context";
+
     private static final List<ProviderConfigProperty> CONFIG_PROPERTIES = new ArrayList<>();
 
     static {
@@ -52,6 +52,7 @@ public class OID4VCContextMapper extends OID4VCMapper {
         contextPropertyNameConfig.setDefaultValue("https://www.w3.org/2018/credentials/v1");
         CONFIG_PROPERTIES.add(contextPropertyNameConfig);
     }
+
 
     @Override
     protected List<ProviderConfigProperty> getIndividualConfigProperties() {

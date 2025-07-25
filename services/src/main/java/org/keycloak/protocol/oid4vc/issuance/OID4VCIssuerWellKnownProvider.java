@@ -50,11 +50,11 @@ import java.util.stream.Collectors;
  */
 public class OID4VCIssuerWellKnownProvider implements WellKnownProvider {
 
+    public static final String VC_KEY = "vc";
+
     private static final Logger LOGGER = Logger.getLogger(OID4VCIssuerWellKnownProvider.class);
 
     protected final KeycloakSession keycloakSession;
-
-    public static final String VC_KEY = "vc";
 
     public OID4VCIssuerWellKnownProvider(KeycloakSession keycloakSession) {
         this.keycloakSession = keycloakSession;

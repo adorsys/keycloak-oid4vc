@@ -52,9 +52,8 @@ import java.util.Optional;
  */
 public class JwtProofValidator extends AbstractProofValidator {
 
-    private static final String CRYPTOGRAPHIC_BINDING_METHOD_JWK = "jwk";
-
     public static final String PROOF_JWT_TYP = "openid4vci-proof+jwt";
+    private static final String CRYPTOGRAPHIC_BINDING_METHOD_JWK = "jwk";
 
     protected JwtProofValidator(KeycloakSession keycloakSession) {
         super(keycloakSession);
