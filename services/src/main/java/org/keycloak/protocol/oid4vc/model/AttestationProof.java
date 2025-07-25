@@ -31,6 +31,9 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class AttestationProof implements Proof {
 
+    @JsonProperty("proof_type")
+    private final String proofType = ProofType.ATTESTATION;
+
     @JsonProperty("attestation")
     private String attestation;
 
@@ -42,7 +45,7 @@ public class AttestationProof implements Proof {
 
     @Override
     public String getProofType() {
-        return ProofType.ATTESTATION;
+        return proofType;
     }
 
     public String getAttestation() {

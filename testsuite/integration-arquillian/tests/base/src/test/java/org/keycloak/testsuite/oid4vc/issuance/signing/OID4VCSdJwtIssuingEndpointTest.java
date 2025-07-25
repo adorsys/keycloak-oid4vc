@@ -256,31 +256,31 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
         }
     }
 
-    @Test
-    public void testRequestJwtCredentialWithValidProofAndAttestation() {
-        String cNonce = getCNonce();
-        testingClient.server(TEST_REALM_NAME).run((KeycloakSession session) -> {
-            KeyWrapper attestationKey = getECKey("attest-key-1");
-            KeyWrapper proofKey = getECKey("proof-key-1");
-            JWK proofJwk = JWKBuilder.create().ec(proofKey.getPublicKey());
-
-            AttestationKeyResolver resolver = new StaticAttestationKeyResolver(
-                    Map.of(attestationKey.getKid(), JWKBuilder.create().ec(attestationKey.getPublicKey()))
-            );
-
-            String attestationJwt = createValidAttestationJwt(session, attestationKey, proofJwk, cNonce);
-
-            JwtProof proof = new JwtProof()
-                    .setJwt(generateJwtProof(OID4VCIssuerWellKnownProvider.getIssuer(session.getContext()), cNonce))
-                    .setKeyAttestation(attestationJwt);
-
-            JwtProofValidator validator = new JwtProofValidator(session, resolver);
-            VCIssuanceContext context = createVCIssuanceContext(session);
-            context.getCredentialRequest().setProof(proof);
-            List<JWK> validatedKeys = validator.validateProof(context);
-            assertFalse("Should validate at least one key", validatedKeys.isEmpty());
-        });
-    }
+//    @Test
+//    public void testRequestJwtCredentialWithValidProofAndAttestation() {
+//        String cNonce = getCNonce();
+//        testingClient.server(TEST_REALM_NAME).run((KeycloakSession session) -> {
+//            KeyWrapper attestationKey = getECKey("attest-key-1");
+//            KeyWrapper proofKey = getECKey("proof-key-1");
+//            JWK proofJwk = JWKBuilder.create().ec(proofKey.getPublicKey());
+//
+//            AttestationKeyResolver resolver = new StaticAttestationKeyResolver(
+//                    Map.of(attestationKey.getKid(), JWKBuilder.create().ec(attestationKey.getPublicKey()))
+//            );
+//
+//            String attestationJwt = createValidAttestationJwt(session, attestationKey, proofJwk, cNonce);
+//
+//            JwtProof proof = new JwtProof()
+//                    .setJwt(generateJwtProof(OID4VCIssuerWellKnownProvider.getIssuer(session.getContext()), cNonce))
+//                    .setKeyAttestation(attestationJwt);
+//
+//            JwtProofValidator validator = new JwtProofValidator(session, resolver);
+//            VCIssuanceContext context = createVCIssuanceContext(session);
+//            context.getCredentialRequest().setProof(proof);
+//            List<JWK> validatedKeys = validator.validateProof(context);
+//            assertFalse("Should validate at least one key", validatedKeys.isEmpty());
+//        });
+//    }
 
 //    @Test
 //    public void testRequestSdJwtCredentialWithValidProofAndAttestation() {

@@ -36,9 +36,6 @@ public class JwtProof implements Proof {
     @JsonProperty("jwt")
     private String jwt;
 
-    @JsonProperty(ProofType.ATTESTATION)
-    private String keyAttestation;
-
     public JwtProof() {
     }
 
@@ -57,15 +54,6 @@ public class JwtProof implements Proof {
 
     public JwtProof setJwt(String jwt) {
         this.jwt = jwt;
-        return this;
-    }
-
-    public String getKeyAttestation() {
-        return keyAttestation;
-    }
-
-    public JwtProof setKeyAttestation(String keyAttestation) {
-        this.keyAttestation = keyAttestation;
         return this;
     }
 }

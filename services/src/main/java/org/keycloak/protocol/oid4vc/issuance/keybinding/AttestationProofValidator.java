@@ -51,7 +51,7 @@ public class AttestationProofValidator extends AbstractProofValidator {
 
     @Override
     public String getProofType() {
-        return ProofType.JWT;
+        return ProofType.ATTESTATION;
     }
 
     @Override
@@ -63,7 +63,7 @@ public class AttestationProofValidator extends AbstractProofValidator {
 
             // Validate attestation and get attested keys
             List<JWK> attestedKeys = AttestationValidatorUtil.validateAttestationJwt(
-                    jwt, keycloakSession, vcIssuanceContext, keyResolver);
+                    jwt, keycloakSession, vcIssuanceContext, keyResolver).getAttestedKeys();
 
             if (attestedKeys == null || attestedKeys.isEmpty()) {
                 throw new VCIssuerException("No valid attested keys found in attestation proof");
