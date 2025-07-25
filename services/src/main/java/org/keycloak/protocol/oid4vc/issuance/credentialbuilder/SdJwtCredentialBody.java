@@ -22,7 +22,6 @@ import org.keycloak.crypto.SignatureSignerContext;
 import org.keycloak.jose.jwk.JWK;
 import org.keycloak.sdjwt.SdJwt;
 import org.keycloak.util.JsonSerialization;
-import org.keycloak.constants.Oid4VciConstants;
 
 import java.util.Map;
 
@@ -31,8 +30,8 @@ import java.util.Map;
  */
 public class SdJwtCredentialBody implements CredentialBody {
 
-    private static final String CNF_CLAIM = Oid4VciConstants.CNF_CLAIM;
-    private static final String JWK_CLAIM = Oid4VciConstants.JWK_CLAIM;
+    private static final String CNF_CLAIM = "cnf";
+    private static final String JWK_CLAIM = "jwk";
 
     private final SdJwt.Builder sdJwtBuilder;
     private final Map<String, Object> claimSet;

@@ -25,7 +25,6 @@ import org.keycloak.protocol.ProtocolMapper;
 import org.keycloak.protocol.oid4vc.OID4VCLoginProtocolFactory;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
 import org.keycloak.provider.ProviderConfigProperty;
-import org.keycloak.constants.Oid4VciConstants;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -33,14 +32,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import static org.keycloak.constants.Oid4VciConstants.CLAIM_NAME;
-
 /**
  * Sets an ID for the credential, either randomly generated or statically configured
  *
  * @author <a href="https://github.com/wistefan">Stefan Wiedemann</a>
  */
 public class OID4VCSubjectIdMapper extends OID4VCMapper {
+
+    public static final String MAPPER_ID = "oid4vc-subject-id-mapper";
 
     private static final List<ProviderConfigProperty> CONFIG_PROPERTIES = new ArrayList<>();
 
@@ -71,7 +70,7 @@ public class OID4VCSubjectIdMapper extends OID4VCMapper {
         configMap.put(CLAIM_NAME, subjectId);
         mapperModel.setConfig(configMap);
         mapperModel.setProtocol(OID4VCLoginProtocolFactory.PROTOCOL_ID);
-        mapperModel.setProtocolMapper(Oid4VciConstants.MAPPER_ID_SUBJECT_ID);
+        mapperModel.setProtocolMapper(MAPPER_ID);
         return mapperModel;
     }
 
@@ -85,7 +84,7 @@ public class OID4VCSubjectIdMapper extends OID4VCMapper {
         List<String> attributePath = getMetadataAttributePath();
         String propertyName = attributePath.get(attributePath.size() - 1);
         claims.put(propertyName,
-                   mapperModel.getConfig().getOrDefault(CLAIM_NAME,
+                   mapperModel.getConfig().getOrDefault(OID4VCMapper.CLAIM_NAME,
                                                         String.format("urn:uuid:%s", UUID.randomUUID())));
     }
 
@@ -106,8 +105,6 @@ public class OID4VCSubjectIdMapper extends OID4VCMapper {
 
     @Override
     public String getId() {
-        return Oid4VciConstants.MAPPER_ID_SUBJECT_ID;
+        return MAPPER_ID;
     }
-
-    public static final String MAPPER_ID = Oid4VciConstants.MAPPER_ID_SUBJECT_ID;
 }

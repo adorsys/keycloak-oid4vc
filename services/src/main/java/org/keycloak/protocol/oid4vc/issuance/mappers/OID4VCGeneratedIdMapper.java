@@ -24,7 +24,6 @@ import org.keycloak.models.UserSessionModel;
 import org.keycloak.protocol.ProtocolMapper;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
 import org.keycloak.provider.ProviderConfigProperty;
-import org.keycloak.constants.Oid4VciConstants;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -39,8 +38,7 @@ import java.util.UUID;
  */
 public class OID4VCGeneratedIdMapper extends OID4VCMapper {
 
-    public static final String CLAIM_NAME = Oid4VciConstants.CLAIM_NAME;
-
+    public static final String MAPPER_ID = "oid4vc-generated-id-mapper";
     private static final String SUBJECT_PROPERTY_CONFIG_KEY_DEFAULT = "id";
 
     private static final List<ProviderConfigProperty> CONFIG_PROPERTIES = new ArrayList<>();
@@ -108,6 +106,6 @@ public class OID4VCGeneratedIdMapper extends OID4VCMapper {
 
     @Override
     public String getId() {
-        return Oid4VciConstants.MAPPER_ID_GENERATED_ID;
+        return MAPPER_ID;
     }
 }

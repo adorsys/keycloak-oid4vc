@@ -23,7 +23,6 @@ import org.keycloak.models.UserSessionModel;
 import org.keycloak.protocol.ProtocolMapper;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
 import org.keycloak.provider.ProviderConfigProperty;
-import org.keycloak.constants.Oid4VciConstants;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -39,11 +38,15 @@ import java.util.Set;
  */
 public class OID4VCTypeMapper extends OID4VCMapper {
 
+    public static final String MAPPER_ID = "oid4vc-vc-type-mapper";
+    public static final String TYPE_KEY = "vcTypeProperty";
+    public static final String DEFAULT_VC_TYPE = "VerifiableCredential";
+
     private static final List<ProviderConfigProperty> CONFIG_PROPERTIES = new ArrayList<>();
 
     static {
         ProviderConfigProperty vcTypePropertyNameConfig = new ProviderConfigProperty();
-        vcTypePropertyNameConfig.setName(Oid4VciConstants.TYPE_KEY_VC_TYPE);
+        vcTypePropertyNameConfig.setName(TYPE_KEY);
         vcTypePropertyNameConfig.setLabel("Verifiable Credential Type");
         vcTypePropertyNameConfig.setHelpText("Type of the credential.");
         vcTypePropertyNameConfig.setType(ProviderConfigProperty.STRING_TYPE);
@@ -77,7 +80,7 @@ public class OID4VCTypeMapper extends OID4VCMapper {
         if (verifiableCredential.getType() != null) {
             types = new HashSet<>(verifiableCredential.getType());
         }
-        types.add(Optional.ofNullable(mapperModel.getConfig().get(Oid4VciConstants.TYPE_KEY_VC_TYPE)).orElse(Oid4VciConstants.DEFAULT_VC_TYPE));
+        types.add(Optional.ofNullable(mapperModel.getConfig().get(TYPE_KEY)).orElse(DEFAULT_VC_TYPE));
         verifiableCredential.setType(new ArrayList<>(types));
     }
 
@@ -103,10 +106,6 @@ public class OID4VCTypeMapper extends OID4VCMapper {
 
     @Override
     public String getId() {
-        return Oid4VciConstants.MAPPER_ID_VC_TYPE;
+        return MAPPER_ID;
     }
-
-    public static final String MAPPER_ID = Oid4VciConstants.MAPPER_ID_VC_TYPE;
-    public static final String TYPE_KEY = Oid4VciConstants.TYPE_KEY_VC_TYPE;
-    public static final String DEFAULT_VC_TYPE = Oid4VciConstants.DEFAULT_VC_TYPE;
 }

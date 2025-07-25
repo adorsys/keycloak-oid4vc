@@ -17,8 +17,6 @@
 
 package org.keycloak.protocol.oid4vc.model;
 
-import org.keycloak.constants.Oid4VciConstants;
-
 import java.util.Collections;
 import java.util.Set;
 
@@ -32,17 +30,17 @@ public class Format {
     /**
      * LD-Credentials {@see https://www.w3.org/TR/vc-data-model/}
      */
-    public static final String LDP_VC = Oid4VciConstants.FORMAT_LDP_VC;
+    public static final String LDP_VC = "ldp_vc";
 
     /**
      * JWT-Credentials {@see https://identity.foundation/jwt-vc-presentation-profile/}
      */
-    public static final String JWT_VC = Oid4VciConstants.FORMAT_JWT_VC;
+    public static final String JWT_VC = "jwt_vc";
 
     /**
      * SD-JWT-Credentials {@see https://drafts.oauth.net/oauth-sd-jwt-vc/draft-ietf-oauth-sd-jwt-vc.html}
      */
-    public static final String SD_JWT_VC = Oid4VciConstants.FORMAT_SD_JWT_VC;
+    public static final String SD_JWT_VC = "vc+sd-jwt";
 
     public static final Set<String> SUPPORTED_FORMATS = Collections.unmodifiableSet(Set.of(JWT_VC, LDP_VC, SD_JWT_VC));
 }

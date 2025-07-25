@@ -45,6 +45,8 @@ import java.util.stream.Stream;
  */
 public abstract class OID4VCMapper implements ProtocolMapper, OID4VCEnvironmentProviderFactory {
 
+    public static final String CLAIM_NAME = "claim.name";
+    public static final String USER_ATTRIBUTE_KEY = "userAttribute";
     private static final List<ProviderConfigProperty> OID4VC_CONFIG_PROPERTIES = new ArrayList<>();
     protected ProtocolMapperModel mapperModel;
     protected String format;
@@ -80,8 +82,8 @@ public abstract class OID4VCMapper implements ProtocolMapper, OID4VCEnvironmentP
      * @return the attribute path that is being mapped into the credential
      */
     public List<String> getMetadataAttributePath() {
-        final String claimName = mapperModel.getConfig().get(Oid4VciConstants.CLAIM_NAME);
-        final String userAttributeName = mapperModel.getConfig().get(Oid4VciConstants.USER_ATTRIBUTE_KEY);
+        final String claimName = mapperModel.getConfig().get(CLAIM_NAME);
+        final String userAttributeName = mapperModel.getConfig().get(USER_ATTRIBUTE_KEY);
         return ListUtils.union(getAttributePrefix(),
                                List.of(Optional.ofNullable(claimName).orElse(userAttributeName)));
     }

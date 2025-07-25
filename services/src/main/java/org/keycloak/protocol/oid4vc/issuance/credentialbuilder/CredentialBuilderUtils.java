@@ -18,7 +18,6 @@
 package org.keycloak.protocol.oid4vc.issuance.credentialbuilder;
 
 import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
-import org.keycloak.constants.Oid4VciConstants;
 
 import java.net.URI;
 import java.util.Optional;
@@ -26,7 +25,7 @@ import java.util.UUID;
 
 public class CredentialBuilderUtils {
 
-    private static final String ID_TEMPLATE = Oid4VciConstants.ID_TEMPLATE;
+    private static final String ID_TEMPLATE = "urn:uuid:%s";
 
     // retrieve the credential id from the given VC or generate one.
     public static String createCredentialId(VerifiableCredential verifiableCredential) {

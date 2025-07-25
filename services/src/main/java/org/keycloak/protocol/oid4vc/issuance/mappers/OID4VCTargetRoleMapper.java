@@ -31,7 +31,6 @@ import org.keycloak.protocol.oid4vc.model.Role;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
 import org.keycloak.provider.ProviderConfigProperty;
 import org.keycloak.util.JsonSerialization;
-import org.keycloak.constants.Oid4VciConstants;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -51,11 +50,14 @@ public class OID4VCTargetRoleMapper extends OID4VCMapper {
 
     private static final Logger LOGGER = Logger.getLogger(OID4VCTargetRoleMapper.class);
 
+    public static final String DEFAULT_CLAIM_NAME = "roles";
+    public static final String MAPPER_ID = "oid4vc-target-role-mapper";
+
     private static final List<ProviderConfigProperty> CONFIG_PROPERTIES = new ArrayList<>();
 
     static {
         ProviderConfigProperty subjectPropertyNameConfig = new ProviderConfigProperty();
-        subjectPropertyNameConfig.setName(Oid4VciConstants.CLAIM_NAME);
+        subjectPropertyNameConfig.setName(CLAIM_NAME);
         subjectPropertyNameConfig.setLabel("Roles Property Name");
         subjectPropertyNameConfig.setHelpText("Property to add the roles to in the credential subject.");
         subjectPropertyNameConfig.setDefaultValue("roles");
@@ -64,9 +66,6 @@ public class OID4VCTargetRoleMapper extends OID4VCMapper {
     }
 
     private final KeycloakSession keycloakSession;
-
-    public static final String MAPPER_ID = Oid4VciConstants.MAPPER_ID_TARGET_ROLE;
-    public static final String DEFAULT_CLAIM_NAME = Oid4VciConstants.DEFAULT_CLAIM_NAME_ROLES;
 
     public OID4VCTargetRoleMapper() {
         this.keycloakSession = null;
@@ -84,8 +83,8 @@ public class OID4VCTargetRoleMapper extends OID4VCMapper {
     @Override
     public List<String> getMetadataAttributePath() {
         return ListUtils.union(getAttributePrefix(),
-                               List.of(Optional.ofNullable(mapperModel.getConfig().get(Oid4VciConstants.CLAIM_NAME))
-                                               .orElse(Oid4VciConstants.DEFAULT_CLAIM_NAME_ROLES)));
+                               List.of(Optional.ofNullable(mapperModel.getConfig().get(CLAIM_NAME))
+                                               .orElse(DEFAULT_CLAIM_NAME)));
     }
 
     @Override
@@ -102,10 +101,10 @@ public class OID4VCTargetRoleMapper extends OID4VCMapper {
         var mapperModel = new ProtocolMapperModel();
         mapperModel.setName(name);
         Map<String, String> configMap = new HashMap<>();
-        configMap.put(Oid4VciConstants.CLAIM_NAME, Oid4VciConstants.DEFAULT_CLAIM_NAME_ROLES);
+        configMap.put(CLAIM_NAME, DEFAULT_CLAIM_NAME);
         mapperModel.setConfig(configMap);
         mapperModel.setProtocol(OID4VCLoginProtocolFactory.PROTOCOL_ID);
-        mapperModel.setProtocolMapper(Oid4VciConstants.MAPPER_ID_TARGET_ROLE);
+        mapperModel.setProtocolMapper(MAPPER_ID);
         return mapperModel;
     }
 
@@ -116,7 +115,7 @@ public class OID4VCTargetRoleMapper extends OID4VCMapper {
 
     @Override
     public String getId() {
-        return Oid4VciConstants.MAPPER_ID_TARGET_ROLE;
+        return MAPPER_ID;
     }
 
     @Override

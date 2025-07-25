@@ -20,7 +20,6 @@ package org.keycloak.protocol.oid4vc.model;
 import org.keycloak.models.oid4vci.CredentialScopeModel;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerWellKnownProvider;
-import org.keycloak.constants.Oid4VciConstants;
 
 import java.util.List;
 import java.util.Objects;
@@ -33,17 +32,17 @@ import java.util.Optional;
  */
 public class CredentialBuildConfig {
 
-    public static final String MULTIVALUED_STRING_SEPARATOR = Oid4VciConstants.MULTIVALUED_STRING_SEPARATOR;
+    public static final String MULTIVALUED_STRING_SEPARATOR = ",";
 
-    private static final String TOKEN_JWS_TYPE_KEY = Oid4VciConstants.TOKEN_JWS_TYPE_KEY;
-    private static final String HASH_ALGORITHM_KEY = Oid4VciConstants.HASH_ALGORITHM_KEY;
-    private static final String VISIBLE_CLAIMS_KEY = Oid4VciConstants.VISIBLE_CLAIMS_KEY;
-    private static final String NUMBER_OF_DECOYS_KEY = Oid4VciConstants.NUMBER_OF_DECOYS_KEY;
+    private static final String TOKEN_JWS_TYPE_KEY = "token_jws_type";
+    private static final String HASH_ALGORITHM_KEY = "hash_algorithm";
+    private static final String VISIBLE_CLAIMS_KEY = "visible_claims";
+    private static final String NUMBER_OF_DECOYS_KEY = "decoys";
 
-    private static final String SIGNING_KEY_ID_KEY = Oid4VciConstants.SIGNING_KEY_ID_KEY;
-    private static final String OVERRIDE_KEY_ID_KEY = Oid4VciConstants.OVERRIDE_KEY_ID_KEY;
-    private static final String SIGNING_ALGORITHM_KEY = Oid4VciConstants.SIGNING_ALGORITHM_KEY;
-    private static final String LDP_PROOF_TYPE_KEY = Oid4VciConstants.LDP_PROOF_TYPE_KEY;
+    private static final String SIGNING_KEY_ID_KEY = "signing_key_id";
+    private static final String OVERRIDE_KEY_ID_KEY = "override_key_id";
+    private static final String SIGNING_ALGORITHM_KEY = "signing_algorithm";
+    private static final String LDP_PROOF_TYPE_KEY = "ldp_proof_type";
 
     private String credentialIssuer;
 

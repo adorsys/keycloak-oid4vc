@@ -25,7 +25,6 @@ import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
 import org.keycloak.provider.ProviderConfigProperty;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.keycloak.constants.Oid4VciConstants;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -34,8 +33,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-
-import static org.keycloak.protocol.oidc.mappers.ClaimsParameterWithValueIdTokenMapper.CLAIM_NAME;
 
 /**
  * Map issuance date to the credential, under the default claim name "iat"
@@ -51,15 +48,18 @@ import static org.keycloak.protocol.oidc.mappers.ClaimsParameterWithValueIdToken
  */
 public class OID4VCIssuedAtTimeClaimMapper extends OID4VCMapper {
 
-    // Use Oid4VciConstants.MAPPER_ID_ISSUED_AT_TIME, Oid4VciConstants.TRUNCATE_TO_TIME_UNIT_KEY, and Oid4VciConstants.VALUE_SOURCE where needed
+    public static final String MAPPER_ID = "oid4vc-issued-at-time-claim-mapper";
+
+    // We will use the java.time.temporal.ChronoUnit enum values to help flatten down the time.
+    // Omit property if no truncation.
+    public static final String TRUNCATE_TO_TIME_UNIT_KEY = "truncateToTimeUnit";
+
+    // Time computed (COMPUTE) or taken from the verifiable credential (VC).
+    // Defaults to VC. Falls back to COMPUTE.
+    public static final String VALUE_SOURCE = "valueSource";
 
     private static final List<ProviderConfigProperty> CONFIG_PROPERTIES = new ArrayList<>();
     private static final Logger log = LoggerFactory.getLogger(OID4VCIssuedAtTimeClaimMapper.class);
-
-    public static final String MAPPER_ID = Oid4VciConstants.MAPPER_ID_ISSUED_AT_TIME;
-    public static final String TRUNCATE_TO_TIME_UNIT_KEY = Oid4VciConstants.TRUNCATE_TO_TIME_UNIT_KEY;
-    public static final String VALUE_SOURCE = Oid4VciConstants.VALUE_SOURCE;
-    public static final String CLAIM_NAME = Oid4VciConstants.CLAIM_NAME;
 
     static {
         ProviderConfigProperty subjectPropertyNameConfig = new ProviderConfigProperty();
@@ -71,7 +71,7 @@ public class OID4VCIssuedAtTimeClaimMapper extends OID4VCMapper {
         CONFIG_PROPERTIES.add(subjectPropertyNameConfig);
 
         ProviderConfigProperty truncateToTimeUnit = new ProviderConfigProperty();
-        truncateToTimeUnit.setName(Oid4VciConstants.TRUNCATE_TO_TIME_UNIT_KEY);
+        truncateToTimeUnit.setName(TRUNCATE_TO_TIME_UNIT_KEY);
         truncateToTimeUnit.setLabel("Truncate To Time Unit");
         truncateToTimeUnit.setHelpText("Truncate time to the first second of the MINUTES, HOURS, HALF_DAYS, DAYS, WEEKS, MONTHS or YEARS. Such as to prevent correlation of credentials based on this time value.");
         truncateToTimeUnit.setType(ProviderConfigProperty.LIST_TYPE);
@@ -79,7 +79,7 @@ public class OID4VCIssuedAtTimeClaimMapper extends OID4VCMapper {
         CONFIG_PROPERTIES.add(truncateToTimeUnit);
 
         ProviderConfigProperty valueSource = new ProviderConfigProperty();
-        valueSource.setName(Oid4VciConstants.VALUE_SOURCE);
+        valueSource.setName(VALUE_SOURCE);
         valueSource.setLabel("Source of Value");
         valueSource.setHelpText("Tells the protocol mapper where to get the information. For now: COMPUTE or VC. Default is COMPUTE, in which this protocol mapper computes the current time in seconds. With value `VC`, the time is read from the verifiable credential issuance date field.");
         valueSource.setType(ProviderConfigProperty.LIST_TYPE);
@@ -112,12 +112,12 @@ public class OID4VCIssuedAtTimeClaimMapper extends OID4VCMapper {
             log.error("Invalid configuration: missing config-property '{}' for mapper '{}' of type '{}'. Mapper is ignored.",
                       CLAIM_NAME,
                       mapperModel.getName(),
-                      Oid4VciConstants.MAPPER_ID_ISSUED_AT_TIME);
+                      MAPPER_ID);
             return;
         }
 
         Instant iat = Optional.ofNullable(mapperModel.getConfig())
-                .flatMap(config -> Optional.ofNullable(config.get(Oid4VciConstants.VALUE_SOURCE)))
+                .flatMap(config -> Optional.ofNullable(config.get(VALUE_SOURCE)))
                 .filter(valueSource -> Objects.equals(valueSource, "COMPUTE"))
                 .map(valueSource -> Instant.now())
                 .orElseGet(() -> Optional.ofNullable(verifiableCredential.getIssuanceDate())
@@ -125,7 +125,7 @@ public class OID4VCIssuedAtTimeClaimMapper extends OID4VCMapper {
 
         // truncate is possible. Return iat if not.
         Instant iatTrunc = Optional.ofNullable(mapperModel.getConfig())
-                .flatMap(config -> Optional.ofNullable(config.get(Oid4VciConstants.TRUNCATE_TO_TIME_UNIT_KEY)))
+                .flatMap(config -> Optional.ofNullable(config.get(TRUNCATE_TO_TIME_UNIT_KEY)))
                 .filter(String::isEmpty)
                 .map(ChronoUnit::valueOf)
                 .map(iat::truncatedTo)
@@ -157,6 +157,6 @@ public class OID4VCIssuedAtTimeClaimMapper extends OID4VCMapper {
 
     @Override
     public String getId() {
-        return Oid4VciConstants.MAPPER_ID_ISSUED_AT_TIME;
+        return MAPPER_ID;
     }
 }

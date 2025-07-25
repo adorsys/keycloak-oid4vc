@@ -34,7 +34,6 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import io.setl.rdf.normalization.RdfNormalize;
 import jakarta.json.JsonObject;
 import jakarta.json.JsonValue;
-import org.keycloak.constants.Oid4VciConstants;
 import org.keycloak.crypto.SignatureSignerContext;
 import org.keycloak.protocol.oid4vc.issuance.signing.CredentialSignerException;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
@@ -62,7 +61,7 @@ public class Ed255192018Suite implements LinkedDataCryptographicSuite {
 
     private final SignatureSignerContext signerContext;
 
-    public static final String PROOF_TYPE = Oid4VciConstants.PROOF_TYPE_ED25519_2018;
+    public static final String PROOF_TYPE = "Ed25519Signature2018";
 
     public Ed255192018Suite(SignatureSignerContext signerContext) {
         this.signerContext = signerContext;
@@ -131,6 +130,6 @@ public class Ed255192018Suite implements LinkedDataCryptographicSuite {
 
     @Override
     public String getProofType() {
-        return Oid4VciConstants.PROOF_TYPE_ED25519_2018;
+        return PROOF_TYPE;
     }
 }

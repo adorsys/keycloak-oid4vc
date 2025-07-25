@@ -54,7 +54,7 @@ public class OID4VCIssuerWellKnownProvider implements WellKnownProvider {
 
     protected final KeycloakSession keycloakSession;
 
-    public static final String VC_KEY = Oid4VciConstants.VC_KEY;
+    public static final String VC_KEY = "vc";
 
     public OID4VCIssuerWellKnownProvider(KeycloakSession keycloakSession) {
         this.keycloakSession = keycloakSession;

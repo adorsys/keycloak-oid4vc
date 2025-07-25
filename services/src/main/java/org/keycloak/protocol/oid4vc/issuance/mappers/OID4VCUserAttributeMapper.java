@@ -26,7 +26,6 @@ import org.keycloak.protocol.ProtocolMapper;
 import org.keycloak.protocol.oid4vc.OID4VCLoginProtocolFactory;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
 import org.keycloak.provider.ProviderConfigProperty;
-import org.keycloak.constants.Oid4VciConstants;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -36,15 +35,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-import static org.keycloak.constants.Oid4VciConstants.CLAIM_NAME;
-import static org.keycloak.constants.Oid4VciConstants.USER_ATTRIBUTE_KEY;
-
 /**
  * Allows to add user attributes to the credential subject
  *
  * @author <a href="https://github.com/wistefan">Stefan Wiedemann</a>
  */
 public class OID4VCUserAttributeMapper extends OID4VCMapper {
+
+    public static final String MAPPER_ID = "oid4vc-user-attribute-mapper";
+    public static final String AGGREGATE_ATTRIBUTES_KEY = "aggregateAttributes";
 
     private static final List<ProviderConfigProperty> CONFIG_PROPERTIES = new ArrayList<>();
 
@@ -68,7 +67,7 @@ public class OID4VCUserAttributeMapper extends OID4VCMapper {
         CONFIG_PROPERTIES.add(userAttributeConfig);
 
         ProviderConfigProperty aggregateAttributesConfig = new ProviderConfigProperty();
-        aggregateAttributesConfig.setName(Oid4VciConstants.AGGREGATE_ATTRIBUTES_KEY);
+        aggregateAttributesConfig.setName(AGGREGATE_ATTRIBUTES_KEY);
         aggregateAttributesConfig.setLabel("Aggregate attributes");
         aggregateAttributesConfig.setHelpText("Should the mapper aggregate user attributes.");
         aggregateAttributesConfig.setType(ProviderConfigProperty.BOOLEAN_TYPE);
@@ -90,7 +89,7 @@ public class OID4VCUserAttributeMapper extends OID4VCMapper {
         List<String> attributePath = getMetadataAttributePath();
         String propertyName = attributePath.get(attributePath.size() - 1);
         String userAttribute = mapperModel.getConfig().get(USER_ATTRIBUTE_KEY);
-        boolean aggregateAttributes = Optional.ofNullable(mapperModel.getConfig().get(Oid4VciConstants.AGGREGATE_ATTRIBUTES_KEY))
+        boolean aggregateAttributes = Optional.ofNullable(mapperModel.getConfig().get(AGGREGATE_ATTRIBUTES_KEY))
                 .map(Boolean::parseBoolean).orElse(false);
         Collection<String> attributes =
                 KeycloakModelUtils.resolveAttribute(userSessionModel.getUser(), userAttribute,
@@ -108,10 +107,10 @@ public class OID4VCUserAttributeMapper extends OID4VCMapper {
         Map<String, String> configMap = new HashMap<>();
         configMap.put(CLAIM_NAME, propertyName);
         configMap.put(USER_ATTRIBUTE_KEY, userAttribute);
-        configMap.put(Oid4VciConstants.AGGREGATE_ATTRIBUTES_KEY, Boolean.toString(aggregateAttributes));
+        configMap.put(AGGREGATE_ATTRIBUTES_KEY, Boolean.toString(aggregateAttributes));
         mapperModel.setConfig(configMap);
         mapperModel.setProtocol(OID4VCLoginProtocolFactory.PROTOCOL_ID);
-        mapperModel.setProtocolMapper(Oid4VciConstants.MAPPER_ID_USER_ATTRIBUTE);
+        mapperModel.setProtocolMapper(MAPPER_ID);
         return mapperModel;
     }
 
@@ -132,9 +131,6 @@ public class OID4VCUserAttributeMapper extends OID4VCMapper {
 
     @Override
     public String getId() {
-        return Oid4VciConstants.MAPPER_ID_USER_ATTRIBUTE;
+        return MAPPER_ID;
     }
-
-    public static final String MAPPER_ID = Oid4VciConstants.MAPPER_ID_USER_ATTRIBUTE;
-    public static final String AGGREGATE_ATTRIBUTES_KEY = Oid4VciConstants.AGGREGATE_ATTRIBUTES_KEY;
 }

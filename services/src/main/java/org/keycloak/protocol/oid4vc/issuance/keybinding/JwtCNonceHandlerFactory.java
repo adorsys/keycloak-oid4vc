@@ -19,14 +19,13 @@
 package org.keycloak.protocol.oid4vc.issuance.keybinding;
 
 import org.keycloak.models.KeycloakSession;
-import org.keycloak.constants.Oid4VciConstants;
 
 /**
  * @author Pascal Knüppel
  */
 public class JwtCNonceHandlerFactory implements CNonceHandlerFactory {
 
-    public static final String PROVIDER_ID = Oid4VciConstants.PROVIDER_ID_JWT_C_NONCE_BUILDER;
+    public static final String PROVIDER_ID = "oid4vci-jwt-c-nonce-builder";
 
     @Override
     public CNonceHandler create(KeycloakSession session) {
