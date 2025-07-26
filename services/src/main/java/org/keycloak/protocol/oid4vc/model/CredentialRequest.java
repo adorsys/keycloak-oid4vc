@@ -25,13 +25,14 @@ import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
 import org.keycloak.util.JsonSerialization;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 
 /**
- * Represents a  CredentialRequest according to OID4VCI
+ * Represents a CredentialRequest according to OID4VCI
  * {@see https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#name-credential-request}
  *
  * @author <a href="https://github.com/wistefan">Stefan Wiedemann</a>
@@ -52,6 +53,9 @@ public class CredentialRequest {
             @JsonSubTypes.Type(value = LdpVpProof.class, name = ProofType.LD_PROOF)
     })
     private Proof proof;
+
+    @JsonProperty("proofs")
+    private Map<String, List<String>> proofs;
 
     // See: https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#name-format-identifier-3
     @JsonProperty("credential_definition")
@@ -81,6 +85,15 @@ public class CredentialRequest {
 
     public CredentialRequest setProof(Proof proof) {
         this.proof = proof;
+        return this;
+    }
+
+    public Map<String, List<String>> getProofs() {
+        return proofs;
+    }
+
+    public CredentialRequest setProofs(Map<String, List<String>> proofs) {
+        this.proofs = proofs;
         return this;
     }
 

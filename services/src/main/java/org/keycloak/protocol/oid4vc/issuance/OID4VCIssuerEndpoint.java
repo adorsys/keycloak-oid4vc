@@ -37,8 +37,6 @@ import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.Response;
 import org.jboss.logging.Logger;
 import org.keycloak.common.util.SecretGenerator;
-import org.keycloak.component.ComponentFactory;
-import org.keycloak.component.ComponentModel;
 import org.keycloak.events.Errors;
 import org.keycloak.events.EventBuilder;
 import org.keycloak.models.AuthenticatedClientSessionModel;
@@ -66,11 +64,13 @@ import org.keycloak.protocol.oid4vc.model.CredentialsOffer;
 import org.keycloak.protocol.oid4vc.model.ErrorResponse;
 import org.keycloak.protocol.oid4vc.model.ErrorType;
 import org.keycloak.protocol.oid4vc.model.Format;
+import org.keycloak.protocol.oid4vc.model.JwtProof;
 import org.keycloak.protocol.oid4vc.model.NonceResponse;
 import org.keycloak.protocol.oid4vc.model.OfferUriType;
 import org.keycloak.protocol.oid4vc.model.PreAuthorizedCode;
 import org.keycloak.protocol.oid4vc.model.PreAuthorizedGrant;
 import org.keycloak.protocol.oid4vc.model.Proof;
+import org.keycloak.protocol.oid4vc.model.ProofType;
 import org.keycloak.protocol.oid4vc.model.SupportedCredentialConfiguration;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
 import org.keycloak.protocol.oidc.grants.PreAuthorizedCodeGrantType;
@@ -90,7 +90,9 @@ import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -174,10 +176,10 @@ public class OID4VCIssuerEndpoint {
     private Map<String, CredentialBuilder> loadCredentialBuilders(KeycloakSession keycloakSession) {
         KeycloakSessionFactory keycloakSessionFactory = keycloakSession.getKeycloakSessionFactory();
         return keycloakSessionFactory.getProviderFactoriesStream(CredentialBuilder.class)
-                                     .map(factory -> (CredentialBuilderFactory) factory)
-                                     .map(factory -> factory.create(keycloakSession, null))
-                                     .collect(Collectors.toMap(CredentialBuilder::getSupportedFormat,
-                                                               credentialBuilder ->  credentialBuilder));
+                .map(factory -> (CredentialBuilderFactory) factory)
+                .map(factory -> factory.create(keycloakSession, null))
+                .collect(Collectors.toMap(CredentialBuilder::getSupportedFormat,
+                        credentialBuilder ->  credentialBuilder));
     }
 
     /**
@@ -346,22 +348,25 @@ public class OID4VCIssuerEndpoint {
             if (Arrays.stream(accessToken.getScope().split(" "))
                     .noneMatch(tokenScope -> tokenScope.equals(requestedCredential.getScope()))) {
                 LOGGER.debugf("Scope check failure: required scope = %s, " +
-                                      "scope in access token = %s.",
-                              requestedCredential.getName(), accessToken.getScope());
+                                "scope in access token = %s.",
+                        requestedCredential.getName(), accessToken.getScope());
                 throw new CorsErrorResponseException(cors,
                         ErrorType.UNSUPPORTED_CREDENTIAL_TYPE.toString(),
                         "Scope check failure",
                         Response.Status.BAD_REQUEST);
             } else {
                 LOGGER.debugf("Scope check success: required scope = %s, #" +
-                                      "scope in access token = %s.",
-                              requestedCredential.getScope(), accessToken.getScope());
+                                "scope in access token = %s.",
+                        requestedCredential.getScope(), accessToken.getScope());
             }
         } else {
             clientSession.removeNote(PreAuthorizedCodeGrantType.VC_ISSUANCE_FLOW);
         }
     }
 
+    /**
+     * Returns a verifiable credential
+     */
     /**
      * Returns a verifiable credential
      */
@@ -375,11 +380,17 @@ public class OID4VCIssuerEndpoint {
 
         cors = Cors.builder().auth().allowedMethods("POST").auth().exposedHeaders(Cors.ACCESS_CONTROL_ALLOW_METHODS);
 
-        // do first to fail fast on auth
+        // Do first to fail fast on auth
         AuthenticationManager.AuthResult authResult = getAuthResult();
 
         // checkClientEnabled call after authentication
         checkClientEnabled();
+
+        // Validate that proof and proofs are not both present
+        if (credentialRequestVO.getProof() != null && credentialRequestVO.getProofs() != null) {
+            LOGGER.debug("Both proof and proofs parameters are present in the request, which is not allowed.");
+            throw new BadRequestException(getErrorResponse(ErrorType.INVALID_PROOF));
+        }
 
         // Both credential_configuration_id and credential_identifier are optional.
         // If the credential_configuration_id is present, credential_identifier can't be present.
@@ -397,7 +408,7 @@ public class OID4VCIssuerEndpoint {
 
         CredentialScopeModel requestedCredential = credentialRequestVO.findCredentialScope(session).orElseThrow(() -> {
             LOGGER.debugf("Credential for request '%s' not found.",
-                          credentialRequestVO.toString());
+                    credentialRequestVO.toString());
             return new BadRequestException(getErrorResponse(ErrorType.UNSUPPORTED_CREDENTIAL_TYPE));
         });
 
@@ -409,9 +420,8 @@ public class OID4VCIssuerEndpoint {
         Object theCredential = getCredential(authResult, supportedCredential, credentialRequestVO);
 
         CredentialResponse responseVO = new CredentialResponse();
-        responseVO
-                    .addCredential(theCredential)
-                    .setNotificationId(generateNotificationId());
+        responseVO.addCredential(theCredential)
+                .setNotificationId(generateNotificationId());
         return Response.ok().entity(responseVO).build();
     }
 
@@ -479,7 +489,7 @@ public class OID4VCIssuerEndpoint {
 
         // Retrieve matching credential signer
         CredentialSigner<?> credentialSigner = session.getProvider(CredentialSigner.class,
-                                                                   credentialConfig.getFormat());
+                credentialConfig.getFormat());
 
         return Optional.ofNullable(credentialSigner)
                 .map(signer -> signer.signCredential(
@@ -570,7 +580,7 @@ public class OID4VCIssuerEndpoint {
 
         // Build format-specific credential
         CredentialBody credentialBody = this.findCredentialBuilder(credentialConfig)
-                                            .buildCredentialBody(vc, credentialConfig.getCredentialBuildConfig());
+                .buildCredentialBody(vc, credentialConfig.getCredentialBuildConfig());
 
         return new VCIssuanceContext()
                 .setAuthResult(authResult)
@@ -601,7 +611,7 @@ public class OID4VCIssuerEndpoint {
             Optional.ofNullable(proofValidator.validateProof(vcIssuanceContext))
                     .ifPresent(jwk -> vcIssuanceContext.getCredentialBody().addKeyBinding(jwk));
         } catch (VCIssuerException e) {
-            throw new BadRequestException("Could not validate provided proof", e);
+            throw new BadRequestException(e.getMessage(), getErrorResponse(e.getErrorType()));
         }
     }
 
