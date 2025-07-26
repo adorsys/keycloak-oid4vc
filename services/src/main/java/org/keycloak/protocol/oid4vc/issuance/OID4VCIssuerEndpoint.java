@@ -367,6 +367,9 @@ public class OID4VCIssuerEndpoint {
     /**
      * Returns a verifiable credential
      */
+    /**
+     * Returns a verifiable credential
+     */
     @POST
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
@@ -380,14 +383,14 @@ public class OID4VCIssuerEndpoint {
         // Do first to fail fast on auth
         AuthenticationManager.AuthResult authResult = getAuthResult();
 
+        // checkClientEnabled call after authentication
+        checkClientEnabled();
+
         // Validate that proof and proofs are not both present
         if (credentialRequestVO.getProof() != null && credentialRequestVO.getProofs() != null) {
             LOGGER.debug("Both proof and proofs parameters are present in the request, which is not allowed.");
             throw new BadRequestException(getErrorResponse(ErrorType.INVALID_PROOF));
         }
-
-        // checkClientEnabled call after authentication
-        checkClientEnabled();
 
         // Both credential_configuration_id and credential_identifier are optional.
         // If the credential_configuration_id is present, credential_identifier can't be present.
@@ -409,31 +412,15 @@ public class OID4VCIssuerEndpoint {
             return new BadRequestException(getErrorResponse(ErrorType.UNSUPPORTED_CREDENTIAL_TYPE));
         });
 
-        CredentialResponse responseVO = new CredentialResponse();
-        List<Object> issuedCredentials = new ArrayList<>();
-        List<Proof> proofs = credentialRequestVO.getProofs() != null
-                ? Arrays.stream(credentialRequestVO.getProofs().getOrDefault(ProofType.JWT, new String[0]))
-                .map(JwtProof::new)
-                .collect(Collectors.toList())
-                : (credentialRequestVO.getProof() != null ? List.of(credentialRequestVO.getProof()) : Collections.emptyList());
-
         checkScope(requestedCredential);
+
         SupportedCredentialConfiguration supportedCredential =
                 OID4VCIssuerWellKnownProvider.toSupportedCredentialConfiguration(session, requestedCredential);
 
-        if (proofs.isEmpty()) {
-            Object theCredential = getCredential(authResult, supportedCredential, credentialRequestVO.setProof(null));
-            issuedCredentials.add(theCredential);
-        } else {
-            for (Proof proof : proofs) {
-                Object theCredential = getCredential(authResult, supportedCredential, credentialRequestVO.setProof(proof));
-                issuedCredentials.add(theCredential);
-            }
-        }
+        Object theCredential = getCredential(authResult, supportedCredential, credentialRequestVO);
 
-        responseVO.setCredentials(issuedCredentials.stream()
-                        .map(cred -> new CredentialResponse.Credential().setCredential(cred))
-                        .collect(Collectors.toList()))
+        CredentialResponse responseVO = new CredentialResponse();
+        responseVO.addCredential(theCredential)
                 .setNotificationId(generateNotificationId());
         return Response.ok().entity(responseVO).build();
     }

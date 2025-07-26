@@ -25,6 +25,7 @@ import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
 import org.keycloak.util.JsonSerialization;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
@@ -54,7 +55,7 @@ public class CredentialRequest {
     private Proof proof;
 
     @JsonProperty("proofs")
-    private Map<String, String[]> proofs;
+    private Map<String, List<String>> proofs;
 
     // See: https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#name-format-identifier-3
     @JsonProperty("credential_definition")
@@ -87,11 +88,11 @@ public class CredentialRequest {
         return this;
     }
 
-    public Map<String, String[]> getProofs() {
+    public Map<String, List<String>> getProofs() {
         return proofs;
     }
 
-    public CredentialRequest setProofs(Map<String, String[]> proofs) {
+    public CredentialRequest setProofs(Map<String, List<String>> proofs) {
         this.proofs = proofs;
         return this;
     }
