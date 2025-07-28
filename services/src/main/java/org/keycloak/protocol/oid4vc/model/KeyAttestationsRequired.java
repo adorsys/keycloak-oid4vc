@@ -21,6 +21,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Key attestation requirements on key storage and user authentication's attack resistance.
@@ -61,5 +62,19 @@ public class KeyAttestationsRequired {
     public KeyAttestationsRequired setUserAuthentication(List<ISO18045ResistanceLevel> userAuthentication) {
         this.userAuthentication = userAuthentication;
         return this;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        KeyAttestationsRequired that = (KeyAttestationsRequired) o;
+        return Objects.equals(keyStorage, that.keyStorage) &&
+                Objects.equals(userAuthentication, that.userAuthentication);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(keyStorage, userAuthentication);
     }
 }

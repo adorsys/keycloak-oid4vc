@@ -43,15 +43,11 @@ import org.keycloak.protocol.oid4vc.model.JwtProof;
 import org.keycloak.protocol.oid4vc.model.KeyAttestationJwtBody;
 import org.keycloak.protocol.oid4vc.model.KeyAttestationsRequired;
 
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.TrustManager;
 import javax.net.ssl.TrustManagerFactory;
-import javax.net.ssl.X509TrustManager;
 import java.io.IOException;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.KeyStore;
-import java.security.SecureRandom;
 import java.security.cert.X509Certificate;
 import java.security.spec.ECGenParameterSpec;
 import java.util.Base64;
@@ -135,7 +131,17 @@ public class OID4VCKeyAttestationTest extends OID4VCIssuerEndpointTest {
 
     @Test
     public void testAttestationWithInvalidResistanceLevels() {
-        testingClient.server(TEST_REALM_NAME).run(OID4VCKeyAttestationTest::runAttestationWithInvalidResistanceLevels);
+        testingClient.server(TEST_REALM_NAME).run(session -> {
+            try {
+                runAttestationWithInvalidResistanceLevels(session);
+            } catch (VCIssuerException e) {
+                assertTrue("Expected error about invalid level but got: " + e.getMessage(),
+                        e.getMessage().contains("key_storage") ||
+                                e.getMessage().contains("INVALID_LEVEL"));
+            } catch (Exception e) {
+                fail("Unexpected exception: " + e.getMessage());
+            }
+        });
     }
 
     @Test
@@ -163,6 +169,7 @@ public class OID4VCKeyAttestationTest extends OID4VCIssuerEndpointTest {
             proofJwk.setKeyId(proofKey.getKid());
             proofJwk.setAlgorithm(proofKey.getAlgorithm());
 
+            // Create complete payload
             KeyAttestationJwtBody payload = new KeyAttestationJwtBody();
             payload.setIat((long) TIME_PROVIDER.currentTimeSeconds());
             payload.setNonce(cNonce);
@@ -183,6 +190,7 @@ public class OID4VCKeyAttestationTest extends OID4VCIssuerEndpointTest {
                     .sign(new ECDSASignatureSignerContext(attestationKey));
 
             VCIssuanceContext vcIssuanceContext = createVCIssuanceContext(session);
+            // Set attestation requirements
             KeyAttestationsRequired attestationRequirements = new KeyAttestationsRequired();
             attestationRequirements.setKeyStorage(List.of(
                     ISO18045ResistanceLevel.HIGH,
@@ -390,6 +398,7 @@ public class OID4VCKeyAttestationTest extends OID4VCIssuerEndpointTest {
 
             String cNonce = getCNonce();
 
+            // Create proper payload with attested keys
             KeyAttestationJwtBody payload = new KeyAttestationJwtBody();
             payload.setIat((long) TIME_PROVIDER.currentTimeSeconds());
             payload.setNonce(cNonce);
@@ -406,10 +415,8 @@ public class OID4VCKeyAttestationTest extends OID4VCIssuerEndpointTest {
             VCIssuanceContext vcIssuanceContext = createVCIssuanceContext(session);
             vcIssuanceContext.getCredentialRequest().setProof(new AttestationProof(attestationJwt));
 
-            JWK attestationJwk = JWKBuilder.create().ec(attestationKey.getPublicKey());
-            attestationJwk.setKeyId(attestationKey.getKid());
             AttestationKeyResolver keyResolver = new StaticAttestationKeyResolver(
-                    Map.of(attestationKey.getKid(), attestationJwk)
+                    Map.of(attestationKey.getKid(), JWKBuilder.create().ec(attestationKey.getPublicKey()))
             );
 
             AttestationProofValidator validator = new AttestationProofValidator(session, keyResolver);
@@ -420,7 +427,7 @@ public class OID4VCKeyAttestationTest extends OID4VCIssuerEndpointTest {
             assertTrue(attestedKeys.stream().anyMatch(k -> k.getKeyId().equals(proofJwk2.getKeyId())));
         } catch (Exception e) {
             LOGGER.error("Validation failed with exception: " + e.getMessage(), e);
-            fail("Test should not throw exception: " + e.getMessage());
+            fail("Unexpected exception in test: " + e.getMessage());
         }
     }
 

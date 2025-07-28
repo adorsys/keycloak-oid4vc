@@ -79,8 +79,6 @@ import static org.keycloak.services.clientpolicy.executor.FapiConstant.ALLOWED_A
  */
 public class AttestationValidatorUtil {
 
-    private static final org.jboss.logging.Logger LOGGER = Logger.getLogger(AttestationValidatorUtil.class);
-
     public static final String ATTESTATION_JWT_TYP = "keyattestation+jwt";
     private static final String CACERTS_PATH = System.getProperty("javax.net.ssl.trustStore",
             System.getProperty("java.home") + "/lib/security/cacerts");
@@ -98,20 +96,14 @@ public class AttestationValidatorUtil {
             throw new VCIssuerException("Invalid JWT format");
         }
 
-        Logger logger = Logger.getLogger(AttestationValidatorUtil.class);
-        logger.debug("Processing attestation JWT: " + attestationJwt);
-
         JWSInput jwsInput = new JWSInput(attestationJwt);
 
-        // Log raw payload for debugging
         String payloadString = new String(jwsInput.getContent(), StandardCharsets.UTF_8);
-        logger.debug("Raw attestation payload: " + payloadString);
 
         // Validate that payload is JSON
         try {
             JsonSerialization.mapper.readTree(payloadString);
         } catch (JsonProcessingException e) {
-            logger.error("Invalid JSON in attestation payload: " + payloadString, e);
             throw new VCIssuerException("Invalid JSON in attestation payload: " + payloadString, e);
         }
 
@@ -129,8 +121,8 @@ public class AttestationValidatorUtil {
         validateJwsHeader(header);
 
         // Verify the signature
-        Map<String, Object> rawHeader = JsonSerialization.mapper.readValue(
-                jwsInput.getEncodedHeader(), new TypeReference<>() {});
+        Map<String, Object> rawHeader = JsonSerialization.mapper.convertValue(
+                jwsInput.getHeader(), new TypeReference<>() {});
 
         SignatureVerifierContext verifier;
         if (header.getX5c() != null && !header.getX5c().isEmpty()) {

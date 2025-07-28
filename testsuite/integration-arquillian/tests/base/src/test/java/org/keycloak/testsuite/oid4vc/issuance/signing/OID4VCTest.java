@@ -44,7 +44,6 @@ import org.keycloak.crypto.KeyWrapper;
 import org.keycloak.jose.jwk.JWK;
 import org.keycloak.jose.jwk.JWKBuilder;
 import org.keycloak.jose.jws.JWSBuilder;
-import org.keycloak.jose.jws.JWSInput;
 import org.keycloak.jose.jws.JWSInputException;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.utils.KeycloakModelUtils;
@@ -89,7 +88,6 @@ import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.Security;
 import java.security.cert.Certificate;
-import java.security.cert.X509Certificate;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
@@ -541,14 +539,15 @@ public abstract class OID4VCTest extends AbstractTestRealmKeycloakTest {
                                                       String cNonce) {
         return createValidAttestationJwt(session, attestationKey, List.of(proofJwk), cNonce);
     }
-
     protected static String createValidAttestationJwt(KeycloakSession session,
                                                       KeyWrapper attestationKey,
                                                       List<JWK> proofJwks,
                                                       String cNonce) {
         try {
             KeyAttestationJwtBody payload = new KeyAttestationJwtBody();
+            payload.setIat((long) TIME_PROVIDER.currentTimeSeconds());
             payload.setNonce(cNonce);
+            payload.setAttestedKeys(proofJwks);
             payload.setKeyStorage(List.of(ISO18045ResistanceLevel.HIGH.getValue()));
             payload.setUserAuthentication(List.of(ISO18045ResistanceLevel.HIGH.getValue()));
 
