@@ -17,7 +17,8 @@
 
 package org.keycloak.protocol.oid4vc.oid4vp;
 
-import jakarta.ws.rs.GET;
+import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.NotFoundException;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
@@ -26,13 +27,13 @@ import jakarta.ws.rs.core.Response;
 import org.jboss.logging.Logger;
 import org.keycloak.events.EventBuilder;
 import org.keycloak.events.EventType;
+import org.keycloak.models.ClientModel;
 import org.keycloak.models.KeycloakSession;
-import org.keycloak.protocol.AuthorizationEndpointBase;
 import org.keycloak.protocol.oid4vc.oid4vp.model.dto.AuthorizationContext;
+import org.keycloak.protocol.oid4vc.oid4vp.service.AuthenticationSessionStore;
 import org.keycloak.protocol.oid4vc.oid4vp.service.AuthorizationRequestService;
 import org.keycloak.services.resource.RealmResourceProvider;
-
-import java.util.HashMap;
+import org.keycloak.sessions.AuthenticationSessionModel;
 
 /**
  * Endpoint class for user authentication over
@@ -42,7 +43,8 @@ import java.util.HashMap;
  *
  * @author <a href="mailto:Ingrid.Kamga@adorsys.com">Ingrid Kamga</a>
  */
-public class OID4VPUserAuthenticationEndpoint extends AuthorizationEndpointBase implements RealmResourceProvider {
+public class OID4VPUserAuthenticationEndpoint extends OID4VPUserAuthenticationEndpointBase
+        implements RealmResourceProvider {
 
     private static final Logger logger = Logger.getLogger(OID4VPUserAuthenticationEndpoint.class);
 
@@ -53,20 +55,27 @@ public class OID4VPUserAuthenticationEndpoint extends AuthorizationEndpointBase 
 
     public OID4VPUserAuthenticationEndpoint(KeycloakSession session, EventBuilder event) {
         super(session, event);
-        this.authorizationRequestService = new AuthorizationRequestService(session, new HashMap<>());
+        this.authorizationRequestService = new AuthorizationRequestService(session);
     }
 
     /**
      * Generates an OpenID4VP authentication request for user authentication.
      */
-    @GET
+    @POST
     @Path("/request")
+    @Consumes(MediaType.APPLICATION_FORM_URLENCODED)
     @Produces(MediaType.APPLICATION_JSON)
     public Response getAuthenticationRequest() {
         logger.debug("Initiating user authentication over OpenID4VP...");
         event.event(EventType.OID4VP_INIT_AUTH);
 
-        AuthorizationContext authorizationContext = authorizationRequestService.createAuthorizationRequest();
+        ClientModel client = authenticateClient();
+        AuthenticationSessionModel authSession = createAuthSession(client);
+
+        // Call delegate service to create an authorization request
+        AuthorizationContext authorizationContext = authorizationRequestService
+                .createAuthorizationRequest(authSession);
+
         AuthorizationContext reducedContext = new AuthorizationContext()
                 .setAuthorizationRequest(authorizationContext.getAuthorizationRequest())
                 .setTransactionId(authorizationContext.getTransactionId());
@@ -77,14 +86,29 @@ public class OID4VPUserAuthenticationEndpoint extends AuthorizationEndpointBase 
     /**
      * Deferences request URIs into signed request objects.
      */
-    @GET
+    @POST // @GET
     @Path(REQUEST_JWT_PATH + "/{requestId}")
     @Produces(MediaType.TEXT_PLAIN)
-    public Response getSignedRequestObject() {
+    public Response getSignedRequestObject(String requestId) {
         logger.debug("Resolving request URI to signed request object...");
-        return Response.ok()
-                .entity("Signed request object for request ID")
-                .build();
+
+        ClientModel client = authenticateClient();
+        String authSessionId = pruneAuthSessionId(requestId);
+        AuthenticationSessionModel authSession = getAuthSession(client, authSessionId)
+                .orElseThrow(() -> new NotFoundException(
+                        "No authentication session attached to request ID: " + requestId
+                ));
+
+        AuthorizationContext authorizationContext;
+        try {
+            authorizationContext = new AuthenticationSessionStore(authSession)
+                    .getAuthorizationContextByRequestId(requestId);
+        } catch (IllegalArgumentException e) {
+            throw new NotFoundException("Authorization context not found for request ID: " + requestId, e);
+        }
+
+        String requestObjectJwt = authorizationContext.getRequestObjectJwt();
+        return Response.ok(requestObjectJwt).build();
     }
 
     /**
@@ -92,6 +116,8 @@ public class OID4VPUserAuthenticationEndpoint extends AuthorizationEndpointBase 
      */
     @POST
     @Path(RESPONSE_URI_PATH)
+    @Consumes(MediaType.APPLICATION_FORM_URLENCODED)
+    @Produces(MediaType.APPLICATION_JSON)
     public Response processAuthorizationResponse() {
         logger.debug("Processing authorization response for user authentication...");
         return Response.noContent().build();

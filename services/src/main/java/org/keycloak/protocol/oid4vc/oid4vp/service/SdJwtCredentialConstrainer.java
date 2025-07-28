@@ -45,17 +45,17 @@ public class SdJwtCredentialConstrainer {
             String issuerVct,
             List<String> requiredClaims
     ) {
-        var def = this.prebuildPresentationDefinition(issuerVct);
+        PresentationDefinition def = this.prebuildPresentationDefinition(issuerVct);
 
         // Set a unique identifier
         def.setId(UUID.randomUUID().toString());
 
         // Update field list with required claims
-        var fieldList = def.getInputDescriptors().get(0).getConstraints().getFields();
+        List<Field> fieldList = def.getInputDescriptors().get(0).getConstraints().getFields();
         requiredClaims.forEach(claim -> {
             String path = String.format(CLAIM_PATH_TEMPLATE, claim);
 
-            var field = new Field();
+            Field field = new Field();
             field.setPath(List.of(path));
 
             fieldList.add(field);
@@ -68,22 +68,22 @@ public class SdJwtCredentialConstrainer {
      * Constructs a template presentation definition specifying no claims to disclose.
      */
     public PresentationDefinition prebuildPresentationDefinition(String issuerVct) {
-        var template = new PresentationDefinition();
+        PresentationDefinition template = new PresentationDefinition();
         template.setName(OID4VPUserAuthenticationEndpointFactory.PROVIDER_ID);
 
-        var descriptor = new InputDescriptor();
+        InputDescriptor descriptor = new InputDescriptor();
         descriptor.setId(UUID.randomUUID().toString());
         template.setInputDescriptors(List.of(descriptor));
 
-        var constraints = new Constraints();
+        Constraints constraints = new Constraints();
         constraints.setLimitDisclosure(Constraints.LimitDisclosure.REQUIRED);
         descriptor.setConstraints(constraints);
 
-        var field = new Field();
+        Field field = new Field();
         field.setPath(List.of(VCT_PATH));
         constraints.setFields(new ArrayList<>(List.of(field)));
 
-        var filter = new Filter();
+        Filter filter = new Filter();
         filter.setType(Filter.SimpleTypes.STRING);
         filter.setConst(issuerVct);
         field.setFilter(filter);

@@ -26,19 +26,20 @@ import org.keycloak.jose.jwe.JWEUtils;
 import org.keycloak.jose.jws.JWSBuilder;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.protocol.oid4vc.oid4vp.OID4VPUserAuthenticationEndpoint;
+import org.keycloak.protocol.oid4vc.oid4vp.OID4VPUserAuthenticationEndpointBase;
 import org.keycloak.protocol.oid4vc.oid4vp.model.ClientIdScheme;
 import org.keycloak.protocol.oid4vc.oid4vp.model.ClientMetadata;
 import org.keycloak.protocol.oid4vc.oid4vp.model.RequestObject;
 import org.keycloak.protocol.oid4vc.oid4vp.model.ResponseMode;
 import org.keycloak.protocol.oid4vc.oid4vp.model.ResponseType;
 import org.keycloak.protocol.oid4vc.oid4vp.model.dto.AuthorizationContext;
+import org.keycloak.sessions.AuthenticationSessionModel;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -53,6 +54,7 @@ public class AuthorizationRequestService {
 
     public static final String VCT_CONFIG_DEFAULT = "https://credentials.example.com/identity_credential";
     public final static String AUTH_REQ_JWT = "oauth-authz-req+jwt";
+    // TODO: Replace by authentication session lifetime
     public static final int AUTH_REQ_JWT_LIFETIME_SECS = 10 * 60;
     public static final int SECURE_RANDOM_ENTROPY = 32;
 
@@ -61,20 +63,19 @@ public class AuthorizationRequestService {
     // without SIOPv2.
     public static final String SYMBOLIC_AUD = "https://self-issued.me/v2";
 
-    private final SdJwtCredentialConstrainer sdJwtCredentialConstrainer = new SdJwtCredentialConstrainer();
-    private final Map<String, String> sessionStore;
+    private final SdJwtCredentialConstrainer sdJwtCredentialConstrainer;
     private final ClientMetadata clientMetadata;
-    private final String openID4VPBaseUrl;
+    private final String openID4VPRootUrl;
     private final KeyWrapper signingKey;
     private final SignatureSignerContext signer;
 
-    public AuthorizationRequestService(KeycloakSession session, Map<String, String> sessionStore) {
-        this.sessionStore = sessionStore;
+    public AuthorizationRequestService(KeycloakSession session) {
+        this.sdJwtCredentialConstrainer = new SdJwtCredentialConstrainer();
 
         // Discover client metadata and signing key
         VerifierDiscoveryService verifierDiscoveryService = new VerifierDiscoveryService(session);
         this.clientMetadata = verifierDiscoveryService.getClientMetadata();
-        this.openID4VPBaseUrl = verifierDiscoveryService.getOpenID4VPBaseUrl();
+        this.openID4VPRootUrl = verifierDiscoveryService.getOpenID4VPRootUrl();
         this.signingKey = verifierDiscoveryService.getSigningKey();
 
         // Derive signer context
@@ -86,11 +87,13 @@ public class AuthorizationRequestService {
     /**
      * Creates a fresh authorization request for user authentication.
      */
-    public AuthorizationContext createAuthorizationRequest() {
+    public AuthorizationContext createAuthorizationRequest(AuthenticationSessionModel authSession) {
         logger.debug("Creating a fresh authorization request for user authentication...");
 
-        // Generate a random request ID
-        String requestId = generateRandomString();
+        // Generate random request and transaction IDs.
+        // Different IDs are used to prevent unintended access to the status of this request.
+        String requestId = generateRequestOrTransactionId(authSession);
+        String transactionId = generateRequestOrTransactionId(authSession);
 
         // Construct presentation definition
         var presentationDefinition = sdJwtCredentialConstrainer
@@ -110,12 +113,25 @@ public class AuthorizationRequestService {
         // Gather authorization context
         AuthorizationContext authorizationContext = new AuthorizationContext()
                 .setRequestId(requestId)
-                .setTransactionId(generateRandomString())
+                .setTransactionId(transactionId)
                 .setRequestObjectJwt(requestObjectJwt)
                 .setAuthorizationRequest(authorizationRequestLink);
 
+        // Store authorization context in the authentication session
+        AuthenticationSessionStore store = new AuthenticationSessionStore(authSession);
+        store.storeAuthorizationContext(authorizationContext);
+
         // Pursue creation process
         return authorizationContext;
+    }
+
+    /**
+     * Generates a request or transaction ID.
+     */
+    private static String generateRequestOrTransactionId(AuthenticationSessionModel authSession) {
+        return OID4VPUserAuthenticationEndpointBase.getAuthSessionId(authSession)
+                + OID4VPUserAuthenticationEndpointBase.AUTH_SESSION_EOL_MARKER
+                + generateRandomString();
     }
 
     /**
@@ -134,7 +150,7 @@ public class AuthorizationRequestService {
      */
     private RequestObject bootstrapRequestObject() {
         String clientId = clientMetadata.getClientId();
-        String responseUri = openID4VPBaseUrl + OID4VPUserAuthenticationEndpoint.RESPONSE_URI_PATH;
+        String responseUri = openID4VPRootUrl + OID4VPUserAuthenticationEndpoint.RESPONSE_URI_PATH;
 
         String nonce = Stream.generate(AuthorizationRequestService::generateRandomString)
                 .limit(2)
@@ -154,13 +170,15 @@ public class AuthorizationRequestService {
 
     private String buildAuthorizationRequestLink(String requestId) {
         var clientId = clientMetadata.getClientId();
-        var requestUri = openID4VPBaseUrl + "/" + requestId;
+        var requestUri = openID4VPRootUrl + "/%s/%s".formatted(
+                OID4VPUserAuthenticationEndpoint.REQUEST_JWT_PATH,
+                requestId
+        );
 
         return String.format("openid4vp://authorize?client_id=%s&request_uri=%s",
                 URLEncoder.encode(clientId, StandardCharsets.UTF_8),
                 URLEncoder.encode(requestUri, StandardCharsets.UTF_8));
     }
-
 
     private String signRequestObject(RequestObject requestObject) {
         logger.debugf("Signing request object (%s)", requestObject.getState());
