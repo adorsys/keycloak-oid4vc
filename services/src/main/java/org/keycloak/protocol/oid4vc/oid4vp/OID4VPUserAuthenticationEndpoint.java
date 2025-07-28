@@ -18,6 +18,7 @@
 package org.keycloak.protocol.oid4vc.oid4vp;
 
 import jakarta.ws.rs.GET;
+import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
@@ -27,7 +28,11 @@ import org.keycloak.events.EventBuilder;
 import org.keycloak.events.EventType;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.protocol.AuthorizationEndpointBase;
+import org.keycloak.protocol.oid4vc.oid4vp.model.dto.AuthorizationContext;
+import org.keycloak.protocol.oid4vc.oid4vp.service.AuthorizationRequestService;
 import org.keycloak.services.resource.RealmResourceProvider;
+
+import java.util.HashMap;
 
 /**
  * Endpoint class for user authentication over
@@ -41,8 +46,14 @@ public class OID4VPUserAuthenticationEndpoint extends AuthorizationEndpointBase 
 
     private static final Logger logger = Logger.getLogger(OID4VPUserAuthenticationEndpoint.class);
 
+    public static final String REQUEST_JWT_PATH = "/request.jwt";
+    public static final String RESPONSE_URI_PATH = "/response";
+
+    private final AuthorizationRequestService authorizationRequestService;
+
     public OID4VPUserAuthenticationEndpoint(KeycloakSession session, EventBuilder event) {
         super(session, event);
+        this.authorizationRequestService = new AuthorizationRequestService(session, new HashMap<>());
     }
 
     /**
@@ -50,30 +61,40 @@ public class OID4VPUserAuthenticationEndpoint extends AuthorizationEndpointBase 
      */
     @GET
     @Path("/request")
-    @Produces(MediaType.TEXT_PLAIN)
+    @Produces(MediaType.APPLICATION_JSON)
     public Response getAuthenticationRequest() {
-        logger.trace("Initiating user authentication over OpenID4VP...");
+        logger.debug("Initiating user authentication over OpenID4VP...");
         event.event(EventType.OID4VP_INIT_AUTH);
 
-        // Implement the logic for handling user authentication over OpenID4VP here.
-        // This is a placeholder implementation and should be replaced with actual logic.
+        AuthorizationContext authorizationContext = authorizationRequestService.createAuthorizationRequest();
+        AuthorizationContext reducedContext = new AuthorizationContext()
+                .setAuthorizationRequest(authorizationContext.getAuthorizationRequest())
+                .setTransactionId(authorizationContext.getTransactionId());
 
-        return Response.ok()
-                .entity("User authentication request handled successfully")
-                .build();
+        return Response.ok(reducedContext).build();
     }
 
     /**
      * Deferences request URIs into signed request objects.
      */
     @GET
-    @Path("/request.jwt/{requestId}")
+    @Path(REQUEST_JWT_PATH + "/{requestId}")
     @Produces(MediaType.TEXT_PLAIN)
     public Response getSignedRequestObject() {
-        logger.trace("Resolving request URI to signed request object...");
+        logger.debug("Resolving request URI to signed request object...");
         return Response.ok()
                 .entity("Signed request object for request ID")
                 .build();
+    }
+
+    /**
+     * Processes authentication responses from the wallet toward user authentication.
+     */
+    @POST
+    @Path(RESPONSE_URI_PATH)
+    public Response processAuthorizationResponse() {
+        logger.debug("Processing authorization response for user authentication...");
+        return Response.noContent().build();
     }
 
     @Override

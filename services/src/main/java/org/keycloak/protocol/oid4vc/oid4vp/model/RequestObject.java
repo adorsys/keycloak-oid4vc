@@ -164,6 +164,11 @@ public class RequestObject extends JsonWebToken {
         return this;
     }
 
+    public RequestObject setIssuer(String issuer) {
+        this.issuer = issuer;
+        return this;
+    }
+
     public RequestObject setAudience(String... audience) {
         this.audience = audience;
         return this;

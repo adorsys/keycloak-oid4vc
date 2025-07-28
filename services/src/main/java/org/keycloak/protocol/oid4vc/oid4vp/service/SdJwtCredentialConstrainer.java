@@ -33,7 +33,7 @@ import java.util.UUID;
  *
  * @author <a href="mailto:Ingrid.Kamga@adorsys.com">Ingrid Kamga</a>
  */
-public class SdJwtCredentialPresenter {
+public class SdJwtCredentialConstrainer {
 
     private static final String VCT_PATH = "$.vct";
     private static final String CLAIM_PATH_TEMPLATE = "$.%s";
@@ -42,7 +42,8 @@ public class SdJwtCredentialPresenter {
      * Constructs a presentation definition requiring the disclosure of some claims.
      */
     public PresentationDefinition generatePresentationDefinition(
-            String issuerVct, List<String> requiredClaims
+            String issuerVct,
+            List<String> requiredClaims
     ) {
         var def = this.prebuildPresentationDefinition(issuerVct);
 

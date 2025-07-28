@@ -19,19 +19,24 @@ package org.keycloak.protocol.oid4vc.oid4vp.service;
 
 import org.jboss.logging.Logger;
 import org.keycloak.OAuth2Constants;
+import org.keycloak.crypto.KeyWrapper;
+import org.keycloak.crypto.SignatureProvider;
+import org.keycloak.crypto.SignatureSignerContext;
 import org.keycloak.jose.jwe.JWEUtils;
+import org.keycloak.jose.jws.JWSBuilder;
 import org.keycloak.models.KeycloakSession;
+import org.keycloak.protocol.oid4vc.oid4vp.OID4VPUserAuthenticationEndpoint;
 import org.keycloak.protocol.oid4vc.oid4vp.model.ClientIdScheme;
 import org.keycloak.protocol.oid4vc.oid4vp.model.ClientMetadata;
 import org.keycloak.protocol.oid4vc.oid4vp.model.RequestObject;
 import org.keycloak.protocol.oid4vc.oid4vp.model.ResponseMode;
 import org.keycloak.protocol.oid4vc.oid4vp.model.ResponseType;
 import org.keycloak.protocol.oid4vc.oid4vp.model.dto.AuthorizationContext;
-import org.keycloak.protocol.oid4vc.oid4vp.model.prex.PresentationDefinition;
 
-import java.math.BigInteger;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 
@@ -44,113 +49,124 @@ public class AuthorizationRequestService {
 
     private static final Logger logger = Logger.getLogger(AuthorizationRequestService.class);
 
-
     public static final String VCT_CONFIG_DEFAULT = "https://credentials.example.com/identity_credential";
-    public static final int SECURE_RANDOM_ENTROPY = 20;
+    public final static String AUTH_REQ_JWT = "oauth-authz-req+jwt";
+    public static final int AUTH_REQ_JWT_LIFETIME_SECS = 10 * 60;
+    public static final int SECURE_RANDOM_ENTROPY = 32;
 
     // Note: "https://self-issued.me/v2" is a symbolic string and can be used
     // as an aud Claim value even when this specification is used standalone,
     // without SIOPv2.
     public static final String SYMBOLIC_AUD = "https://self-issued.me/v2";
 
-    private final SdJwtCredentialPresenter sdJwtCredentialPresenter = new SdJwtCredentialPresenter();
-    private final ClientMetadata clientMetadata;
+    private final SdJwtCredentialConstrainer sdJwtCredentialConstrainer = new SdJwtCredentialConstrainer();
     private final Map<String, String> sessionStore;
+    private final ClientMetadata clientMetadata;
+    private final String openID4VPBaseUrl;
+    private final KeyWrapper signingKey;
+    private final SignatureSignerContext signer;
 
     public AuthorizationRequestService(KeycloakSession session, Map<String, String> sessionStore) {
-        ClientMetadataDiscoveryService clientMetadataService = new ClientMetadataDiscoveryService(session);
-        this.clientMetadata = clientMetadataService.getClientMetadata();
         this.sessionStore = sessionStore;
+
+        // Discover client metadata and signing key
+        VerifierDiscoveryService verifierDiscoveryService = new VerifierDiscoveryService(session);
+        this.clientMetadata = verifierDiscoveryService.getClientMetadata();
+        this.openID4VPBaseUrl = verifierDiscoveryService.getOpenID4VPBaseUrl();
+        this.signingKey = verifierDiscoveryService.getSigningKey();
+
+        // Derive signer context
+        String algorithm = signingKey.getAlgorithmOrDefault();
+        SignatureProvider signatureProvider = session.getProvider(SignatureProvider.class, algorithm);
+        this.signer = signatureProvider.signer(signingKey);
     }
 
     /**
      * Creates a fresh authorization request for user authentication.
      */
     public AuthorizationContext createAuthorizationRequest() {
-        logger.info("Creating a fresh authorization request for user authentication...");
+        logger.debug("Creating a fresh authorization request for user authentication...");
+
+        // Generate a random request ID
+        String requestId = generateRandomString();
 
         // Construct presentation definition
-        var presentationDefinition = sdJwtCredentialPresenter
+        var presentationDefinition = sdJwtCredentialConstrainer
                 .generatePresentationDefinition(VCT_CONFIG_DEFAULT, List.of(OAuth2Constants.USERNAME));
 
+        // Build request object
+        RequestObject requestObject = templateRequestObject()
+                .setState(requestId)
+                .setPresentationDefinition(presentationDefinition);
+
+        // Sign request object
+        String requestObjectJwt = signRequestObject(requestObject);
+
+        // Build authorization request link
+        String authorizationRequestLink = buildAuthorizationRequestLink(requestId);
+
+        // Gather authorization context
+        AuthorizationContext authorizationContext = new AuthorizationContext()
+                .setRequestId(requestId)
+                .setTransactionId(generateRandomString())
+                .setRequestObjectJwt(requestObjectJwt)
+                .setAuthorizationRequest(authorizationRequestLink);
+
         // Pursue creation process
-        return concludeAuthorizationRequestOffer(configParams, presentationDefinition);
+        return authorizationContext;
     }
 
     /**
      * Generates a cryptographically secure random string.
      */
-    public static String generateRandomString() {
+    private static String generateRandomString() {
         // Generate a cryptographically secure random byte array
-        byte[] randomBytes = JWEUtils.generateSecret(20);
+        byte[] randomBytes = JWEUtils.generateSecret(SECURE_RANDOM_ENTROPY);
 
-        // Convert the random number to a hexadecimal string
-        return new BigInteger(1, randomBytes).toString(16);
-    }
-
-    /**
-     * Concludes authorization request creation from presentation definition.
-     */
-    private AuthorizationRequestOfferDTO concludeAuthorizationRequestOffer(
-            RequestOfferConfigParamsDTO configParams,
-            PresentationDefinition presentationDefinition
-    ) {
-
-                .state(SecureRandomGenerator.generateRandomString());
-
-
-
-        return createAuthorizationRequestLink(templateRequest.build(), configParams);
+        // Convert the random number to a Base64 string
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(randomBytes);
     }
 
     /**
      * Returns a starter for building request objects.
      */
-    private RequestObject templateRequestObject(PresentationDefinition presentationDefinition) {
+    private RequestObject templateRequestObject() {
+        String clientId = clientMetadata.getClientId();
+        String responseUri = openID4VPBaseUrl + OID4VPUserAuthenticationEndpoint.RESPONSE_URI_PATH;
+
         return new RequestObject()
+                .setIssuer(clientId)
                 .setResponseMode(ResponseMode.DIRECT_POST)
+                .setResponseUri(responseUri)
                 .setResponseType(ResponseType.VP_TOKEN)
-                .setClientId(clientMetadata.getClientId())
+                .setClientId(clientId)
                 .setClientIdScheme(ClientIdScheme.X509_SAN_DNS)
+                .setNonce(generateRandomString())
                 .setAudience(SYMBOLIC_AUD)
-                .setPresentationDefinition(presentationDefinition)
                 .setClientMetadata(clientMetadata);
     }
 
-    private AuthorizationRequestOfferDTO createAuthorizationRequestLink(
-            RequestObjectDTO requestObjectDTO,
-            RequestOfferConfigParamsDTO configParamsDTO
-    ) {
-        var signed = createRequestObjectJwt(requestObjectDTO, configParamsDTO);
+    private String buildAuthorizationRequestLink(String requestId) {
+        var clientId = clientMetadata.getClientId();
+        var requestUri = openID4VPBaseUrl + "/" + requestId;
 
-        var clientId = verifierConfig.clientMetadata().getClientId();
-        var requestUri = verifierConfig.requestObjectUri() + "/" + signed.getState();
-
-        var link = String.format("openid4vp://authorize?client_id=%s&request_uri=%s",
+        return String.format("openid4vp://authorize?client_id=%s&request_uri=%s",
                 URLEncoder.encode(clientId, StandardCharsets.UTF_8),
                 URLEncoder.encode(requestUri, StandardCharsets.UTF_8));
-
-        return AuthorizationRequestOfferDTO.builder()
-                .transactionId(signed.getTransactionId())
-                .requestOfferUri(link)
-                .build();
     }
 
-    private SignedRequestObject createRequestObjectJwt(
-            RequestObjectDTO requestObject,
-            RequestOfferConfigParamsDTO configParamsDTO
-    ) {
-        log.info("Signing request object ({})", requestObject.getState());
 
-        var requestJwt = jwtSigner.signRequest(requestObject);
+    private String signRequestObject(RequestObject requestObject) {
+        logger.debugf("Signing request object (%s)", requestObject.getState());
 
-        var signed = SignedRequestObject.builder()
-                .transactionId(SecureRandomGenerator.generateRandomString())
-                .resultUri(configParamsDTO.getResultUri())
-                .state(requestObject.getState())
-                .requestJwt(requestJwt)
-                .build();
+        requestObject
+                .issuedNow()
+                .exp(Instant.now().plusSeconds(AUTH_REQ_JWT_LIFETIME_SECS).getEpochSecond());
 
-        return signedRequestObjectRepository.save(signed);
+        return new JWSBuilder()
+                .type(AUTH_REQ_JWT)
+                .x5c(List.of(signingKey.getCertificate()))
+                .jsonContent(requestObject)
+                .sign(signer);
     }
 }
