@@ -3,12 +3,13 @@ import {
   ActionGroup,
   Button,
   FormGroup,
+  AlertVariant,
 } from "@patternfly/react-core";
 import { TimeSelector } from "../components/time-selector/TimeSelector";
 import { Controller, useFormContext, FormProvider } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { FormAccess } from "../components/form/FormAccess";
-import { HelpItem, FormPanel } from "@keycloak/keycloak-ui-shared";
+import { HelpItem, FormPanel, useAlerts } from "@keycloak/keycloak-ui-shared";
 
 export const RealmSettingsOid4vciTab = ({
   realm,
@@ -18,8 +19,14 @@ export const RealmSettingsOid4vciTab = ({
   save: (realm: any) => void;
 }) => {
   const { t } = useTranslation();
+  const { addAlert } = useAlerts();
   const form = useFormContext();
   const { formState, reset, handleSubmit } = form;
+
+  // Show a global error notification if validation fails
+  const onError = () => {
+    addAlert(t("formValidationError"), AlertVariant.danger);
+  };
 
   return (
     <PageSection variant="light">
@@ -29,7 +36,7 @@ export const RealmSettingsOid4vciTab = ({
             isHorizontal
             role="manage-realm"
             className="pf-u-mt-lg"
-            onSubmit={handleSubmit(save)}
+            onSubmit={handleSubmit(save, onError)}
           >
             <FormGroup
               label={t("oid4vciNonceLifetime")}
@@ -44,12 +51,12 @@ export const RealmSettingsOid4vciTab = ({
               <Controller
                 name="attributes.vc.c-nonce-lifetime-seconds"
                 control={form.control}
-                rules={{ required: true, min: 1 }}
+                rules={{ required: t("required"), min: 60 }}
                 render={({ field }) => (
                   <TimeSelector
                     {...field}
                     id="oid4vciNonceLifetime"
-                    min={1}
+                    min={60}
                     units={["second"]}
                     value={field.value}
                     onChange={field.onChange}
@@ -57,6 +64,14 @@ export const RealmSettingsOid4vciTab = ({
                   />
                 )}
               />
+              {formState.errors?.["attributes.vc.c-nonce-lifetime-seconds"] && (
+                <span className="pf-v5-c-form__helper-text pf-m-error">
+                  {
+                    formState.errors["attributes.vc.c-nonce-lifetime-seconds"]
+                      .message
+                  }
+                </span>
+              )}
             </FormGroup>
             <FormGroup
               label={t("preAuthorizedCodeLifespan")}
@@ -71,12 +86,12 @@ export const RealmSettingsOid4vciTab = ({
               <Controller
                 name="attributes.preAuthorizedCodeLifespanS"
                 control={form.control}
-                rules={{ required: true, min: 1 }}
+                rules={{ required: t("required"), min: 60 }}
                 render={({ field }) => (
                   <TimeSelector
                     {...field}
                     id="preAuthorizedCodeLifespan"
-                    min={1}
+                    min={60}
                     units={["second"]}
                     value={field.value}
                     onChange={field.onChange}
@@ -84,6 +99,14 @@ export const RealmSettingsOid4vciTab = ({
                   />
                 )}
               />
+              {formState.errors?.["attributes.preAuthorizedCodeLifespanS"] && (
+                <span className="pf-v5-c-form__helper-text pf-m-error">
+                  {
+                    formState.errors["attributes.preAuthorizedCodeLifespanS"]
+                      .message
+                  }
+                </span>
+              )}
             </FormGroup>
             <ActionGroup>
               <Button

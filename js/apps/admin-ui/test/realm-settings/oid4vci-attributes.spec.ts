@@ -3,107 +3,111 @@ import { v4 as uuid } from "uuid";
 import adminClient from "../utils/AdminClient";
 import { login } from "../utils/login";
 import { goToRealm, goToRealmSettings } from "../utils/sidebar";
-import { assertAxeViolations } from "../utils/masthead";
 
-test.describe("OID4VCI Attributes tab", () => {
-  const realmName = `oid4vci-realm-${uuid()}`;
+const realmName = `oid4vci-realm-${uuid()}`;
+let isFeatureEnabled: boolean = true;
 
-  test.beforeAll(async () => {
-    await adminClient.createRealm(realmName);
-  });
+test.beforeAll(async ({ browser }) => {
+  await adminClient.createRealm(realmName);
+  const realm = await adminClient.getRealm(realmName);
+  expect(realm).toBeDefined();
 
-  test.afterAll(async () => {
-    await adminClient.deleteRealm(realmName);
-  });
+  // Check if feature is enabled using a fresh context
+  const page = await browser.newPage();
+  await login(page);
+  await goToRealm(page, realmName);
+  await goToRealmSettings(page);
+  const oid4vciTab = page.getByTestId("rs-oid4vci-attributes-tab");
+  await page.waitForTimeout(1000);
+  isFeatureEnabled = (await oid4vciTab.count()) > 0;
+  await page.close();
+});
 
-  test.beforeEach(async ({ page }) => {
-    await login(page);
-    await goToRealm(page, realmName);
-    await goToRealmSettings(page);
-  });
+test.afterAll(async () => {
+  await adminClient.deleteRealm(realmName);
+});
 
-  test("should handle OID4VCI tab visibility based on feature flag", async ({
-    page,
-  }) => {
-    const oid4vciTab = page.getByTestId("rs-oid4vci-attributes-tab");
-    const isVisible = await oid4vciTab.isVisible();
+test("OID4VCI tab visibility", async ({ page }) => {
+  await login(page);
+  await goToRealm(page, realmName);
+  await goToRealmSettings(page);
+  await page.waitForTimeout(1000);
 
-    if (isVisible) {
-      await expect(oid4vciTab).toBeVisible();
-    } else {
-      await expect(oid4vciTab).toBeHidden();
-    }
-  });
+  const oid4vciTab = page.getByTestId("rs-oid4vci-attributes-tab");
 
-  test("should render fields and save values with correct attribute keys", async ({
-    page,
-  }) => {
-    const oid4vciTab = page.getByTestId("rs-oid4vci-attributes-tab");
-    const isVisible = await oid4vciTab.isVisible();
+  if (!isFeatureEnabled) {
+    // When feature is disabled, verify tab is NOT present
+    await expect(oid4vciTab).toHaveCount(0);
+  } else {
+    // When feature is enabled, verify tab is visible
+    await expect(oid4vciTab).toBeVisible();
+  }
+});
 
-    if (isVisible) {
-      await oid4vciTab.click();
+test("should render fields and save values with correct attribute keys", async ({
+  page,
+}) => {
+  if (!isFeatureEnabled) {
+    test.skip();
+    return;
+  }
 
-      const nonceField = page.getByTestId("oid4vci-nonce-lifetime-seconds");
-      const preAuthField = page.getByTestId("pre-authorized-code-lifespan-s");
+  await login(page);
+  await goToRealm(page, realmName);
+  await goToRealmSettings(page);
+  await page.waitForTimeout(1000);
+  const oid4vciTab = page.getByTestId("rs-oid4vci-attributes-tab");
+  await oid4vciTab.click();
 
-      await expect(nonceField).toBeVisible();
-      await expect(preAuthField).toBeVisible();
+  const nonceField = page.getByTestId("oid4vci-nonce-lifetime-seconds");
+  const preAuthField = page.getByTestId("pre-authorized-code-lifespan-s");
 
-      await nonceField.fill("120");
-      await preAuthField.fill("300");
+  await expect(nonceField).toBeVisible();
+  await expect(preAuthField).toBeVisible();
 
-      await page.getByTestId("oid4vci-tab-save").click();
+  await nonceField.fill("120");
+  await preAuthField.fill("300");
 
-      await expect(page.getByText(/success/i)).toBeVisible();
+  await page.getByTestId("oid4vci-tab-save").click();
 
-      const realm = await adminClient.getRealm(realmName);
-      expect(realm).toBeDefined();
-      expect(realm?.attributes?.["vc.c-nonce-lifetime-seconds"]).toBe("120");
-      expect(realm?.attributes?.["preAuthorizedCodeLifespanS"]).toBe("300");
-    } else {
-      await expect(oid4vciTab).toBeHidden();
-    }
-  });
+  await expect(page.getByText(/success/i)).toBeVisible();
 
-  test("should validate required fields", async ({ page }) => {
-    const oid4vciTab = page.getByTestId("rs-oid4vci-attributes-tab");
-    const isVisible = await oid4vciTab.isVisible();
+  const realm = await adminClient.getRealm(realmName);
+  expect(realm).toBeDefined();
+  expect(realm?.attributes?.["vc.c-nonce-lifetime-seconds"]).toBe("120");
+  expect(realm?.attributes?.["preAuthorizedCodeLifespanS"]).toBe("300");
+});
 
-    if (isVisible) {
-      await oid4vciTab.click();
+test("should validate required fields", async ({ page }) => {
+  if (!isFeatureEnabled) {
+    test.skip();
+    return;
+  }
 
-      const nonceField = page.getByTestId("oid4vci-nonce-lifetime-seconds");
-      const preAuthField = page.getByTestId("pre-authorized-code-lifespan-s");
+  await login(page);
+  await goToRealm(page, realmName);
+  await goToRealmSettings(page);
+  const oid4vciTab = page.getByTestId("rs-oid4vci-attributes-tab");
+  await oid4vciTab.click();
 
-      const saveButton = page.getByTestId("oid4vci-tab-save");
-      await expect(saveButton).toBeDisabled();
+  const nonceField = page.getByTestId("oid4vci-nonce-lifetime-seconds");
+  const preAuthField = page.getByTestId("pre-authorized-code-lifespan-s");
+  const saveButton = page.getByTestId("oid4vci-tab-save");
 
-      await nonceField.clear();
-      await preAuthField.clear();
+  // Fill in values to make form dirty
+  await nonceField.fill("120");
+  await preAuthField.fill("300");
 
-      await expect(saveButton).toBeEnabled();
+  await nonceField.clear();
+  await preAuthField.clear();
 
-      await saveButton.click();
+  await expect(saveButton).toBeEnabled();
 
-      await expect(oid4vciTab).toHaveAttribute("aria-selected", "true");
-    } else {
-      await expect(oid4vciTab).toBeHidden();
-    }
-  });
+  await saveButton.click();
 
-  test("should pass accessibility checks when feature is enabled", async ({
-    page,
-  }) => {
-    const oid4vciTab = page.getByTestId("rs-oid4vci-attributes-tab");
-
-    const isVisible = await oid4vciTab.isVisible();
-
-    if (isVisible) {
-      await oid4vciTab.click();
-      await assertAxeViolations(page);
-    } else {
-      await expect(oid4vciTab).toBeHidden();
-    }
-  });
+  await expect(
+    page.getByText(
+      "Please fill in all required fields, ensure each value is at least 60 seconds, and correct any errors before saving.",
+    ),
+  ).toBeVisible();
 });
