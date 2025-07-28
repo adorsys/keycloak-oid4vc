@@ -39,6 +39,8 @@ import java.time.Instant;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Dedicated service for creating OpenID4VP authorization requests for user authentication.
@@ -95,7 +97,7 @@ public class AuthorizationRequestService {
                 .generatePresentationDefinition(VCT_CONFIG_DEFAULT, List.of(OAuth2Constants.USERNAME));
 
         // Build request object
-        RequestObject requestObject = templateRequestObject()
+        RequestObject requestObject = bootstrapRequestObject()
                 .setState(requestId)
                 .setPresentationDefinition(presentationDefinition);
 
@@ -130,9 +132,13 @@ public class AuthorizationRequestService {
     /**
      * Returns a starter for building request objects.
      */
-    private RequestObject templateRequestObject() {
+    private RequestObject bootstrapRequestObject() {
         String clientId = clientMetadata.getClientId();
         String responseUri = openID4VPBaseUrl + OID4VPUserAuthenticationEndpoint.RESPONSE_URI_PATH;
+
+        String nonce = Stream.generate(AuthorizationRequestService::generateRandomString)
+                .limit(2)
+                .collect(Collectors.joining("."));
 
         return new RequestObject()
                 .setIssuer(clientId)
@@ -141,7 +147,7 @@ public class AuthorizationRequestService {
                 .setResponseType(ResponseType.VP_TOKEN)
                 .setClientId(clientId)
                 .setClientIdScheme(ClientIdScheme.X509_SAN_DNS)
-                .setNonce(generateRandomString())
+                .setNonce(nonce)
                 .setAudience(SYMBOLIC_AUD)
                 .setClientMetadata(clientMetadata);
     }
