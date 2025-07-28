@@ -44,6 +44,8 @@ import org.keycloak.crypto.KeyWrapper;
 import org.keycloak.jose.jwk.JWK;
 import org.keycloak.jose.jwk.JWKBuilder;
 import org.keycloak.jose.jws.JWSBuilder;
+import org.keycloak.jose.jws.JWSInput;
+import org.keycloak.jose.jws.JWSInputException;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.utils.KeycloakModelUtils;
 import org.keycloak.protocol.oid4vc.OID4VCLoginProtocolFactory;
@@ -76,17 +78,9 @@ import org.keycloak.testsuite.util.AdminClientUtil;
 import org.keycloak.testsuite.util.UserBuilder;
 import org.keycloak.testsuite.util.oauth.OAuthClient;
 import org.keycloak.util.JsonSerialization;
-import org.testcontainers.shaded.org.bouncycastle.asn1.x500.X500Name;
-import org.testcontainers.shaded.org.bouncycastle.cert.X509v3CertificateBuilder;
-import org.testcontainers.shaded.org.bouncycastle.cert.jcajce.JcaX509CertificateConverter;
-import org.testcontainers.shaded.org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder;
-import org.testcontainers.shaded.org.bouncycastle.operator.ContentSigner;
-import org.testcontainers.shaded.org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
 
 import java.io.IOException;
-import java.math.BigInteger;
 import java.net.URI;
-import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.NoSuchAlgorithmException;
@@ -98,15 +92,14 @@ import java.security.cert.Certificate;
 import java.security.cert.X509Certificate;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.Collections;
-import java.util.Date;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
-import static org.keycloak.protocol.oid4vc.model.ProofType.JWT;
 import static org.keycloak.testsuite.oid4vc.issuance.signing.OID4VCIssuerEndpointTest.TIME_PROVIDER;
 import static org.keycloak.testsuite.oid4vc.issuance.signing.OID4VCSdJwtIssuingEndpointTest.getCredentialIssuer;
 import static org.keycloak.testsuite.oid4vc.issuance.signing.OID4VCSdJwtIssuingEndpointTest.getJtiGeneratedIdMapper;
@@ -546,18 +539,27 @@ public abstract class OID4VCTest extends AbstractTestRealmKeycloakTest {
                                                       KeyWrapper attestationKey,
                                                       JWK proofJwk,
                                                       String cNonce) {
-        KeyAttestationJwtBody payload = new KeyAttestationJwtBody();
-        payload.setIat((long) TIME_PROVIDER.currentTimeSeconds());
-        payload.setNonce(cNonce);
-        payload.setAttestedKeys(proofJwk);
-        payload.setKeyStorage(List.of(ISO18045ResistanceLevel.HIGH.getValue()));
-        payload.setUserAuthentication(List.of(ISO18045ResistanceLevel.HIGH.getValue()));
+        return createValidAttestationJwt(session, attestationKey, List.of(proofJwk), cNonce);
+    }
 
-        return new JWSBuilder()
-                .type(AttestationValidatorUtil.ATTESTATION_JWT_TYP)
-                .kid(attestationKey.getKid())
-                .jsonContent(payload)
-                .sign(new ECDSASignatureSignerContext(attestationKey));
+    protected static String createValidAttestationJwt(KeycloakSession session,
+                                                      KeyWrapper attestationKey,
+                                                      List<JWK> proofJwks,
+                                                      String cNonce) {
+        try {
+            KeyAttestationJwtBody payload = new KeyAttestationJwtBody();
+            payload.setNonce(cNonce);
+            payload.setKeyStorage(List.of(ISO18045ResistanceLevel.HIGH.getValue()));
+            payload.setUserAuthentication(List.of(ISO18045ResistanceLevel.HIGH.getValue()));
+
+            return new JWSBuilder()
+                    .type(AttestationValidatorUtil.ATTESTATION_JWT_TYP)
+                    .kid(attestationKey.getKid())
+                    .jsonContent(payload)
+                    .sign(new ECDSASignatureSignerContext(attestationKey));
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to create attestation JWT", e);
+        }
     }
 
     protected static VCIssuanceContext createVCIssuanceContext(KeycloakSession session) {
@@ -573,51 +575,52 @@ public abstract class OID4VCTest extends AbstractTestRealmKeycloakTest {
         return context;
     }
 
-    protected static String generateJwtProofWithKeyAttestation(KeycloakSession session, KeyWrapper proofKey, String attestationJwt, String cNonce) throws IOException {
+    protected static String generateJwtProofWithKeyAttestation(KeycloakSession session,
+                                                               KeyWrapper proofKey,
+                                                               String attestationJwt,
+                                                               String cNonce) throws IOException, JWSInputException {
+        if (proofKey.getPrivateKey() == null) {
+            throw new IllegalStateException("Proof key must have private key for signing");
+        }
         JWK proofJwk = JWKBuilder.create().ec(proofKey.getPublicKey());
+        proofJwk.setKeyId(proofKey.getKid());
+        proofJwk.setAlgorithm(proofKey.getAlgorithm());
+
         AccessToken token = new AccessToken();
         token.addAudience(getCredentialIssuer(session));
         token.setNonce(cNonce);
         token.issuedNow();
 
-        // Create a custom header string that includes the key_attestation
-        String customHeader = String.format("{\"alg\":\"ES256\",\"typ\":\"%s\",\"jwk\":%s,\"key_attestation\":\"%s\"}",
-                JwtProofValidator.PROOF_JWT_TYP,
-                JsonSerialization.writeValueAsString(proofJwk),
-                attestationJwt);
+        Map<String, Object> header = new LinkedHashMap<>();
+        header.put("alg", proofKey.getAlgorithm());
+        header.put("typ", JwtProofValidator.PROOF_JWT_TYP);
+        header.put("jwk", proofJwk);
+        header.put("key_attestation", attestationJwt);
 
-        // Use the custom header in the JWSBuilder
         return new JWSBuilder() {
             @Override
             protected String encodeHeader(String sigAlgName) {
-                return Base64Url.encode(customHeader.getBytes(StandardCharsets.UTF_8));
+                try {
+                    return Base64Url.encode(JsonSerialization.writeValueAsBytes(header));
+                } catch (IOException e) {
+                    throw new RuntimeException("Failed to encode header", e);
+                }
             }
-        }.contentType(JWT).jsonContent(token).sign(new ECDSASignatureSignerContext(proofKey));
+        }.jsonContent(token).sign(new ECDSASignatureSignerContext(proofKey));
     }
+
 
 
     protected static Map<String, Object> createAttestationPayload(JWK proofJwk, String cNonce) {
+        Objects.requireNonNull(proofJwk, "Proof JWK cannot be null");
         Map<String, Object> payload = new HashMap<>();
         payload.put("iat", TIME_PROVIDER.currentTimeSeconds());
-        payload.put("nonce", cNonce);
-        payload.put("attested_keys", proofJwk);
+        payload.put("attested_keys", List.of(proofJwk));
         payload.put("key_storage", List.of(ISO18045ResistanceLevel.HIGH.getValue()));
         payload.put("user_authentication", List.of(ISO18045ResistanceLevel.HIGH.getValue()));
+        payload.put("nonce", cNonce);
+
         return payload;
-    }
-
-    protected static X509Certificate createTestCertificate(KeyPair keyPair) throws Exception {
-        X500Name issuer = new X500Name("CN=Test CA");
-        X500Name subject = new X500Name("CN=Test Certificate");
-        BigInteger serial = BigInteger.valueOf(System.currentTimeMillis());
-        Date notBefore = new Date(System.currentTimeMillis() - 1000L * 60 * 60 * 24);
-        Date notAfter = new Date(System.currentTimeMillis() + 1000L * 60 * 60 * 24 * 365);
-
-        X509v3CertificateBuilder certBuilder = new JcaX509v3CertificateBuilder(
-                issuer, serial, notBefore, notAfter, subject, keyPair.getPublic());
-
-        ContentSigner signer = new JcaContentSignerBuilder("SHA256withECDSA").build(keyPair.getPrivate());
-        return new JcaX509CertificateConverter().getCertificate(certBuilder.build(signer));
     }
 
     public static <T> T fromJsonString(String representation, Class<T> clazz)

@@ -19,10 +19,8 @@ package org.keycloak.protocol.oid4vc.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import org.keycloak.jose.jwk.JWK;
 
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -80,8 +78,8 @@ public class KeyAttestationJwtBody {
         return attestedKeys;
     }
 
-    public KeyAttestationJwtBody setAttestedKeys(JWK attestedKeys) {
-        this.attestedKeys = Collections.singletonList(attestedKeys);
+    public KeyAttestationJwtBody setAttestedKeys(List<JWK> attestedKeys) {
+        this.attestedKeys = attestedKeys;
         return this;
     }
 

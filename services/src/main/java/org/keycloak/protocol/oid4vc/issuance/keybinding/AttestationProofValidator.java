@@ -17,19 +17,17 @@
 
 package org.keycloak.protocol.oid4vc.issuance.keybinding;
 
-import org.keycloak.common.VerificationException;
 import org.keycloak.jose.jwk.JWK;
-import org.keycloak.jose.jws.JWSInputException;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.protocol.oid4vc.issuance.VCIssuanceContext;
 import org.keycloak.protocol.oid4vc.issuance.VCIssuerException;
 import org.keycloak.protocol.oid4vc.model.AttestationProof;
+import org.keycloak.protocol.oid4vc.model.KeyAttestationJwtBody;
 import org.keycloak.protocol.oid4vc.model.Proof;
 import org.keycloak.protocol.oid4vc.model.ProofType;
 import org.keycloak.protocol.oid4vc.model.SupportedCredentialConfiguration;
 
-import java.io.IOException;
-import java.security.GeneralSecurityException;
+
 import java.util.List;
 import java.util.Optional;
 
@@ -61,17 +59,18 @@ public class AttestationProofValidator extends AbstractProofValidator {
             String jwt = Optional.ofNullable(proof.getAttestation())
                     .orElseThrow(() -> new VCIssuerException("Attestation JWT is missing"));
 
-            // Validate attestation and get attested keys
-            List<JWK> attestedKeys = AttestationValidatorUtil.validateAttestationJwt(
-                    jwt, keycloakSession, vcIssuanceContext, keyResolver).getAttestedKeys();
+            KeyAttestationJwtBody attestationBody = AttestationValidatorUtil.validateAttestationJwt(
+                    jwt, keycloakSession, vcIssuanceContext, keyResolver);
 
-            if (attestedKeys == null || attestedKeys.isEmpty()) {
+            if (attestationBody.getAttestedKeys() == null || attestationBody.getAttestedKeys().isEmpty()) {
                 throw new VCIssuerException("No valid attested keys found in attestation proof");
             }
 
-            return attestedKeys;
+            return attestationBody.getAttestedKeys();
+        } catch (VCIssuerException e) {
+            throw e; // Re-throw specific exceptions
         } catch (Exception e) {
-            throw new VCIssuerException("Failed to validate attestation proof", e);
+            throw new VCIssuerException("Failed to validate attestation proof: " + e.getMessage(), e);
         }
     }
 

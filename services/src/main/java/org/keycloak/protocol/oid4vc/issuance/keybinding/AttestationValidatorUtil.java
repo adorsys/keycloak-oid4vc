@@ -17,7 +17,9 @@
 
 package org.keycloak.protocol.oid4vc.issuance.keybinding;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
+import org.jboss.logging.Logger;
 import org.keycloak.common.VerificationException;
 import org.keycloak.crypto.KeyUse;
 import org.keycloak.crypto.KeyWrapper;
@@ -67,6 +69,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import static org.keycloak.protocol.oid4vc.model.ProofType.JWT;
 import static org.keycloak.services.clientpolicy.executor.FapiConstant.ALLOWED_ALGORITHMS;
 
 /**
@@ -75,6 +78,8 @@ import static org.keycloak.services.clientpolicy.executor.FapiConstant.ALLOWED_A
  * @author <a href="mailto:Rodrick.Awambeng@adorsys.com">Rodrick Awambeng</a>
  */
 public class AttestationValidatorUtil {
+
+    private static final org.jboss.logging.Logger LOGGER = Logger.getLogger(AttestationValidatorUtil.class);
 
     public static final String ATTESTATION_JWT_TYP = "keyattestation+jwt";
     private static final String CACERTS_PATH = System.getProperty("javax.net.ssl.trustStore",
@@ -87,21 +92,43 @@ public class AttestationValidatorUtil {
             KeycloakSession keycloakSession,
             VCIssuanceContext vcIssuanceContext,
             AttestationKeyResolver keyResolver) throws IOException, JWSInputException,
-            VerificationException, GeneralSecurityException {
+            VerificationException{
 
-        if (attestationJwt == null || attestationJwt.isEmpty()) {
-            throw new VCIssuerException("Attestation JWT is missing");
+        if (attestationJwt == null || attestationJwt.split("\\.").length != 3) {
+            throw new VCIssuerException("Invalid JWT format");
         }
 
+        Logger logger = Logger.getLogger(AttestationValidatorUtil.class);
+        logger.debug("Processing attestation JWT: " + attestationJwt);
+
         JWSInput jwsInput = new JWSInput(attestationJwt);
+
+        // Log raw payload for debugging
+        String payloadString = new String(jwsInput.getContent(), StandardCharsets.UTF_8);
+        logger.debug("Raw attestation payload: " + payloadString);
+
+        // Validate that payload is JSON
+        try {
+            JsonSerialization.mapper.readTree(payloadString);
+        } catch (JsonProcessingException e) {
+            logger.error("Invalid JSON in attestation payload: " + payloadString, e);
+            throw new VCIssuerException("Invalid JSON in attestation payload: " + payloadString, e);
+        }
+
+        KeyAttestationJwtBody attestationBody;
+        try {
+            attestationBody = JsonSerialization.readValue(
+                    jwsInput.getContent(),
+                    KeyAttestationJwtBody.class
+            );
+        } catch (IOException e) {
+            throw new VCIssuerException("Invalid attestation payload format", e);
+        }
+
         JWSHeader header = jwsInput.getHeader();
         validateJwsHeader(header);
 
-        // Parse payload into proper object
-        KeyAttestationJwtBody attestationBody = JsonSerialization.readValue(
-                jwsInput.getContent(), KeyAttestationJwtBody.class);
-
-        // Signature verification remains the same
+        // Verify the signature
         Map<String, Object> rawHeader = JsonSerialization.mapper.readValue(
                 jwsInput.getEncodedHeader(), new TypeReference<>() {});
 
@@ -122,6 +149,11 @@ public class AttestationValidatorUtil {
         }
 
         validateAttestationPayload(keycloakSession, vcIssuanceContext, attestationBody);
+
+        if (attestationBody.getAttestedKeys() == null) {
+            throw new VCIssuerException("Missing required attested_keys claim in attestation");
+        }
+
         return attestationBody;
     }
 
@@ -187,7 +219,7 @@ public class AttestationValidatorUtil {
         SupportedProofTypeData proofTypeData = vcIssuanceContext.getCredentialConfig()
                 .getProofTypesSupported()
                 .getSupportedProofTypes()
-                .get("jwt");
+                .get(JWT);
 
         return proofTypeData != null ? proofTypeData.getKeyAttestationsRequired() : null;
     }
@@ -250,35 +282,56 @@ public class AttestationValidatorUtil {
     private static SignatureVerifierContext verifierFromX5CChain(
             List<String> x5cList,
             String alg,
-            KeycloakSession keycloakSession
-    ) throws GeneralSecurityException, IOException, VerificationException {
+            KeycloakSession keycloakSession) throws VCIssuerException {
 
-        if (x5cList.isEmpty()) {
-            throw new VCIssuerException("Empty x5c header in attestation JWT");
+        try {
+            CertificateFactory cf = CertificateFactory.getInstance("X.509");
+            List<X509Certificate> certChain = new ArrayList<>();
+
+            for (String certBase64 : x5cList) {
+                // Proper Base64 URL-safe decoding
+                byte[] certBytes = Base64.getUrlDecoder().decode(certBase64);
+                try (InputStream in = new ByteArrayInputStream(certBytes)) {
+                    certChain.add((X509Certificate) cf.generateCertificate(in));
+                }
+            }
+
+            // Create certificate path
+            CertPath certPath = cf.generateCertPath(certChain);
+
+            // Validate certificate chain
+            CertPathValidator validator = CertPathValidator.getInstance("PKIX");
+            PKIXParameters params = new PKIXParameters(getTrustAnchors());
+            params.setRevocationEnabled(false);
+
+            validator.validate(certPath, params);
+
+            // Get public key from first certificate
+            PublicKey publicKey = certChain.get(0).getPublicKey();
+            JWK certJwk = convertPublicKeyToJWK(publicKey, alg, certChain);
+
+            return verifierFromResolvedJWK(certJwk, alg, keycloakSession);
+
+        } catch (Exception e) {
+            throw new VCIssuerException("Failed to validate x5c certificate chain", e);
+        }
+    }
+
+    private static Set<TrustAnchor> getTrustAnchors() throws Exception {
+        KeyStore trustStore = KeyStore.getInstance(KeyStore.getDefaultType());
+        try (InputStream in = new FileInputStream(CACERTS_PATH)) {
+            trustStore.load(in, DEFAULT_TRUSTSTORE_PASSWORD);
         }
 
-        CertificateFactory cf = CertificateFactory.getInstance("X.509");
-        List<X509Certificate> certChain = new ArrayList<>();
-
-        for (String certBase64 : x5cList) {
-            byte[] certBytes = Base64.getDecoder().decode(certBase64);
-            try (InputStream in = new ByteArrayInputStream(certBytes)) {
-                certChain.add((X509Certificate) cf.generateCertificate(in));
+        Set<TrustAnchor> anchors = new HashSet<>();
+        Enumeration<String> aliases = trustStore.aliases();
+        while (aliases.hasMoreElements()) {
+            Certificate cert = trustStore.getCertificate(aliases.nextElement());
+            if (cert instanceof X509Certificate) {
+                anchors.add(new TrustAnchor((X509Certificate) cert, null));
             }
         }
-
-        CertPath certPath = cf.generateCertPath(certChain);
-        Set<TrustAnchor> anchors = loadTrustAnchorsFromDefaultTrustStore();
-
-        PKIXParameters params = new PKIXParameters(anchors);
-        params.setRevocationEnabled(false);
-
-        CertPathValidator.getInstance("PKIX").validate(certPath, params);
-
-        PublicKey publicKey = certChain.get(0).getPublicKey();
-        JWK certJwk = convertPublicKeyToJWK(publicKey, alg, certChain);
-
-        return verifierFromResolvedJWK(certJwk, alg, keycloakSession);
+        return anchors;
     }
 
     private static SignatureVerifierContext verifierFromResolvedJWK(

@@ -26,6 +26,7 @@ import java.util.Objects;
 /**
  * Metadata describing proof types supported by the Credential Issuer.
  *
+ * @author <a href="mailto:francis.pouatcha@adorsys.com">Francis Pouatcha</a>
  * @author <a href="mailto:Ingrid.Kamga@adorsys.com">Ingrid Kamga</a>
  * @see <a href="https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0-15.html#name-credential-issuer-metadata-p">
  * Credential Issuer Metadata Parameters</a>

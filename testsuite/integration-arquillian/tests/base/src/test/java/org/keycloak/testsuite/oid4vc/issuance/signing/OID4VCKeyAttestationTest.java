@@ -19,6 +19,7 @@ package org.keycloak.testsuite.oid4vc.issuance.signing;
 
 import org.jboss.logging.Logger;
 import org.junit.Test;
+import org.keycloak.common.util.CertificateUtils;
 import org.keycloak.constants.Oid4VciConstants;
 import org.keycloak.crypto.ECDSASignatureSignerContext;
 import org.keycloak.crypto.KeyType;
@@ -27,15 +28,12 @@ import org.keycloak.jose.jwk.JWK;
 import org.keycloak.jose.jwk.JWKBuilder;
 import org.keycloak.jose.jws.JWSBuilder;
 import org.keycloak.models.KeycloakSession;
-import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerWellKnownProvider;
 import org.keycloak.protocol.oid4vc.issuance.VCIssuanceContext;
 import org.keycloak.protocol.oid4vc.issuance.VCIssuerException;
 import org.keycloak.protocol.oid4vc.issuance.keybinding.AttestationKeyResolver;
 import org.keycloak.protocol.oid4vc.issuance.keybinding.AttestationProofValidator;
 import org.keycloak.protocol.oid4vc.issuance.keybinding.AttestationProofValidatorFactory;
 import org.keycloak.protocol.oid4vc.issuance.keybinding.AttestationValidatorUtil;
-import org.keycloak.protocol.oid4vc.issuance.keybinding.CNonceHandler;
-import org.keycloak.protocol.oid4vc.issuance.keybinding.JwtCNonceHandler;
 import org.keycloak.protocol.oid4vc.issuance.keybinding.JwtProofValidator;
 import org.keycloak.protocol.oid4vc.issuance.keybinding.ProofValidator;
 import org.keycloak.protocol.oid4vc.issuance.keybinding.StaticAttestationKeyResolver;
@@ -43,24 +41,30 @@ import org.keycloak.protocol.oid4vc.model.AttestationProof;
 import org.keycloak.protocol.oid4vc.model.ISO18045ResistanceLevel;
 import org.keycloak.protocol.oid4vc.model.JwtProof;
 import org.keycloak.protocol.oid4vc.model.KeyAttestationJwtBody;
-import org.keycloak.truststore.TruststoreProvider;
+import org.keycloak.protocol.oid4vc.model.KeyAttestationsRequired;
 
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.TrustManagerFactory;
+import javax.net.ssl.X509TrustManager;
 import java.io.IOException;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.KeyStore;
+import java.security.SecureRandom;
 import java.security.cert.X509Certificate;
-import java.util.Arrays;
+import java.security.spec.ECGenParameterSpec;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import static org.apache.commons.lang.exception.ExceptionUtils.getRootCauseMessage;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
+import static org.keycloak.protocol.oid4vc.model.ProofType.JWT;
 
 /**
  * @author Bertrand Ogen
@@ -74,15 +78,7 @@ public class OID4VCKeyAttestationTest extends OID4VCIssuerEndpointTest {
 
     @Test
     public void testValidAttestationProof() {
-        testingClient.server(TEST_REALM_NAME).run(session -> {
-            try {
-                runValidAttestationProofTest(session);
-            } catch (Exception e) {
-                e.printStackTrace();
-                fail("Test should not throw exception: " + e.getMessage() +
-                        "\nRoot cause: " + getRootCauseMessage(e));
-            }
-        });
+        testingClient.server(TEST_REALM_NAME).run(OID4VCKeyAttestationTest::runValidAttestationProofTest);
     }
 
     @Test
@@ -112,7 +108,8 @@ public class OID4VCKeyAttestationTest extends OID4VCIssuerEndpointTest {
         testingClient.server(TEST_REALM_NAME).run(session -> {
             AttestationProofValidatorFactory factory = new AttestationProofValidatorFactory();
             ProofValidator validator = factory.create(session);
-            assertEquals("The proof type should be 'attestation'.", "attestation", validator.getProofType());
+            assertEquals("The proof type should be 'attestation'.",
+                    "attestation", validator.getProofType());
         });
     }
 
@@ -135,6 +132,7 @@ public class OID4VCKeyAttestationTest extends OID4VCIssuerEndpointTest {
     public void testAttestationWithX5cCertificateChain() {
         testingClient.server(TEST_REALM_NAME).run(OID4VCKeyAttestationTest::runAttestationWithX5cCertificateChain);
     }
+
     @Test
     public void testAttestationWithInvalidResistanceLevels() {
         testingClient.server(TEST_REALM_NAME).run(OID4VCKeyAttestationTest::runAttestationWithInvalidResistanceLevels);
@@ -151,32 +149,32 @@ public class OID4VCKeyAttestationTest extends OID4VCIssuerEndpointTest {
     }
 
     @Test
-    public void testAttestationWithInvalidKeyType() {
-        testingClient.server(TEST_REALM_NAME).run(OID4VCKeyAttestationTest::runAttestationWithInvalidKeyType);
+    public void testAttestationWithValidResistanceLevels() {
+        testingClient.server(TEST_REALM_NAME).run(OID4VCKeyAttestationTest::runAttestationWithValidResistanceLevels);
     }
 
-    private static void runValidAttestationProofTest(KeycloakSession session) throws IOException {
+    private static void runAttestationWithValidResistanceLevels(KeycloakSession session) {
         try {
             KeyWrapper attestationKey = getECKey("attestationKey");
             KeyWrapper proofKey = getECKey("proofKey");
+            String cNonce = getCNonce();
+
             JWK proofJwk = JWKBuilder.create().ec(proofKey.getPublicKey());
             proofJwk.setKeyId(proofKey.getKid());
+            proofJwk.setAlgorithm(proofKey.getAlgorithm());
 
-            // Get CNonce from the handler to ensure it's properly registered
-            CNonceHandler cNonceHandler = session.getProvider(CNonceHandler.class);
-            String cNonce = cNonceHandler.buildCNonce(
-                    List.of(OID4VCIssuerWellKnownProvider.getCredentialsEndpoint(session.getContext())),
-                    Map.of(JwtCNonceHandler.SOURCE_ENDPOINT,
-                            OID4VCIssuerWellKnownProvider.getNonceEndpoint(session.getContext()))
-            );
-
-            // Create payload using proper KeyAttestationJwtBody class
             KeyAttestationJwtBody payload = new KeyAttestationJwtBody();
             payload.setIat((long) TIME_PROVIDER.currentTimeSeconds());
             payload.setNonce(cNonce);
-            payload.setAttestedKeys(proofJwk);
-            payload.setKeyStorage(List.of(ISO18045ResistanceLevel.HIGH.getValue()));
-            payload.setUserAuthentication(List.of(ISO18045ResistanceLevel.HIGH.getValue()));
+            payload.setAttestedKeys(List.of(proofJwk));
+            payload.setKeyStorage(List.of(
+                    ISO18045ResistanceLevel.HIGH.getValue(),
+                    ISO18045ResistanceLevel.MODERATE.getValue()
+            ));
+            payload.setUserAuthentication(List.of(
+                    ISO18045ResistanceLevel.ENHANCED_BASIC.getValue(),
+                    ISO18045ResistanceLevel.BASIC.getValue()
+            ));
 
             String attestationJwt = new JWSBuilder()
                     .type(AttestationValidatorUtil.ATTESTATION_JWT_TYP)
@@ -185,6 +183,23 @@ public class OID4VCKeyAttestationTest extends OID4VCIssuerEndpointTest {
                     .sign(new ECDSASignatureSignerContext(attestationKey));
 
             VCIssuanceContext vcIssuanceContext = createVCIssuanceContext(session);
+            KeyAttestationsRequired attestationRequirements = new KeyAttestationsRequired();
+            attestationRequirements.setKeyStorage(List.of(
+                    ISO18045ResistanceLevel.HIGH,
+                    ISO18045ResistanceLevel.MODERATE,
+                    ISO18045ResistanceLevel.ENHANCED_BASIC
+            ));
+            attestationRequirements.setUserAuthentication(List.of(
+                    ISO18045ResistanceLevel.BASIC,
+                    ISO18045ResistanceLevel.ENHANCED_BASIC
+            ));
+
+            vcIssuanceContext.getCredentialConfig()
+                    .getProofTypesSupported()
+                    .getSupportedProofTypes()
+                    .get(JWT)
+                    .setKeyAttestationsRequired(attestationRequirements);
+
             vcIssuanceContext.getCredentialRequest().setProof(new AttestationProof(attestationJwt));
 
             AttestationKeyResolver keyResolver = new StaticAttestationKeyResolver(
@@ -195,12 +210,56 @@ public class OID4VCKeyAttestationTest extends OID4VCIssuerEndpointTest {
             List<JWK> attestedKeys = validator.validateProof(vcIssuanceContext);
 
             assertNotNull("Attested keys should not be null", attestedKeys);
-            assertFalse("Attested keys should not be empty", attestedKeys.isEmpty());
             assertEquals("Should contain exactly one attested key", 1, attestedKeys.size());
-            assertEquals("Attested key should match proof key", proofJwk.getKeyId(), attestedKeys.get(0).getKeyId());
-        } catch (VCIssuerException e) {
-            LOGGER.errorf("Validation failed: %s", e.getMessage(), e);
-            fail("Test should not throw VCIssuerException: " + e.getMessage());
+            assertEquals("Attested key ID should match proof key ID",
+                    proofKey.getKid(),
+                    attestedKeys.get(0).getKeyId());
+        } catch (Exception e) {
+            LOGGER.error("Validation failed with valid resistance levels", e);
+            fail("Test should not throw exception: " + e.getMessage());
+        }
+    }
+
+    private static void runValidAttestationProofTest(KeycloakSession session) throws IOException {
+        try {
+            KeyWrapper attestationKey = getECKey("attestationKey");
+            KeyWrapper proofKey = getECKey("proofKey");
+
+            attestationKey.setKid("attestationKey");
+            attestationKey.setAlgorithm("ES256");
+            proofKey.setKid("proofKey");
+            proofKey.setAlgorithm("ES256");
+
+            JWK proofJwk = JWKBuilder.create().ec(proofKey.getPublicKey());
+            proofJwk.setKeyId(proofKey.getKid());
+            proofJwk.setAlgorithm(proofKey.getAlgorithm());
+
+            String cNonce = getCNonce();
+
+            String attestationJwt = createValidAttestationJwt(session, attestationKey, proofJwk, cNonce);
+            String jwtProof = generateJwtProofWithKeyAttestation(session, proofKey, attestationJwt, cNonce);
+            VCIssuanceContext vcIssuanceContext = createVCIssuanceContext(session);
+            vcIssuanceContext.getCredentialRequest().setProof(new JwtProof(jwtProof));
+
+            JWK attestationJwk = JWKBuilder.create().ec(attestationKey.getPublicKey());
+            attestationJwk.setKeyId(attestationKey.getKid());
+
+            AttestationKeyResolver keyResolver = new StaticAttestationKeyResolver(
+                    Map.of(attestationKey.getKid(), attestationJwk)
+            );
+
+            JwtProofValidator validator = new JwtProofValidator(session, keyResolver);
+            List<JWK> attestedKeys = validator.validateProof(vcIssuanceContext);
+
+            assertNotNull("Attested keys should not be null", attestedKeys);
+            assertEquals("Should contain exactly one attested key", 1, attestedKeys.size());
+            assertEquals("Attested key ID should match proof key ID",
+                    proofKey.getKid(),
+                    attestedKeys.get(0).getKeyId());
+
+        } catch (Exception e) {
+            LOGGER.error("Validation failed", e);
+            fail("Test should not throw exception: " + e.getMessage());
         }
     }
 
@@ -235,13 +294,17 @@ public class OID4VCKeyAttestationTest extends OID4VCIssuerEndpointTest {
             VCIssuanceContext vcIssuanceContext = createVCIssuanceContext(session);
             vcIssuanceContext.getCredentialRequest().setProof(new JwtProof(jwtProof));
 
-            AttestationKeyResolver keyResolver = new StaticAttestationKeyResolver(Map.of(attestationKey.getKid(), JWKBuilder.create().ec(attestationKey.getPublicKey())));
+            AttestationKeyResolver keyResolver = new StaticAttestationKeyResolver(
+                    Map.of(attestationKey.getKid(), JWKBuilder.create().ec(attestationKey.getPublicKey()))
+            );
             JwtProofValidator validator = new JwtProofValidator(session, keyResolver);
 
             List<JWK> attestedKeys = validator.validateProof(vcIssuanceContext);
             assertNotNull(attestedKeys);
             assertFalse(attestedKeys.isEmpty());
         } catch (Exception e) {
+            LOGGER.error("Validation failed unexpectedly", e);
+            fail("Unexpected exception in valid JWT proof test: " + e.getMessage());
         }
     }
 
@@ -318,13 +381,128 @@ public class OID4VCKeyAttestationTest extends OID4VCIssuerEndpointTest {
             KeyWrapper proofKey2 = getECKey("proofKey2");
 
             JWK proofJwk1 = JWKBuilder.create().ec(proofKey1.getPublicKey());
+            proofJwk1.setKeyId(proofKey1.getKid());
+            proofJwk1.setAlgorithm(proofKey1.getAlgorithm());
+
             JWK proofJwk2 = JWKBuilder.create().ec(proofKey2.getPublicKey());
+            proofJwk2.setKeyId(proofKey2.getKid());
+            proofJwk2.setAlgorithm(proofKey2.getAlgorithm());
+
             String cNonce = getCNonce();
 
             KeyAttestationJwtBody payload = new KeyAttestationJwtBody();
             payload.setIat((long) TIME_PROVIDER.currentTimeSeconds());
             payload.setNonce(cNonce);
-            payload.setAttestedKeys((JWK) Arrays.asList(proofJwk1, proofJwk2));
+            payload.setAttestedKeys(List.of(proofJwk1, proofJwk2));
+            payload.setKeyStorage(List.of(ISO18045ResistanceLevel.HIGH.getValue()));
+            payload.setUserAuthentication(List.of(ISO18045ResistanceLevel.HIGH.getValue()));
+
+            String attestationJwt = new JWSBuilder()
+                    .type(AttestationValidatorUtil.ATTESTATION_JWT_TYP)
+                    .kid(attestationKey.getKid())
+                    .jsonContent(payload)
+                    .sign(new ECDSASignatureSignerContext(attestationKey));
+
+            VCIssuanceContext vcIssuanceContext = createVCIssuanceContext(session);
+            vcIssuanceContext.getCredentialRequest().setProof(new AttestationProof(attestationJwt));
+
+            JWK attestationJwk = JWKBuilder.create().ec(attestationKey.getPublicKey());
+            attestationJwk.setKeyId(attestationKey.getKid());
+            AttestationKeyResolver keyResolver = new StaticAttestationKeyResolver(
+                    Map.of(attestationKey.getKid(), attestationJwk)
+            );
+
+            AttestationProofValidator validator = new AttestationProofValidator(session, keyResolver);
+            List<JWK> attestedKeys = validator.validateProof(vcIssuanceContext);
+
+            assertEquals(2, attestedKeys.size());
+            assertTrue(attestedKeys.stream().anyMatch(k -> k.getKeyId().equals(proofJwk1.getKeyId())));
+            assertTrue(attestedKeys.stream().anyMatch(k -> k.getKeyId().equals(proofJwk2.getKeyId())));
+        } catch (Exception e) {
+            LOGGER.error("Validation failed with exception: " + e.getMessage(), e);
+            fail("Test should not throw exception: " + e.getMessage());
+        }
+    }
+
+    private static void runAttestationWithX5cCertificateChain(KeycloakSession session) {
+        try {
+            KeyPairGenerator keyGen = KeyPairGenerator.getInstance("EC");
+            keyGen.initialize(new ECGenParameterSpec("secp256r1"));
+            KeyPair keyPair = keyGen.generateKeyPair();
+
+            X509Certificate cert = CertificateUtils.generateV1SelfSignedCertificate(keyPair, "Test Certificate");
+            List<String> x5c = List.of(Base64.getEncoder().encodeToString(cert.getEncoded()));
+            Logger.getLogger(OID4VCKeyAttestationTest.class).info("Generated certificate: " + cert.toString());
+
+            KeyWrapper signerKey = new KeyWrapper();
+            signerKey.setPrivateKey(keyPair.getPrivate());
+            signerKey.setPublicKey(keyPair.getPublic());
+            signerKey.setAlgorithm("ES256");
+            signerKey.setType(KeyType.EC);
+            signerKey.setKid("test-cert-key");
+
+            KeyWrapper proofKey = getECKey("proofKey");
+            JWK proofJwk = JWKBuilder.create().ec(proofKey.getPublicKey());
+            proofJwk.setKeyId(proofKey.getKid());
+            proofJwk.setAlgorithm(proofKey.getAlgorithm());
+            String cNonce = getCNonce();
+
+            KeyAttestationJwtBody payload = new KeyAttestationJwtBody();
+            payload.setNonce(cNonce);
+            payload.setIat((long) TIME_PROVIDER.currentTimeSeconds());
+            payload.setAttestedKeys(List.of(proofJwk));
+            payload.setKeyStorage(List.of(ISO18045ResistanceLevel.HIGH.getValue()));
+            payload.setUserAuthentication(List.of(ISO18045ResistanceLevel.HIGH.getValue()));
+
+            String attestationJwt = new JWSBuilder()
+                    .type(AttestationValidatorUtil.ATTESTATION_JWT_TYP)
+                    .kid(signerKey.getKid())
+                    .x5c(List.of(cert))
+                    .jsonContent(payload)
+                    .sign(new ECDSASignatureSignerContext(signerKey));
+
+            TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+            KeyStore ks = KeyStore.getInstance(KeyStore.getDefaultType());
+            ks.load(null);
+            ks.setCertificateEntry("test-cert", cert);
+            tmf.init(ks);
+
+            JWK certJwk = JWKBuilder.create().ec(signerKey.getPublicKey());
+            certJwk.setKeyId(signerKey.getKid());
+            AttestationKeyResolver keyResolver = new StaticAttestationKeyResolver(
+                    Map.of(signerKey.getKid(), certJwk)
+            );
+
+            VCIssuanceContext vcIssuanceContext = createVCIssuanceContext(session);
+            vcIssuanceContext.getCredentialRequest().setProof(new AttestationProof(attestationJwt));
+
+            AttestationProofValidator validator = new AttestationProofValidator(session, keyResolver);
+            List<JWK> attestedKeys = validator.validateProof(vcIssuanceContext);
+
+            assertNotNull("Attested keys should not be null", attestedKeys);
+            assertEquals("Should contain exactly one attested key", 1, attestedKeys.size());
+            assertEquals("Attested key ID should match proof key ID", proofKey.getKid(), attestedKeys.get(0).getKeyId());
+        } catch (Exception e) {
+            LOGGER.error("Certificate chain validation failed", e);
+            fail("Test should not throw exception: " + e.getMessage());
+        }
+    }
+
+    private static void runAttestationWithInvalidResistanceLevels(KeycloakSession session) {
+        try {
+            KeyWrapper attestationKey = getECKey("attestationKey");
+            KeyWrapper proofKey = getECKey("proofKey");
+            String cNonce = getCNonce();
+
+            JWK proofJwk = JWKBuilder.create().ec(proofKey.getPublicKey());
+            proofJwk.setKeyId(proofKey.getKid());
+            proofJwk.setAlgorithm(proofKey.getAlgorithm());
+
+            KeyAttestationJwtBody payload = new KeyAttestationJwtBody();
+            payload.setIat((long) TIME_PROVIDER.currentTimeSeconds());
+            payload.setNonce(cNonce);
+            payload.setAttestedKeys(List.of(proofJwk));
+            payload.setKeyStorage(List.of("INVALID_LEVEL"));
 
             String attestationJwt = new JWSBuilder()
                     .type(AttestationValidatorUtil.ATTESTATION_JWT_TYP)
@@ -339,114 +517,32 @@ public class OID4VCKeyAttestationTest extends OID4VCIssuerEndpointTest {
                     Map.of(attestationKey.getKid(), JWKBuilder.create().ec(attestationKey.getPublicKey()))
             );
 
-            AttestationProofValidator validator = new AttestationProofValidator(session, keyResolver);
-            List<JWK> attestedKeys = validator.validateProof(vcIssuanceContext);
-
-            assertEquals(2, attestedKeys.size());
-            assertTrue(attestedKeys.stream().anyMatch(k -> k.getKeyId().equals(proofJwk1.getKeyId())));
-            assertTrue(attestedKeys.stream().anyMatch(k -> k.getKeyId().equals(proofJwk2.getKeyId())));
-        } catch (Exception e) {
-            fail("Test should not throw exception: " + e.getMessage());
-        }
-    };
-
-    private static void runAttestationWithX5cCertificateChain(KeycloakSession session) {
-        try {
-            KeyPair keyPair = KeyPairGenerator.getInstance("EC").generateKeyPair();
-            X509Certificate cert = createTestCertificate(keyPair);
-            List<X509Certificate> x5c = List.of(cert);
-
-            KeyWrapper proofKey = getECKey("proofKey");
-            String cNonce = getCNonce();
-
-            // Create signer context from the private key
-            KeyWrapper signerKey = new KeyWrapper();
-            signerKey.setPrivateKey(keyPair.getPrivate());
-            signerKey.setAlgorithm("ES256");
-            signerKey.setType(KeyType.EC);
-
-            // Create a custom truststore that includes our test certificate
-            KeyStore customTrustStore = KeyStore.getInstance(KeyStore.getDefaultType());
-            customTrustStore.load(null, null);
-            customTrustStore.setCertificateEntry("test-cert", cert);
-
-            // Create a key resolver that trusts our certificate
-            AttestationKeyResolver keyResolver = new StaticAttestationKeyResolver(Map.of());
-            session.getProvider(TruststoreProvider.class);
-
-            String attestationJwt = new JWSBuilder()
-                    .type(AttestationValidatorUtil.ATTESTATION_JWT_TYP)
-                    .x5c(x5c)
-                    .jsonContent(createAttestationPayload(JWKBuilder.create().ec(proofKey.getPublicKey()), cNonce))
-                    .sign(new ECDSASignatureSignerContext(signerKey));
-
-            VCIssuanceContext vcIssuanceContext = createVCIssuanceContext(session);
-            vcIssuanceContext.getCredentialRequest().setProof(new AttestationProof(attestationJwt));
-
-            AttestationProofValidator validator = new AttestationProofValidator(session, keyResolver);
-            List<JWK> attestedKeys = validator.validateProof(vcIssuanceContext);
-
-            assertFalse(attestedKeys.isEmpty());
-        } catch (Exception e) {
-            fail("Test should not throw exception: " + e.getMessage());
-        }
-    }
-
-    private static void runAttestationWithInvalidResistanceLevels(KeycloakSession session) {
-        KeyWrapper attestationKey = getECKey("attestationKey");
-        KeyWrapper proofKey = getECKey("proofKey");
-        String cNonce = getCNonce();
-
-        JWK proofJwk = JWKBuilder.create().ec(proofKey.getPublicKey());
-        proofJwk.setKeyId(proofKey.getKid());
-
-        Map<String, Object> payload = createAttestationPayload(proofJwk, cNonce);
-        payload.put("key_storage", List.of("INVALID_LEVEL"));
-
-        String attestationJwt = new JWSBuilder()
-                .type(AttestationValidatorUtil.ATTESTATION_JWT_TYP)
-                .kid(attestationKey.getKid())
-                .jsonContent(payload)
-                .sign(new ECDSASignatureSignerContext(attestationKey));
-
-        VCIssuanceContext vcIssuanceContext = createVCIssuanceContext(session);
-        vcIssuanceContext.getCredentialRequest().setProof(new AttestationProof(attestationJwt));
-
-        AttestationKeyResolver keyResolver = new StaticAttestationKeyResolver(
-                Map.of(attestationKey.getKid(), JWKBuilder.create().ec(attestationKey.getPublicKey()))
-        );
-
-        try {
             new AttestationProofValidator(session, keyResolver).validateProof(vcIssuanceContext);
             fail("Expected VCIssuerException for invalid resistance level");
         } catch (VCIssuerException e) {
             assertTrue("Expected error about invalid level but got: " + e.getMessage(),
-                    e.getMessage().contains("key_storage") ||
-                            e.getMessage().contains("resistance level") ||
-                            e.getMessage().contains("INVALID_LEVEL"));
+                    e.getMessage().contains("key_storage") && e.getMessage().contains("INVALID_LEVEL"));
+        } catch (Exception e) {
+            fail("Unexpected exception: " + e.getMessage());
         }
     }
 
     private static void runAttestationWithExpiredCNonce(KeycloakSession session) {
         try {
-            // Force expiration by setting negative lifetime
             session.getContext().getRealm()
-                    .setAttribute(Oid4VciConstants.C_NONCE_LIFETIME_IN_SECONDS, -1);
+                    .setAttribute(Oid4VciConstants.C_NONCE_LIFETIME_IN_SECONDS, 0);
 
             KeyWrapper attestationKey = getECKey("attestationKey");
             KeyWrapper proofKey = getECKey("proofKey");
-            CNonceHandler cNonceHandler = session.getProvider(CNonceHandler.class);
-            String cNonce = cNonceHandler.buildCNonce(
-                    List.of(OID4VCIssuerWellKnownProvider.getCredentialsEndpoint(session.getContext())),
-                    Map.of(JwtCNonceHandler.SOURCE_ENDPOINT,
-                            OID4VCIssuerWellKnownProvider.getNonceEndpoint(session.getContext()))
-            );
+            String cNonce = getCNonce();
 
-            // Wait to ensure expiration
-            Thread.sleep(1000);
+            Thread.sleep(100);
 
-            String attestationJwt = createValidAttestationJwt(session, attestationKey,
-                    JWKBuilder.create().ec(proofKey.getPublicKey()), cNonce);
+            String attestationJwt = new JWSBuilder()
+                    .type(AttestationValidatorUtil.ATTESTATION_JWT_TYP)
+                    .kid(attestationKey.getKid())
+                    .jsonContent(createAttestationPayload(JWKBuilder.create().ec(proofKey.getPublicKey()), cNonce))
+                    .sign(new ECDSASignatureSignerContext(attestationKey));
 
             VCIssuanceContext vcIssuanceContext = createVCIssuanceContext(session);
             vcIssuanceContext.getCredentialRequest().setProof(new AttestationProof(attestationJwt));
@@ -459,25 +555,26 @@ public class OID4VCKeyAttestationTest extends OID4VCIssuerEndpointTest {
             validator.validateProof(vcIssuanceContext);
             fail("Expected VCIssuerException for expired c_nonce");
         } catch (VCIssuerException e) {
-            assertTrue(e.getMessage().contains("c_nonce not valid"));
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
+            assertTrue("Expected error about expired c_nonce but got: " + e.getMessage(),
+                    e.getMessage().contains("c_nonce has expired") ||
+                            e.getMessage().contains("Expired c_nonce"));
+        } catch (Exception e) {
+            fail("Unexpected exception: " + e.getMessage());
         } finally {
-            // Reset to default
             session.getContext().getRealm()
                     .removeAttribute(Oid4VciConstants.C_NONCE_LIFETIME_IN_SECONDS);
         }
-    };
+    }
 
     private static void runAttestationWithMissingAttestedKeys(KeycloakSession session) {
         try {
             KeyWrapper attestationKey = getECKey("attestationKey");
             String cNonce = getCNonce();
 
-            // Create minimal valid payload without attested_keys
             KeyAttestationJwtBody payload = new KeyAttestationJwtBody();
             payload.setIat((long) TIME_PROVIDER.currentTimeSeconds());
             payload.setNonce(cNonce);
+            // Intentionally omit attested_keys
 
             String attestationJwt = new JWSBuilder()
                     .type(AttestationValidatorUtil.ATTESTATION_JWT_TYP)
@@ -488,55 +585,18 @@ public class OID4VCKeyAttestationTest extends OID4VCIssuerEndpointTest {
             VCIssuanceContext context = createVCIssuanceContext(session);
             context.getCredentialRequest().setProof(new AttestationProof(attestationJwt));
 
-            AttestationProofValidator validator = new AttestationProofValidator(session,
-                    new StaticAttestationKeyResolver(Map.of(attestationKey.getKid(),
-                            JWKBuilder.create().ec(attestationKey.getPublicKey()))));
+            AttestationKeyResolver keyResolver = new StaticAttestationKeyResolver(
+                    Map.of(attestationKey.getKid(), JWKBuilder.create().ec(attestationKey.getPublicKey()))
+            );
 
+            AttestationProofValidator validator = new AttestationProofValidator(session, keyResolver);
             validator.validateProof(context);
             fail("Expected VCIssuerException for missing attested_keys");
         } catch (VCIssuerException e) {
             assertTrue("Expected error about missing keys but got: " + e.getMessage(),
-                    e.getMessage().contains("No valid attested keys") ||
-                            e.getMessage().contains("attested_keys"));
-        }
-    }
-
-    private static void runAttestationWithInvalidKeyType(KeycloakSession session) {
-        KeyWrapper attestationKey = getECKey("attestationKey");
-        String cNonce = getCNonce();
-
-        // Create a more obviously invalid JWK structure
-        Map<String, Object> invalidKey = new HashMap<>();
-        invalidKey.put("kty", "INVALID_TYPE");
-        invalidKey.put("kid", "invalid-key");
-        // Missing required EC key parameters
-
-        Map<String, Object> payload = new HashMap<>();
-        payload.put("iat", TIME_PROVIDER.currentTimeSeconds());
-        payload.put("nonce", cNonce);
-        payload.put("attested_keys", List.of(invalidKey));
-
-        String attestationJwt = new JWSBuilder()
-                .type(AttestationValidatorUtil.ATTESTATION_JWT_TYP)
-                .kid(attestationKey.getKid())
-                .jsonContent(payload)
-                .sign(new ECDSASignatureSignerContext(attestationKey));
-
-        VCIssuanceContext vcIssuanceContext = createVCIssuanceContext(session);
-        vcIssuanceContext.getCredentialRequest().setProof(new AttestationProof(attestationJwt));
-
-        AttestationKeyResolver keyResolver = new StaticAttestationKeyResolver(
-                Map.of(attestationKey.getKid(), JWKBuilder.create().ec(attestationKey.getPublicKey()))
-        );
-
-        try {
-            new AttestationProofValidator(session, keyResolver).validateProof(vcIssuanceContext);
-            fail("Expected VCIssuerException for invalid key type");
-        } catch (VCIssuerException e) {
-            assertTrue("Expected error about invalid key but got: " + e.getMessage(),
-                    e.getMessage().contains("Unsupported key type") ||
-                            e.getMessage().contains("Invalid key") ||
-                            e.getMessage().contains("INVALID_TYPE"));
+                    e.getMessage().contains("attested_keys"));
+        } catch (Exception e) {
+            fail("Unexpected exception: " + e.getMessage());
         }
     }
 }

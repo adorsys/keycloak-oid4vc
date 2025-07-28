@@ -17,7 +17,6 @@
 
 package org.keycloak.protocol.oid4vc.issuance.keybinding;
 
-import com.fasterxml.jackson.core.type.TypeReference;
 import org.keycloak.common.VerificationException;
 import org.keycloak.crypto.SignatureVerifierContext;
 import org.keycloak.jose.jwk.JWK;
