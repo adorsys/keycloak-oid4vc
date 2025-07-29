@@ -18,6 +18,7 @@
 package org.keycloak.protocol.oid4vc.oid4vp;
 
 import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.GET;
 import jakarta.ws.rs.NotFoundException;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
@@ -27,7 +28,6 @@ import jakarta.ws.rs.core.Response;
 import org.jboss.logging.Logger;
 import org.keycloak.events.EventBuilder;
 import org.keycloak.events.EventType;
-import org.keycloak.models.ClientModel;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.protocol.oid4vc.oid4vp.model.dto.AuthorizationContext;
 import org.keycloak.protocol.oid4vc.oid4vp.service.AuthenticationSessionStore;
@@ -61,7 +61,7 @@ public class OID4VPUserAuthenticationEndpoint extends OID4VPUserAuthenticationEn
     /**
      * Generates an OpenID4VP authentication request for user authentication.
      */
-    @POST
+    @GET
     @Path("/request")
     @Consumes(MediaType.APPLICATION_FORM_URLENCODED)
     @Produces(MediaType.APPLICATION_JSON)
@@ -69,8 +69,7 @@ public class OID4VPUserAuthenticationEndpoint extends OID4VPUserAuthenticationEn
         logger.debug("Initiating user authentication over OpenID4VP...");
         event.event(EventType.OID4VP_INIT_AUTH);
 
-        ClientModel client = authenticateClient();
-        AuthenticationSessionModel authSession = createAuthSession(client);
+        AuthenticationSessionModel authSession = createAuthSession();
 
         // Call delegate service to create an authorization request
         AuthorizationContext authorizationContext = authorizationRequestService
@@ -86,15 +85,14 @@ public class OID4VPUserAuthenticationEndpoint extends OID4VPUserAuthenticationEn
     /**
      * Deferences request URIs into signed request objects.
      */
-    @POST // @GET
+    @GET
     @Path(REQUEST_JWT_PATH + "/{requestId}")
     @Produces(MediaType.TEXT_PLAIN)
     public Response getSignedRequestObject(String requestId) {
         logger.debug("Resolving request URI to signed request object...");
 
-        ClientModel client = authenticateClient();
         String authSessionId = pruneAuthSessionId(requestId);
-        AuthenticationSessionModel authSession = getAuthSession(client, authSessionId)
+        AuthenticationSessionModel authSession = getAuthSession(authSessionId)
                 .orElseThrow(() -> new NotFoundException(
                         "No authentication session attached to request ID: " + requestId
                 ));

@@ -17,22 +17,20 @@
 
 package org.keycloak.protocol.oid4vc.oid4vp;
 
-import jakarta.ws.rs.core.Response;
 import org.jboss.logging.Logger;
-import org.keycloak.OAuthErrorException;
 import org.keycloak.events.EventBuilder;
 import org.keycloak.models.AuthenticatedClientSessionModel;
 import org.keycloak.models.ClientModel;
 import org.keycloak.models.KeycloakSession;
+import org.keycloak.models.delegate.ClientModelLazyDelegate;
 import org.keycloak.protocol.AuthorizationEndpointBase;
 import org.keycloak.protocol.oidc.OIDCLoginProtocol;
-import org.keycloak.protocol.oidc.utils.AuthorizeClientUtil;
-import org.keycloak.services.ErrorResponseException;
 import org.keycloak.services.managers.AuthenticationSessionManager;
 import org.keycloak.sessions.AuthenticationSessionModel;
 import org.keycloak.sessions.RootAuthenticationSessionModel;
 
 import java.util.Optional;
+import java.util.UUID;
 import java.util.regex.Pattern;
 
 /**
@@ -52,33 +50,9 @@ public class OID4VPUserAuthenticationEndpointBase extends AuthorizationEndpointB
     }
 
     /**
-     * Authenticates the Keycloak client sending requests.
-     */
-    protected ClientModel authenticateClient() {
-        logger.debugf("Attempting client authentication");
-        ClientModel client = AuthorizeClientUtil
-                .authorizeClient(session, event, null)
-                .getClient();
-
-        // Reject public clients
-        if (client.isPublicClient()) {
-            String errorMessage = "Public clients are not supported by this implementation";
-            logger.errorf(errorMessage);
-            throw new ErrorResponseException(
-                    OAuthErrorException.UNAUTHORIZED_CLIENT,
-                    errorMessage,
-                    Response.Status.UNAUTHORIZED
-            );
-        }
-
-        logger.debugf("Client %s authenticated", client.getClientId());
-        return client;
-    }
-
-    /**
      * Recovers session from `authSessionId`.
      */
-    protected Optional<AuthenticationSessionModel> getAuthSession(ClientModel client, String authSessionId) {
+    protected Optional<AuthenticationSessionModel> getAuthSession(String authSessionId) {
         if (authSessionId == null || !authSessionId.contains(AUTH_SESSION_DELIMITER)) {
             logger.debugf("Invalid authSessionId format: %s. Delimiter '%s' expected",
                     authSessionId, AUTH_SESSION_DELIMITER);
@@ -98,16 +72,25 @@ public class OID4VPUserAuthenticationEndpointBase extends AuthorizationEndpointB
             return Optional.empty();
         }
 
-        return Optional.of(rootAuthSession.getAuthenticationSession(client, tabSessionId));
+        AuthenticationSessionModel authSession = rootAuthSession
+                .getAuthenticationSessions()
+                .get(tabSessionId);
+
+        return Optional.of(authSession);
     }
 
     /**
      * Creates new authentication session.
      */
-    protected AuthenticationSessionModel createAuthSession(ClientModel client) {
+    protected AuthenticationSessionModel createAuthSession() {
+        // The createAuthenticationSession method actually only needs a client ID to associate the session with.
+        // Because we may not enforce client authentication, we're creating this dummy client model.
+        ClientModel dummyClient = new ClientModelLazyDelegate
+                .WithId(UUID.randomUUID().toString(), () -> null);
+
         AuthenticationSessionModel authSession = new AuthenticationSessionManager(session)
                 .createAuthenticationSession(realm, false)
-                .createAuthenticationSession(client);
+                .createAuthenticationSession(dummyClient);
 
         authSession.setProtocol(OIDCLoginProtocol.LOGIN_PROTOCOL);
         authSession.setAction(AuthenticatedClientSessionModel.Action.AUTHENTICATE.name());

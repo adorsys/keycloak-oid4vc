@@ -56,7 +56,7 @@ public class AuthorizationRequestService {
     public final static String AUTH_REQ_JWT = "oauth-authz-req+jwt";
     // TODO: Replace by authentication session lifetime
     public static final int AUTH_REQ_JWT_LIFETIME_SECS = 10 * 60;
-    public static final int SECURE_RANDOM_ENTROPY = 32;
+    public static final int SECURE_RANDOM_ENTROPY = 20;
 
     // Note: "https://self-issued.me/v2" is a symbolic string and can be used
     // as an aud Claim value even when this specification is used standalone,

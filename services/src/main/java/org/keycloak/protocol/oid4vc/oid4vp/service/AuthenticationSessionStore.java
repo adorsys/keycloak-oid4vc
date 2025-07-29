@@ -65,10 +65,10 @@ public class AuthenticationSessionStore {
     public AuthorizationContext getAuthorizationContextByRequestId(String requestId) {
         AuthorizationContext authContext = getAuthorizationContext();
         if (!Objects.equals(authContext.getRequestId(), requestId)) {
-            throw new IllegalArgumentException(
-                    "Authorization context does not match the provided request ID: "
-                            + requestId
-            );
+            logger.warnf("Authorization context does not match the provided request ID: "
+                    + "Expected=%s, Actual=%s", authContext.getRequestId(), requestId);
+            throw new IllegalArgumentException("Authorization context does not match the provided request ID: "
+                    + requestId);
         }
 
         return authContext;
@@ -80,11 +80,11 @@ public class AuthenticationSessionStore {
     public AuthorizationContext getAuthorizationContextByTransactionId(String transactionId) {
         AuthorizationContext authContext = getAuthorizationContext();
         if (!Objects.equals(authContext.getTransactionId(), transactionId)) {
-            throw new IllegalArgumentException(
-                    "Authorization context does not match the provided transaction ID: "
-                            + transactionId
-            );
-        };
+            logger.warnf("Authorization context does not match the provided transaction ID: "
+                    + "Expected=%s, Actual=%s", authContext.getTransactionId(), transactionId);
+            throw new IllegalArgumentException("Authorization context does not match the provided transaction ID: "
+                    + transactionId);
+        }
 
         return authContext;
     }
