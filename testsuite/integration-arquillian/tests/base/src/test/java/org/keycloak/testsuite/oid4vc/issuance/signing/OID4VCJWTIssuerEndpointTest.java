@@ -30,6 +30,7 @@ import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.message.BasicNameValuePair;
+import org.jboss.logging.Logger;
 import org.junit.Assert;
 import org.junit.Test;
 import org.keycloak.OAuth2Constants;
@@ -48,9 +49,11 @@ import org.keycloak.protocol.oid4vc.model.CredentialRequest;
 import org.keycloak.protocol.oid4vc.model.CredentialResponse;
 import org.keycloak.protocol.oid4vc.model.CredentialsOffer;
 import org.keycloak.protocol.oid4vc.model.Format;
+import org.keycloak.protocol.oid4vc.model.JwtProof;
 import org.keycloak.protocol.oid4vc.model.OfferUriType;
 import org.keycloak.protocol.oid4vc.model.PreAuthorizedCode;
 import org.keycloak.protocol.oid4vc.model.PreAuthorizedGrant;
+import org.keycloak.protocol.oid4vc.model.Proof;
 import org.keycloak.protocol.oid4vc.model.SupportedCredentialConfiguration;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
 import org.keycloak.protocol.oidc.grants.PreAuthorizedCodeGrantTypeFactory;
@@ -63,9 +66,11 @@ import org.keycloak.util.JsonSerialization;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 
@@ -81,8 +86,9 @@ import static org.junit.Assert.fail;
  * Test from org.keycloak.testsuite.oid4vc.issuance.signing.OID4VCIssuerEndpointTest
  */
 public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
-
     // ----- getCredentialOfferUri
+
+    private static final Logger LOGGER = Logger.getLogger(OID4VCIssuerEndpoint.class);
 
     @Test(expected = BadRequestException.class)
     public void testGetCredentialOfferUriUnsupportedCredential() throws Throwable {
@@ -596,6 +602,58 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
             assertEquals("The second credential request should be successful.", 200, response2.getStatus());
             CredentialResponse credentialResponse2 = JsonSerialization.mapper.convertValue(response2.getEntity(), CredentialResponse.class);
             assertNotEquals("Notification IDs should be unique", credentialResponse1.getNotificationId(), credentialResponse2.getNotificationId());
+        });
+    }
+
+    /**
+     * This is testing the multiple credential issuance flow in a single call with proofs
+     */
+    @Test
+    public void testRequestMultipleCredentialsWithProofs() {
+        String cNonce = getCNonce();
+        String token = getBearerToken(oauth, client, jwtTypeCredentialClientScope.getName());
+
+        testingClient.server(TEST_REALM_NAME).run(session -> {
+            try {
+                AppAuthManager.BearerTokenAuthenticator authenticator = new AppAuthManager.BearerTokenAuthenticator(session);
+                authenticator.setTokenString(token);
+                String issuer = OID4VCIssuerWellKnownProvider.getIssuer(session.getContext());
+
+                // Create proofs as a List<Proof> to match the CredentialRequest structure
+                List<Proof> proofList = Arrays.asList(
+                        new JwtProof(generateJwtProof(issuer, cNonce)),
+                        new JwtProof(generateJwtProof(issuer, cNonce))
+                );
+
+                CredentialRequest request = new CredentialRequest()
+                        .setCredentialConfigurationId(
+                                Optional.ofNullable(jwtTypeCredentialClientScope)
+                                        .map(scope -> scope.getAttributes().get(CredentialScopeModel.CONFIGURATION_ID))
+                                        .orElseThrow(() -> new IllegalStateException("jwtTypeCredentialClientScope is null"))
+                        )
+                        .setProofs(proofList);
+
+                OID4VCIssuerEndpoint endpoint = prepareIssuerEndpoint(session, authenticator);
+
+                Response response = endpoint.requestCredential(request);
+
+                assertEquals("Response status should be OK",
+                        Response.Status.OK.getStatusCode(), response.getStatus());
+
+                CredentialResponse credentialResponse = response.readEntity(CredentialResponse.class);
+                assertNotNull("Credential response should not be empty", credentialResponse);
+                assertNotNull("Should have notification ID", credentialResponse.getNotificationId());
+                assertNotNull("Should have credentials array", credentialResponse.getCredentials());
+                assertEquals("Should have 2 credentials due to multiple proofs",
+                        2, credentialResponse.getCredentials().size());
+
+                // Verify each credential is non-null
+                credentialResponse.getCredentials().forEach(credential ->
+                        assertNotNull("Credential should not be null", credential.getCredential()));
+
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
         });
     }
 
