@@ -17,7 +17,10 @@
 
 package org.keycloak.protocol.oid4vc.oid4vp;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import jakarta.ws.rs.BadRequestException;
 import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.FormParam;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.NotFoundException;
 import jakarta.ws.rs.POST;
@@ -29,6 +32,7 @@ import org.jboss.logging.Logger;
 import org.keycloak.events.EventBuilder;
 import org.keycloak.events.EventType;
 import org.keycloak.models.KeycloakSession;
+import org.keycloak.protocol.oid4vc.oid4vp.model.ResponseObject;
 import org.keycloak.protocol.oid4vc.oid4vp.model.dto.AuthorizationContext;
 import org.keycloak.protocol.oid4vc.oid4vp.service.AuthenticationSessionStore;
 import org.keycloak.protocol.oid4vc.oid4vp.service.AuthorizationRequestService;
@@ -90,17 +94,10 @@ public class OID4VPUserAuthenticationEndpoint extends OID4VPUserAuthenticationEn
     @Produces(MediaType.TEXT_PLAIN)
     public Response getSignedRequestObject(String requestId) {
         logger.debug("Resolving request URI to signed request object...");
-
-        String authSessionId = pruneAuthSessionId(requestId);
-        AuthenticationSessionModel authSession = getAuthSession(authSessionId)
-                .orElseThrow(() -> new NotFoundException(
-                        "No authentication session attached to request ID: " + requestId
-                ));
-
         AuthorizationContext authorizationContext;
+
         try {
-            authorizationContext = new AuthenticationSessionStore(authSession)
-                    .getAuthorizationContextByRequestId(requestId);
+            authorizationContext = this.recoverAuthorizationContext(requestId);
         } catch (IllegalArgumentException e) {
             throw new NotFoundException("Authorization context not found for request ID: " + requestId, e);
         }
@@ -116,9 +113,45 @@ public class OID4VPUserAuthenticationEndpoint extends OID4VPUserAuthenticationEn
     @Path(RESPONSE_URI_PATH)
     @Consumes(MediaType.APPLICATION_FORM_URLENCODED)
     @Produces(MediaType.APPLICATION_JSON)
-    public Response processAuthorizationResponse() {
+    public Response processAuthorizationResponse(
+            @FormParam(ResponseObject.VP_TOKEN_KEY) String vpToken,
+            @FormParam(ResponseObject.PRESENTATION_SUBMISSION_KEY) String presentationSubmission,
+            @FormParam(ResponseObject.STATE_KEY) String state
+    ) {
         logger.debug("Processing authorization response for user authentication...");
-        return Response.noContent().build();
+
+        // Parse a response object from the request parameters
+        ResponseObject responseObject;
+        try {
+            responseObject = new ResponseObject(vpToken, presentationSubmission, state);
+        } catch (JsonProcessingException e) {
+            throw new BadRequestException("Unparseable response params", e);
+        }
+
+        // Recover the authorization context from the state field
+        AuthorizationContext authorizationContext;
+        try {
+            authorizationContext = this.recoverAuthorizationContext(responseObject.getState());
+        } catch (IllegalArgumentException e) {
+            throw new BadRequestException("Authorization context not found for state (request ID): "
+                    + responseObject.getState(), e);
+        }
+
+        return Response.ok(authorizationContext).build();
+    }
+
+    /**
+     * Recovers the authorization context from session as per a request ID.
+     */
+    private AuthorizationContext recoverAuthorizationContext(String requestId) {
+        String authSessionId = pruneAuthSessionId(requestId);
+        AuthenticationSessionModel authSession = getAuthSession(authSessionId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "No authentication session attached to request ID: " + requestId
+                ));
+
+        return new AuthenticationSessionStore(authSession)
+                .getAuthorizationContextByRequestId(requestId);
     }
 
     @Override

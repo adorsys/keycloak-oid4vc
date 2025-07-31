@@ -170,7 +170,7 @@ public class AuthorizationRequestService {
 
     private String buildAuthorizationRequestLink(String requestId) {
         var clientId = clientMetadata.getClientId();
-        var requestUri = openID4VPRootUrl + "/%s/%s".formatted(
+        var requestUri = openID4VPRootUrl + "%s/%s".formatted(
                 OID4VPUserAuthenticationEndpoint.REQUEST_JWT_PATH,
                 requestId
         );
