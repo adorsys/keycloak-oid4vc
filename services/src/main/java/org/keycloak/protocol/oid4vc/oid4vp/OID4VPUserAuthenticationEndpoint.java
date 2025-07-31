@@ -36,6 +36,7 @@ import org.keycloak.protocol.oid4vc.oid4vp.model.ResponseObject;
 import org.keycloak.protocol.oid4vc.oid4vp.model.dto.AuthorizationContext;
 import org.keycloak.protocol.oid4vc.oid4vp.service.AuthenticationSessionStore;
 import org.keycloak.protocol.oid4vc.oid4vp.service.AuthorizationRequestService;
+import org.keycloak.protocol.oid4vc.oid4vp.service.AuthorizationResponseService;
 import org.keycloak.services.resource.RealmResourceProvider;
 import org.keycloak.sessions.AuthenticationSessionModel;
 
@@ -56,10 +57,12 @@ public class OID4VPUserAuthenticationEndpoint extends OID4VPUserAuthenticationEn
     public static final String RESPONSE_URI_PATH = "/response";
 
     private final AuthorizationRequestService authorizationRequestService;
+    private final AuthorizationResponseService authorizationResponseService;
 
     public OID4VPUserAuthenticationEndpoint(KeycloakSession session, EventBuilder event) {
         super(session, event);
         this.authorizationRequestService = new AuthorizationRequestService(session);
+        this.authorizationResponseService = new AuthorizationResponseService(session);
     }
 
     /**
@@ -128,28 +131,40 @@ public class OID4VPUserAuthenticationEndpoint extends OID4VPUserAuthenticationEn
             throw new BadRequestException("Unparseable response params", e);
         }
 
-        // Recover the authorization context from the state field
+        // Recover the auth session and context given the state field
+        AuthenticationSessionModel authSession;
         AuthorizationContext authorizationContext;
         try {
-            authorizationContext = this.recoverAuthorizationContext(responseObject.getState());
+            authSession = this.recoverAuthenticationSession(state);
+            authorizationContext = new AuthenticationSessionStore(authSession)
+                    .getAuthorizationContextByRequestId(state);
         } catch (IllegalArgumentException e) {
-            throw new BadRequestException("Authorization context not found for state (request ID): "
-                    + responseObject.getState(), e);
+            throw new BadRequestException("Authorization context not found for state (request ID): " + state, e);
         }
 
+        // Call delegate service to process the authorization response
+        authorizationContext = authorizationResponseService
+                .processAuthorizationResponse(responseObject, authorizationContext, authSession);
+
         return Response.ok(authorizationContext).build();
+    }
+
+    /**
+     * Recovers the authentication session linked to a request ID.
+     */
+    private AuthenticationSessionModel recoverAuthenticationSession(String requestId) {
+        String authSessionId = pruneAuthSessionId(requestId);
+        return getAuthSession(authSessionId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "No authentication session attached to request ID: " + requestId
+                ));
     }
 
     /**
      * Recovers the authorization context from session as per a request ID.
      */
     private AuthorizationContext recoverAuthorizationContext(String requestId) {
-        String authSessionId = pruneAuthSessionId(requestId);
-        AuthenticationSessionModel authSession = getAuthSession(authSessionId)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "No authentication session attached to request ID: " + requestId
-                ));
-
+        AuthenticationSessionModel authSession = recoverAuthenticationSession(requestId);
         return new AuthenticationSessionStore(authSession)
                 .getAuthorizationContextByRequestId(requestId);
     }

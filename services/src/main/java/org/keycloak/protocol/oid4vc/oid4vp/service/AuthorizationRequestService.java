@@ -33,6 +33,7 @@ import org.keycloak.protocol.oid4vc.oid4vp.model.RequestObject;
 import org.keycloak.protocol.oid4vc.oid4vp.model.ResponseMode;
 import org.keycloak.protocol.oid4vc.oid4vp.model.ResponseType;
 import org.keycloak.protocol.oid4vc.oid4vp.model.dto.AuthorizationContext;
+import org.keycloak.protocol.oid4vc.oid4vp.model.dto.AuthorizationContextStatus;
 import org.keycloak.sessions.AuthenticationSessionModel;
 
 import java.net.URLEncoder;
@@ -112,8 +113,10 @@ public class AuthorizationRequestService {
 
         // Gather authorization context
         AuthorizationContext authorizationContext = new AuthorizationContext()
+                .setStatus(AuthorizationContextStatus.OPEN)
                 .setRequestId(requestId)
                 .setTransactionId(transactionId)
+                .setRequestObject(requestObject)
                 .setRequestObjectJwt(requestObjectJwt)
                 .setAuthorizationRequest(authorizationRequestLink);
 
