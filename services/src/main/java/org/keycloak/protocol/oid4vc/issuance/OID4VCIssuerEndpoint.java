@@ -601,10 +601,12 @@ public class OID4VCIssuerEndpoint {
         // Validate proof and bind public key(s) to credential
         try {
             List<JWK> jwks = proofValidator.validateProof(vcIssuanceContext);
-            if (jwks != null) {
-                for (JWK jwk : jwks) {
-                    vcIssuanceContext.getCredentialBody().addKeyBinding(jwk);
+            if (jwks != null && !jwks.isEmpty()) {
+                if (jwks.size() > 1) {
+                    LOGGER.warnf("Multiple keys (%d) returned for proof validation—only the first will be used", jwks.size());
                 }
+                // Bind only the first key for VC compatibility
+                vcIssuanceContext.getCredentialBody().addKeyBinding(jwks.get(0));
             }
         } catch (VCIssuerException e) {
             throw new BadRequestException("Could not validate provided proof", e);
