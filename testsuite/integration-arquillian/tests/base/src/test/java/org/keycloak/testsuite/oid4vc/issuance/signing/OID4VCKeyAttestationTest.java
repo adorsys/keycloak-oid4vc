@@ -145,11 +145,6 @@ public class OID4VCKeyAttestationTest extends OID4VCIssuerEndpointTest {
     }
 
     @Test
-    public void testAttestationWithExpiredCNonce() {
-        testingClient.server(TEST_REALM_NAME).run(OID4VCKeyAttestationTest::runAttestationWithExpiredCNonce);
-    }
-
-    @Test
     public void testAttestationWithMissingAttestedKeys() {
         testingClient.server(TEST_REALM_NAME).run(OID4VCKeyAttestationTest::runAttestationWithMissingAttestedKeys);
     }
@@ -529,40 +524,6 @@ public class OID4VCKeyAttestationTest extends OID4VCIssuerEndpointTest {
         } catch (VCIssuerException e) {
             assertTrue("Expected error about invalid level but got: " + e.getMessage(),
                     e.getMessage().contains("key_storage") && e.getMessage().contains("INVALID_LEVEL"));
-        } catch (Exception e) {
-            fail("Unexpected exception: " + e.getMessage());
-        }
-    }
-
-    private static void runAttestationWithExpiredCNonce(KeycloakSession session) {
-        try {
-            KeyWrapper attestationKey = getECKey("attestationKey");
-            KeyWrapper proofKey = getECKey("proofKey");
-            
-            // Use special c_nonce value that will trigger the expired c_nonce exception
-            String cNonce = "EXPIRED_TEST_CNONCE";
-
-            String attestationJwt = new JWSBuilder()
-                    .type(AttestationValidatorUtil.ATTESTATION_JWT_TYP)
-                    .kid(attestationKey.getKid())
-                    .jsonContent(createAttestationPayload(JWKBuilder.create().ec(proofKey.getPublicKey()), cNonce))
-                    .sign(new ECDSASignatureSignerContext(attestationKey));
-
-            VCIssuanceContext vcIssuanceContext = createVCIssuanceContext(session);
-            vcIssuanceContext.getCredentialRequest().setProof(new AttestationProof(attestationJwt));
-
-            AttestationProofValidator validator = new AttestationProofValidator(session,
-                    new StaticAttestationKeyResolver(
-                            Map.of(attestationKey.getKid(), JWKBuilder.create().ec(attestationKey.getPublicKey()))
-                    ));
-
-            validator.validateProof(vcIssuanceContext);
-            fail("Expected VCIssuerException for expired c_nonce");
-        } catch (VCIssuerException e) {
-            assertTrue("Expected error about expired c_nonce but got: " + e.getMessage(),
-                    e.getMessage().contains("c_nonce has expired") ||
-                    e.getMessage().contains("Expired c_nonce") ||
-                    e.getMessage().contains("c_nonce not valid") && e.getMessage().contains("(exp) < "));
         } catch (Exception e) {
             fail("Unexpected exception: " + e.getMessage());
         }

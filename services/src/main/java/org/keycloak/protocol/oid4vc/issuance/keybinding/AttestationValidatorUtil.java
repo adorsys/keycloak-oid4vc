@@ -159,11 +159,6 @@ public class AttestationValidatorUtil {
             throw new VCIssuerException("Missing 'nonce' in attestation");
         }
 
-        // Special case for testing expired c_nonce
-        if ("EXPIRED_TEST_CNONCE".equals(attestationBody.getNonce())) {
-            throw new VCIssuerException("c_nonce not valid: 1000(exp) < 2000(now)");
-        }
-
         CNonceHandler cNonceHandler = keycloakSession.getProvider(CNonceHandler.class);
         if (cNonceHandler == null) {
             throw new VCIssuerException("No CNonceHandler available");
@@ -179,7 +174,6 @@ public class AttestationValidatorUtil {
                     attestationRequirements != null ? attestationRequirements.getKeyStorage() : null,
                     "key_storage");
         }
-
         // Validate user_authentication if present in attestation and required by config
         if (attestationBody.getUserAuthentication() != null) {
             validateResistanceLevel(

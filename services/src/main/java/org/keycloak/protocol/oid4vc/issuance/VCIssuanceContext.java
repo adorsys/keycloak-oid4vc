@@ -79,10 +79,6 @@ public class VCIssuanceContext {
         return this;
     }
 
-    public List<JWK> getAttestedKeys() {
-        return attestedKeys;
-    }
-
     public VCIssuanceContext setAttestedKeys(List<JWK> attestedKeys) {
         this.attestedKeys = attestedKeys;
         return this;
