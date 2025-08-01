@@ -582,7 +582,8 @@ public class OID4VCIssuerEndpoint {
     /**
      * Enforce key binding: Validate proof and bind associated key to credential in issuance context.
      */
-    private void enforceKeyBindingIfProofProvided(VCIssuanceContext vcIssuanceContext) {
+    private void
+    enforceKeyBindingIfProofProvided(VCIssuanceContext vcIssuanceContext) {
         Proof proof = vcIssuanceContext.getCredentialRequest().getProof();
         if (proof == null) {
             LOGGER.debugf("No proof provided, skipping key binding");

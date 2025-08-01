@@ -5,22 +5,11 @@ import { login } from "../utils/login";
 import { goToRealm, goToRealmSettings } from "../utils/sidebar";
 
 const realmName = `oid4vci-realm-${uuid()}`;
-let isFeatureEnabled: boolean = true;
 
-test.beforeAll(async ({ browser }) => {
+test.beforeAll(async () => {
   await adminClient.createRealm(realmName);
   const realm = await adminClient.getRealm(realmName);
   expect(realm).toBeDefined();
-
-  // Check if feature is enabled using a fresh context
-  const page = await browser.newPage();
-  await login(page);
-  await goToRealm(page, realmName);
-  await goToRealmSettings(page);
-  const oid4vciTab = page.getByTestId("rs-oid4vci-attributes-tab");
-  await page.waitForTimeout(1000);
-  isFeatureEnabled = (await oid4vciTab.count()) > 0;
-  await page.close();
 });
 
 test.afterAll(async () => {
@@ -31,31 +20,17 @@ test("OID4VCI tab visibility", async ({ page }) => {
   await login(page);
   await goToRealm(page, realmName);
   await goToRealmSettings(page);
-  await page.waitForTimeout(1000);
 
   const oid4vciTab = page.getByTestId("rs-oid4vci-attributes-tab");
-
-  if (!isFeatureEnabled) {
-    // When feature is disabled, verify tab is NOT present
-    await expect(oid4vciTab).toHaveCount(0);
-  } else {
-    // When feature is enabled, verify tab is visible
-    await expect(oid4vciTab).toBeVisible();
-  }
+  await expect(oid4vciTab).toBeVisible();
 });
 
 test("should render fields and save values with correct attribute keys", async ({
   page,
 }) => {
-  if (!isFeatureEnabled) {
-    test.skip();
-    return;
-  }
-
   await login(page);
   await goToRealm(page, realmName);
   await goToRealmSettings(page);
-  await page.waitForTimeout(1000);
   const oid4vciTab = page.getByTestId("rs-oid4vci-attributes-tab");
   await oid4vciTab.click();
 
@@ -67,9 +42,7 @@ test("should render fields and save values with correct attribute keys", async (
 
   await nonceField.fill("120");
   await preAuthField.fill("300");
-
   await page.getByTestId("oid4vci-tab-save").click();
-
   await expect(page.getByText(/success/i)).toBeVisible();
 
   const realm = await adminClient.getRealm(realmName);
@@ -78,36 +51,66 @@ test("should render fields and save values with correct attribute keys", async (
   expect(realm?.attributes?.["preAuthorizedCodeLifespanS"]).toBe("300");
 });
 
-test("should validate required fields", async ({ page }) => {
-  if (!isFeatureEnabled) {
-    test.skip();
-    return;
-  }
-
+test("should persist values after page refresh", async ({ page }) => {
   await login(page);
   await goToRealm(page, realmName);
   await goToRealmSettings(page);
-  const oid4vciTab = page.getByTestId("rs-oid4vci-attributes-tab");
-  await oid4vciTab.click();
+  await page.getByTestId("rs-oid4vci-attributes-tab").click();
+
+  await page.getByTestId("oid4vci-nonce-lifetime-seconds").fill("120");
+  await page.getByTestId("pre-authorized-code-lifespan-s").fill("300");
+  await page.getByTestId("oid4vci-tab-save").click();
+
+  await page.reload();
+  await page.getByTestId("rs-oid4vci-attributes-tab").click();
+
+  await page.waitForLoadState("domcontentloaded");
+  await expect(page.getByTestId("oid4vci-nonce-lifetime-seconds")).toHaveValue(
+    "2",
+  );
+  await expect(page.getByTestId("pre-authorized-code-lifespan-s")).toHaveValue(
+    "5",
+  );
+});
+
+test("should validate required fields and minimum values", async ({ page }) => {
+  await login(page);
+  await goToRealm(page, realmName);
+  await goToRealmSettings(page);
+  await page.getByTestId("rs-oid4vci-attributes-tab").click();
 
   const nonceField = page.getByTestId("oid4vci-nonce-lifetime-seconds");
   const preAuthField = page.getByTestId("pre-authorized-code-lifespan-s");
   const saveButton = page.getByTestId("oid4vci-tab-save");
 
-  // Fill in values to make form dirty
-  await nonceField.fill("120");
-  await preAuthField.fill("300");
-
-  await nonceField.clear();
-  await preAuthField.clear();
+  await nonceField.fill("29");
+  await nonceField.blur();
+  await preAuthField.fill("29");
+  await preAuthField.blur();
 
   await expect(saveButton).toBeEnabled();
-
   await saveButton.click();
+  await expect(page.getByRole("alert")).toBeHidden();
+  await expect(nonceField).toHaveValue("29");
+  await expect(preAuthField).toHaveValue("29");
 
+  await nonceField.fill("29");
+  await nonceField.blur();
+  await preAuthField.fill("29");
+  await preAuthField.blur();
+
+  await expect(saveButton).toBeEnabled();
+  await saveButton.click();
+  await expect(page.getByRole("alert")).toBeHidden();
+  await expect(nonceField).toHaveValue("29");
+  await expect(preAuthField).toHaveValue("29");
+
+  await nonceField.fill("30");
+  await preAuthField.fill("60");
+
+  await expect(saveButton).toBeEnabled();
+  await saveButton.click();
   await expect(
-    page.getByText(
-      "Please fill in all required fields, ensure each value is at least 60 seconds, and correct any errors before saving.",
-    ),
+    page.getByText("Realm successfully updated").first(),
   ).toBeVisible();
 });
