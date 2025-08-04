@@ -28,11 +28,13 @@ import org.keycloak.models.KeycloakSession;
 import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerWellKnownProvider;
 import org.keycloak.protocol.oid4vc.issuance.VCIssuanceContext;
 import org.keycloak.protocol.oid4vc.issuance.VCIssuerException;
+import org.keycloak.protocol.oid4vc.model.CredentialRequest;
+import org.keycloak.protocol.oid4vc.model.ErrorType;
 import org.keycloak.protocol.oid4vc.model.JwtProof;
 import org.keycloak.protocol.oid4vc.model.Proof;
 import org.keycloak.protocol.oid4vc.model.ProofType;
-import org.keycloak.protocol.oid4vc.model.ProofTypeJWT;
 import org.keycloak.protocol.oid4vc.model.ProofTypesSupported;
+import org.keycloak.protocol.oid4vc.model.Proofs;
 import org.keycloak.protocol.oid4vc.model.SupportedCredentialConfiguration;
 import org.keycloak.representations.AccessToken;
 import org.keycloak.util.JsonSerialization;
@@ -137,21 +139,40 @@ public class JwtProofValidator extends AbstractProofValidator {
                     Optional.ofNullable(proofTypesSupported.getSupportedProofTypes().get("jwt"))
                             .orElseThrow(() -> new VCIssuerException("SD-JWT supports only jwt proof type."));
 
-                    Proof proofObject = vcIssuanceContext.getCredentialRequest().getProof();
-                    if (proofObject == null) {
+                    CredentialRequest request = vcIssuanceContext.getCredentialRequest();
+                    Proof singleProof = request.getProof();
+                    Proofs multipleProofs = request.getProofs();
+
+                    // Check at least one proof exists
+                    if (singleProof == null && (multipleProofs == null ||
+                            (multipleProofs.getJwt() == null || multipleProofs.getJwt().isEmpty()))) {
                         throw new VCIssuerException("Credential configuration requires a proof of type: " + ProofType.JWT);
                     }
 
-                    if (!(proofObject instanceof JwtProof)) {
-                        throw new VCIssuerException("Wrong proof type. Expected JwtProof, but got: " + proofObject.getClass().getSimpleName());
+                    // Get the first available proof (either from a single proof or first in multiple proofs)
+                    Proof proofToValidate;
+                    if (multipleProofs != null && multipleProofs.getJwt() != null && !multipleProofs.getJwt().isEmpty()) {
+                        // Create JwtProof from the first JWT string
+                        proofToValidate = new JwtProof().setJwt(multipleProofs.getJwt().get(0));
+                    } else {
+                        proofToValidate = singleProof;
                     }
 
-                    Proof proof = (Proof) proofObject;
-                    if (!Objects.equals(proof.getProofType(), ProofType.JWT)) {
+                    // Validate proof type
+                    if (proofToValidate == null) {
+                        throw new VCIssuerException("No valid proof found.");
+                    }
+
+                    if (!(proofToValidate instanceof JwtProof)) {
+                        throw new VCIssuerException("Wrong proof type. Expected JwtProof, but got: " +
+                                proofToValidate.getClass().getSimpleName());
+                    }
+
+                    if (!Objects.equals(proofToValidate.getProofType(), ProofType.JWT)) {
                         throw new VCIssuerException("Wrong proof type");
                     }
 
-                    return Optional.of(proof);
+                    return Optional.of(proofToValidate);
                 });
     }
 
@@ -218,9 +239,13 @@ public class JwtProofValidator extends AbstractProofValidator {
 
         KeycloakContext keycloakContext = keycloakSession.getContext();
         CNonceHandler cNonceHandler = keycloakSession.getProvider(CNonceHandler.class);
-        cNonceHandler.verifyCNonce(proofPayload.getNonce(),
-                                   List.of(OID4VCIssuerWellKnownProvider.getCredentialsEndpoint(keycloakContext)),
-                                   Map.of(JwtCNonceHandler.SOURCE_ENDPOINT,
-                                          OID4VCIssuerWellKnownProvider.getNonceEndpoint(keycloakContext)));
+        try {
+            cNonceHandler.verifyCNonce(proofPayload.getNonce(),
+                    List.of(OID4VCIssuerWellKnownProvider.getCredentialsEndpoint(keycloakContext)),
+                    Map.of(JwtCNonceHandler.SOURCE_ENDPOINT,
+                            OID4VCIssuerWellKnownProvider.getNonceEndpoint(keycloakContext)));
+        } catch (VerificationException e) {
+            throw new VCIssuerException("Invalid c_nonce: " + e.getMessage(), ErrorType.INVALID_NONCE, e);
+        }
     }
 }

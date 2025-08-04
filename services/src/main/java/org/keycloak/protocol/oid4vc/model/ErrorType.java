@@ -33,7 +33,8 @@ public enum ErrorType {
     INVALID_PROOF("invalid_proof"),
     INVALID_ENCRYPTION_PARAMETER("invalid_encryption_parameters"),
     MISSING_CREDENTIAL_CONFIG("missing_credential_config"),
-    MISSING_CREDENTIAL_IDENTIFIER_AND_CONFIGURATION_ID("missing_credential_identifier_and_configuration_id");
+    MISSING_CREDENTIAL_IDENTIFIER_AND_CONFIGURATION_ID("missing_credential_identifier_and_configuration_id"),
+    INVALID_NONCE("invalid_nonce");
 
     private final String value;
 

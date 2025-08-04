@@ -31,7 +31,7 @@ import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 
 /**
- * Represents a  CredentialRequest according to OID4VCI
+ * Represents a CredentialRequest according to OID4VCI
  * {@see https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#name-credential-request}
  *
  * @author <a href="https://github.com/wistefan">Stefan Wiedemann</a>
@@ -53,7 +53,9 @@ public class CredentialRequest {
     })
     private Proof proof;
 
-    // See: https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#name-format-identifier-3
+    @JsonProperty("proofs")
+    private Proofs proofs;
+
     @JsonProperty("credential_definition")
     private CredentialDefinition credentialDefinition;
 
@@ -84,6 +86,15 @@ public class CredentialRequest {
         return this;
     }
 
+    public Proofs getProofs() {
+        return proofs;
+    }
+
+    public CredentialRequest setProofs(Proofs proofs) {
+        this.proofs = proofs;
+        return this;
+    }
+
     public CredentialDefinition getCredentialDefinition() {
         return credentialDefinition;
     }
@@ -105,9 +116,9 @@ public class CredentialRequest {
         RealmModel currentRealm = keycloakSession.getContext().getRealm();
         final boolean useOrExpression = false;
         return keycloakSession.clientScopes()
-                              .getClientScopesByAttributes(currentRealm, searchAttributeMap, useOrExpression)
-                              .map(CredentialScopeModel::new)
-                              .findAny();
+                .getClientScopesByAttributes(currentRealm, searchAttributeMap, useOrExpression)
+                .map(CredentialScopeModel::new)
+                .findAny();
     }
 
     @Override
