@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package org.keycloak.protocol.oid4vc.oid4vp.service;
+package org.keycloak.protocol.oid4vc.oid4vp.authenticator;
 
 import org.keycloak.protocol.oid4vc.oid4vp.OID4VPUserAuthenticationEndpointFactory;
 import org.keycloak.protocol.oid4vc.oid4vp.model.prex.Constraints;

@@ -20,10 +20,14 @@ package org.keycloak.protocol.oid4vc.oid4vp;
 import org.jboss.logging.Logger;
 import org.keycloak.events.EventBuilder;
 import org.keycloak.models.AuthenticatedClientSessionModel;
+import org.keycloak.models.AuthenticationExecutionModel;
+import org.keycloak.models.AuthenticationFlowModel;
+import org.keycloak.models.AuthenticatorConfigModel;
 import org.keycloak.models.ClientModel;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.delegate.ClientModelLazyDelegate;
 import org.keycloak.protocol.AuthorizationEndpointBase;
+import org.keycloak.protocol.oid4vc.oid4vp.authenticator.SdJwtAuthenticatorFactory;
 import org.keycloak.protocol.oidc.OIDCLoginProtocol;
 import org.keycloak.services.managers.AuthenticationSessionManager;
 import org.keycloak.sessions.AuthenticationSessionModel;
@@ -42,11 +46,40 @@ public class OID4VPUserAuthenticationEndpointBase extends AuthorizationEndpointB
 
     private static final Logger logger = Logger.getLogger(OID4VPUserAuthenticationEndpointBase.class);
 
-    private static final String AUTH_SESSION_DELIMITER = ".";
+    public static final String OID4VP_AUTH_FLOW_ALIAS = "oid4vp auth";
+    public static final String AUTH_SESSION_DELIMITER = ".";
     public static final String AUTH_SESSION_EOL_MARKER = "::";
 
     public OID4VPUserAuthenticationEndpointBase(KeycloakSession session, EventBuilder event) {
         super(session, event);
+    }
+
+    /**
+     * Returns the OpenID4VP authentication flow model.
+     */
+    protected AuthenticationFlowModel getOID4VPAuthFlow() {
+        AuthenticationFlowModel flow = realm.getFlowByAlias(OID4VP_AUTH_FLOW_ALIAS);
+        if (flow == null) {
+            throw new IllegalStateException(String.format(
+                    "Authentication flow '%s' not found. Such is supposed to be built-in",
+                    OID4VP_AUTH_FLOW_ALIAS
+            ));
+        }
+
+        return flow;
+    }
+
+    /**
+     * Returns the SD-JWT authenticator configuration as part of the OpenID4VP authentication flow.
+     */
+    protected AuthenticatorConfigModel getSdjwtAuthenticatorConfig() {
+        AuthenticationFlowModel flow = getOID4VPAuthFlow();
+        return realm.getAuthenticationExecutionsStream(flow.getId())
+                .filter(execution -> execution.getAuthenticator().equals(SdJwtAuthenticatorFactory.PROVIDER_ID))
+                .findFirst()
+                .map(AuthenticationExecutionModel::getAuthenticatorConfig)
+                .map(realm::getAuthenticatorConfigById)
+                .orElse(new AuthenticatorConfigModel());
     }
 
     /**

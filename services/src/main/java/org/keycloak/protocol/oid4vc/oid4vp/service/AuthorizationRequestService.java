@@ -18,7 +18,6 @@
 package org.keycloak.protocol.oid4vc.oid4vp.service;
 
 import org.jboss.logging.Logger;
-import org.keycloak.OAuth2Constants;
 import org.keycloak.crypto.KeyWrapper;
 import org.keycloak.crypto.SignatureProvider;
 import org.keycloak.crypto.SignatureSignerContext;
@@ -27,6 +26,7 @@ import org.keycloak.jose.jws.JWSBuilder;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.protocol.oid4vc.oid4vp.OID4VPUserAuthenticationEndpoint;
 import org.keycloak.protocol.oid4vc.oid4vp.OID4VPUserAuthenticationEndpointBase;
+import org.keycloak.protocol.oid4vc.oid4vp.authenticator.SdJwtAuthRequirements;
 import org.keycloak.protocol.oid4vc.oid4vp.model.ClientIdScheme;
 import org.keycloak.protocol.oid4vc.oid4vp.model.ClientMetadata;
 import org.keycloak.protocol.oid4vc.oid4vp.model.RequestObject;
@@ -53,26 +53,23 @@ public class AuthorizationRequestService {
 
     private static final Logger logger = Logger.getLogger(AuthorizationRequestService.class);
 
-    public static final String VCT_CONFIG_DEFAULT = "https://credentials.example.com/identity_credential";
     public final static String AUTH_REQ_JWT = "oauth-authz-req+jwt";
-    // TODO: Replace by authentication session lifetime
-    public static final int AUTH_REQ_JWT_LIFETIME_SECS = 10 * 60;
     public static final int SECURE_RANDOM_ENTROPY = 20;
+
+    // TODO: Replace by authentication session lifetime
+    public static final int AUTH_REQ_JWT_LIFETIME_SECS = 15 * 60;
 
     // Note: "https://self-issued.me/v2" is a symbolic string and can be used
     // as an aud Claim value even when this specification is used standalone,
     // without SIOPv2.
     public static final String SYMBOLIC_AUD = "https://self-issued.me/v2";
 
-    private final SdJwtCredentialConstrainer sdJwtCredentialConstrainer;
     private final ClientMetadata clientMetadata;
     private final String openID4VPRootUrl;
     private final KeyWrapper signingKey;
     private final SignatureSignerContext signer;
 
     public AuthorizationRequestService(KeycloakSession session) {
-        this.sdJwtCredentialConstrainer = new SdJwtCredentialConstrainer();
-
         // Discover client metadata and signing key
         VerifierDiscoveryService verifierDiscoveryService = new VerifierDiscoveryService(session);
         this.clientMetadata = verifierDiscoveryService.getClientMetadata();
@@ -88,7 +85,10 @@ public class AuthorizationRequestService {
     /**
      * Creates a fresh authorization request for user authentication.
      */
-    public AuthorizationContext createAuthorizationRequest(AuthenticationSessionModel authSession) {
+    public AuthorizationContext createAuthorizationRequest(
+            AuthenticationSessionModel authSession,
+            SdJwtAuthRequirements authReqs
+    ) {
         logger.debug("Creating a fresh authorization request for user authentication...");
 
         // Generate random request and transaction IDs.
@@ -96,9 +96,8 @@ public class AuthorizationRequestService {
         String requestId = generateRequestOrTransactionId(authSession);
         String transactionId = generateRequestOrTransactionId(authSession);
 
-        // Construct presentation definition
-        var presentationDefinition = sdJwtCredentialConstrainer
-                .generatePresentationDefinition(VCT_CONFIG_DEFAULT, List.of(OAuth2Constants.USERNAME));
+        // Load presentation definition for SD-JWT authentication
+        var presentationDefinition = authReqs.getDIFPresentationDefinition();
 
         // Build request object
         RequestObject requestObject = bootstrapRequestObject()

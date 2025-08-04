@@ -61,7 +61,7 @@ public class AuthorizationResponseService {
         logger.debug("Processing authorization response for user authentication...");
         AuthenticationSessionStore store = new AuthenticationSessionStore(authSession);
 
-        // Validate that authorization context is still open
+        // Validate that authorization context is not yet closed
         if (authContext.getStatus().equals(AuthorizationContextStatus.SUCCESS)) {
             throw failAsBadRequest(
                     ProcessingError.AUTH_CONTEXT_CLOSED,
@@ -103,7 +103,7 @@ public class AuthorizationResponseService {
         }
 
         // Check that the submission's descriptor is of SD-JWT VP format
-        var descriptor = submission.getDescriptorMap().getFirst();
+        var descriptor = submission.getDescriptorMap().get(0);
         if (!descriptor.getFormat().value().equals(Format.SD_JWT_VC)) {
             throw failAsBadRequest(
                     ProcessingError.INVALID_PRESENTATION_SUBMISSION,
@@ -116,10 +116,10 @@ public class AuthorizationResponseService {
         // extract the SD-JWT VP token as decided by the wallet. However, in this situation,
         // most implementations will simply use the root path "$", enabling us to avoid full
         // JSON path parsing and to bring in a dependency on a JSON path library.
-        if (!JSON_PATH_ROOT.equals(descriptor.getPath())) {
+        if (!JSON_PATH_ROOT.equals(descriptor.getPath()) || descriptor.getPathNested() != null) {
             throw failAsBadRequest(
                     ProcessingError.INVALID_PRESENTATION_SUBMISSION,
-                    String.format("Invalid path in presentation submission descriptor: %s. Only '%s' is supported",
+                    String.format("Invalid path in presentation submission descriptor: %s. Only '%s' without `path_nested` is supported",
                             descriptor.getPath(), JSON_PATH_ROOT),
                     authContext, store
             );
@@ -167,11 +167,13 @@ public class AuthorizationResponseService {
         );
 
         // Update the authorization context with error details
-        authorizationContext
-                .setStatus(AuthorizationContextStatus.ERROR)
-                .setError(error)
-                .setErrorDescription(message);
-        store.storeAuthorizationContext(authorizationContext);
+        if (!error.equals(ProcessingError.AUTH_CONTEXT_CLOSED)) {
+            authorizationContext
+                    .setStatus(AuthorizationContextStatus.ERROR)
+                    .setError(error)
+                    .setErrorDescription(message);
+            store.storeAuthorizationContext(authorizationContext);
+        }
 
         return exception;
     }

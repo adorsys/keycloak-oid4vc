@@ -31,7 +31,9 @@ import jakarta.ws.rs.core.Response;
 import org.jboss.logging.Logger;
 import org.keycloak.events.EventBuilder;
 import org.keycloak.events.EventType;
+import org.keycloak.models.AuthenticatorConfigModel;
 import org.keycloak.models.KeycloakSession;
+import org.keycloak.protocol.oid4vc.oid4vp.authenticator.SdJwtAuthRequirements;
 import org.keycloak.protocol.oid4vc.oid4vp.model.ResponseObject;
 import org.keycloak.protocol.oid4vc.oid4vp.model.dto.AuthorizationContext;
 import org.keycloak.protocol.oid4vc.oid4vp.service.AuthenticationSessionStore;
@@ -77,16 +79,18 @@ public class OID4VPUserAuthenticationEndpoint extends OID4VPUserAuthenticationEn
         event.event(EventType.OID4VP_INIT_AUTH);
 
         AuthenticationSessionModel authSession = createAuthSession();
+        AuthenticatorConfigModel authConfig = getSdjwtAuthenticatorConfig();
+        SdJwtAuthRequirements authReqs = new SdJwtAuthRequirements(session.getContext(), authConfig);
 
         // Call delegate service to create an authorization request
         AuthorizationContext authorizationContext = authorizationRequestService
-                .createAuthorizationRequest(authSession);
+                .createAuthorizationRequest(authSession, authReqs);
 
         AuthorizationContext reducedContext = new AuthorizationContext()
                 .setAuthorizationRequest(authorizationContext.getAuthorizationRequest())
                 .setTransactionId(authorizationContext.getTransactionId());
 
-        return Response.ok(reducedContext).build();
+        return Response.ok(authorizationContext).build();
     }
 
     /**
@@ -100,7 +104,7 @@ public class OID4VPUserAuthenticationEndpoint extends OID4VPUserAuthenticationEn
         AuthorizationContext authorizationContext;
 
         try {
-            authorizationContext = this.recoverAuthorizationContext(requestId);
+            authorizationContext = this.recoverAuthorizationContextByRequestId(requestId);
         } catch (IllegalArgumentException e) {
             throw new NotFoundException("Authorization context not found for request ID: " + requestId, e);
         }
@@ -150,6 +154,32 @@ public class OID4VPUserAuthenticationEndpoint extends OID4VPUserAuthenticationEn
     }
 
     /**
+     * Inquire the state of an authorization request context by its transaction ID.
+     * In cross-device flows, the wallet should poll this endpoint.
+     */
+    @GET
+    @Path("/status/{transactionId}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAuthorizationContextState(String transactionId) {
+        logger.debug("Inquiring authorization context state by transaction ID...");
+        AuthorizationContext authorizationContext;
+
+        try {
+            authorizationContext = this.recoverAuthorizationContextByTransactionId(transactionId);
+        } catch (IllegalArgumentException e) {
+            throw new NotFoundException("Authorization context not found for transaction ID: " + transactionId, e);
+        }
+
+        AuthorizationContext reducedContext = new AuthorizationContext()
+                .setStatus(authorizationContext.getStatus())
+                .setAuthorizationCode(authorizationContext.getAuthorizationCode())
+                .setError(authorizationContext.getError())
+                .setErrorDescription(authorizationContext.getErrorDescription());
+
+        return Response.ok(reducedContext).build();
+    }
+
+    /**
      * Recovers the authentication session linked to a request ID.
      */
     private AuthenticationSessionModel recoverAuthenticationSession(String requestId) {
@@ -161,12 +191,21 @@ public class OID4VPUserAuthenticationEndpoint extends OID4VPUserAuthenticationEn
     }
 
     /**
-     * Recovers the authorization context from session as per a request ID.
+     * Recovers the authorization context from session given a request ID.
      */
-    private AuthorizationContext recoverAuthorizationContext(String requestId) {
+    private AuthorizationContext recoverAuthorizationContextByRequestId(String requestId) {
         AuthenticationSessionModel authSession = recoverAuthenticationSession(requestId);
         return new AuthenticationSessionStore(authSession)
                 .getAuthorizationContextByRequestId(requestId);
+    }
+
+    /**
+     * Recovers the authorization context from session given a transaction ID.
+     */
+    private AuthorizationContext recoverAuthorizationContextByTransactionId(String transactionId) {
+        AuthenticationSessionModel authSession = recoverAuthenticationSession(transactionId);
+        return new AuthenticationSessionStore(authSession)
+                .getAuthorizationContextByTransactionId(transactionId);
     }
 
     @Override
