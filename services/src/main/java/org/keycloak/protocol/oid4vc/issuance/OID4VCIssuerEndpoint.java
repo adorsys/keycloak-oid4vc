@@ -64,6 +64,7 @@ import org.keycloak.protocol.oid4vc.model.CredentialsOffer;
 import org.keycloak.protocol.oid4vc.model.ErrorResponse;
 import org.keycloak.protocol.oid4vc.model.ErrorType;
 import org.keycloak.protocol.oid4vc.model.Format;
+import org.keycloak.protocol.oid4vc.model.JwtProof;
 import org.keycloak.protocol.oid4vc.model.NonceResponse;
 import org.keycloak.protocol.oid4vc.model.OfferUriType;
 import org.keycloak.protocol.oid4vc.model.PreAuthorizedCode;
@@ -407,31 +408,36 @@ public class OID4VCIssuerEndpoint {
 
         checkScope(requestedCredential);
 
-        // Validate proof and proofs exclusivity
-        if (credentialRequestVO.getProof() != null && credentialRequestVO.getProofs() != null && !credentialRequestVO.getProofs().isEmpty()) {
-            LOGGER.debugf("Both 'proof' and 'proofs' fields are present in the request.");
+        // Validate proof exclusivity
+        if (credentialRequestVO.getProof() != null && credentialRequestVO.getProofs() != null) {
+            LOGGER.debugf("Both single proof and multiple proofs provided");
             throw new BadRequestException(getErrorResponse(ErrorType.INVALID_CREDENTIAL_REQUEST));
         }
 
         SupportedCredentialConfiguration supportedCredential =
                 OID4VCIssuerWellKnownProvider.toSupportedCredentialConfiguration(session, requestedCredential);
 
-        // Generate response
         CredentialResponse responseVO = new CredentialResponse();
         responseVO.setNotificationId(generateNotificationId());
 
-        if (credentialRequestVO.getProofs() != null && !credentialRequestVO.getProofs().isEmpty()) {
-            // Multiple credential issuance
-            for (Proof proof : credentialRequestVO.getProofs()) {
+        // Handle JWT proofs (only case we're considering now)
+        if (credentialRequestVO.getProofs() != null) {
+            if (credentialRequestVO.getProofs().getJwt() == null || credentialRequestVO.getProofs().getJwt().isEmpty()) {
+                LOGGER.debugf("No JWT proofs provided in proofs object");
+                throw new BadRequestException(getErrorResponse(ErrorType.INVALID_CREDENTIAL_REQUEST));
+            }
+
+            for (String jwt : credentialRequestVO.getProofs().getJwt()) {
+                JwtProof proof = new JwtProof().setJwt(jwt);
                 Object credential = getCredential(authResult, supportedCredential, credentialRequestVO, proof);
                 responseVO.addCredential(credential);
             }
-        } else {
-            // Single credential issuance
-            Object theCredential = getCredential(authResult, supportedCredential, credentialRequestVO, credentialRequestVO.getProof());
-            responseVO.addCredential(theCredential);
         }
-
+        // Handle a single proof case
+        else {
+            Object credential = getCredential(authResult, supportedCredential, credentialRequestVO, credentialRequestVO.getProof());
+            responseVO.addCredential(credential);
+        }
         return Response.ok().entity(responseVO).build();
     }
 
@@ -473,6 +479,8 @@ public class OID4VCIssuerEndpoint {
                                  SupportedCredentialConfiguration credentialConfig,
                                  CredentialRequest credentialRequestVO,
                                  Proof proof) {
+
+        // Get the client scope model from the credential configuration
         CredentialScopeModel credentialScopeModel = getClientScopeModel(credentialConfig);
 
         // Get the protocol mappers from the client scope

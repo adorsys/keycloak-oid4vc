@@ -25,7 +25,6 @@ import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
 import org.keycloak.util.JsonSerialization;
 
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
@@ -55,14 +54,8 @@ public class CredentialRequest {
     private Proof proof;
 
     @JsonProperty("proofs")
-    @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "proof_type")
-    @JsonSubTypes({
-            @JsonSubTypes.Type(value = JwtProof.class, name = ProofType.JWT),
-            @JsonSubTypes.Type(value = LdpVpProof.class, name = ProofType.LD_PROOF)
-    })
-    private List<Proof> proofs;
+    private Proofs proofs;
 
-    // See: https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#name-format-identifier-3
     @JsonProperty("credential_definition")
     private CredentialDefinition credentialDefinition;
 
@@ -93,11 +86,11 @@ public class CredentialRequest {
         return this;
     }
 
-    public List<Proof> getProofs() {
+    public Proofs getProofs() {
         return proofs;
     }
 
-    public CredentialRequest setProofs(List<Proof> proofs) {
+    public CredentialRequest setProofs(Proofs proofs) {
         this.proofs = proofs;
         return this;
     }
@@ -123,9 +116,9 @@ public class CredentialRequest {
         RealmModel currentRealm = keycloakSession.getContext().getRealm();
         final boolean useOrExpression = false;
         return keycloakSession.clientScopes()
-                              .getClientScopesByAttributes(currentRealm, searchAttributeMap, useOrExpression)
-                              .map(CredentialScopeModel::new)
-                              .findAny();
+                .getClientScopesByAttributes(currentRealm, searchAttributeMap, useOrExpression)
+                .map(CredentialScopeModel::new)
+                .findAny();
     }
 
     @Override

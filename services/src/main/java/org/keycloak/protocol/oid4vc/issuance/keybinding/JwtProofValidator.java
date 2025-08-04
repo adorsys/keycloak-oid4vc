@@ -28,11 +28,13 @@ import org.keycloak.models.KeycloakSession;
 import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerWellKnownProvider;
 import org.keycloak.protocol.oid4vc.issuance.VCIssuanceContext;
 import org.keycloak.protocol.oid4vc.issuance.VCIssuerException;
+import org.keycloak.protocol.oid4vc.model.CredentialRequest;
 import org.keycloak.protocol.oid4vc.model.ErrorType;
 import org.keycloak.protocol.oid4vc.model.JwtProof;
 import org.keycloak.protocol.oid4vc.model.Proof;
 import org.keycloak.protocol.oid4vc.model.ProofType;
 import org.keycloak.protocol.oid4vc.model.ProofTypesSupported;
+import org.keycloak.protocol.oid4vc.model.Proofs;
 import org.keycloak.protocol.oid4vc.model.SupportedCredentialConfiguration;
 import org.keycloak.representations.AccessToken;
 import org.keycloak.util.JsonSerialization;
@@ -137,16 +139,29 @@ public class JwtProofValidator extends AbstractProofValidator {
                     Optional.ofNullable(proofTypesSupported.getSupportedProofTypes().get("jwt"))
                             .orElseThrow(() -> new VCIssuerException("SD-JWT supports only jwt proof type."));
 
-                    // Check both proof and proofs fields
-                    Proof proofObject = vcIssuanceContext.getCredentialRequest().getProof();
-                    List<Proof> proofsList = vcIssuanceContext.getCredentialRequest().getProofs();
+                    CredentialRequest request = vcIssuanceContext.getCredentialRequest();
+                    Proof singleProof = request.getProof();
+                    Proofs multipleProofs = request.getProofs();
 
-                    if (proofObject == null && (proofsList == null || proofsList.isEmpty())) {
+                    // Check at least one proof exists
+                    if (singleProof == null && (multipleProofs == null ||
+                            (multipleProofs.getJwt() == null || multipleProofs.getJwt().isEmpty()))) {
                         throw new VCIssuerException("Credential configuration requires a proof of type: " + ProofType.JWT);
                     }
 
-                    // If proofs list is provided, validate the first proof (since all should be same type)
-                    Proof proofToValidate = proofsList != null && !proofsList.isEmpty() ? proofsList.get(0) : proofObject;
+                    // Get the first available proof (either from a single proof or first in multiple proofs)
+                    Proof proofToValidate;
+                    if (multipleProofs != null && multipleProofs.getJwt() != null && !multipleProofs.getJwt().isEmpty()) {
+                        // Create JwtProof from the first JWT string
+                        proofToValidate = new JwtProof().setJwt(multipleProofs.getJwt().get(0));
+                    } else {
+                        proofToValidate = singleProof;
+                    }
+
+                    // Validate proof type
+                    if (proofToValidate == null) {
+                        throw new VCIssuerException("No valid proof found.");
+                    }
 
                     if (!(proofToValidate instanceof JwtProof)) {
                         throw new VCIssuerException("Wrong proof type. Expected JwtProof, but got: " +
