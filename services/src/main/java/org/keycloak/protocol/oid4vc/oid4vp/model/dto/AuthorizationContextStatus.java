@@ -26,8 +26,9 @@ import com.fasterxml.jackson.annotation.JsonValue;
  */
 public enum AuthorizationContextStatus {
 
-    OPEN("open"),
-    CLOSED("closed");
+    PENDING("pending"),
+    SUCCESS("success"),
+    ERROR("error");
 
     private final String status;
 

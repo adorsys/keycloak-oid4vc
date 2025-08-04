@@ -113,7 +113,7 @@ public class AuthorizationRequestService {
 
         // Gather authorization context
         AuthorizationContext authorizationContext = new AuthorizationContext()
-                .setStatus(AuthorizationContextStatus.OPEN)
+                .setStatus(AuthorizationContextStatus.PENDING)
                 .setRequestId(requestId)
                 .setTransactionId(transactionId)
                 .setRequestObject(requestObject)
