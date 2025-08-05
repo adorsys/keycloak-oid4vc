@@ -29,6 +29,7 @@ import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import org.jboss.logging.Logger;
+import org.keycloak.authentication.AuthenticationProcessor;
 import org.keycloak.events.EventBuilder;
 import org.keycloak.events.EventType;
 import org.keycloak.models.AuthenticatorConfigModel;
@@ -64,7 +65,7 @@ public class OID4VPUserAuthenticationEndpoint extends OID4VPUserAuthenticationEn
     public OID4VPUserAuthenticationEndpoint(KeycloakSession session, EventBuilder event) {
         super(session, event);
         this.authorizationRequestService = new AuthorizationRequestService(session);
-        this.authorizationResponseService = new AuthorizationResponseService(session);
+        this.authorizationResponseService = new AuthorizationResponseService();
     }
 
     /**
@@ -147,8 +148,9 @@ public class OID4VPUserAuthenticationEndpoint extends OID4VPUserAuthenticationEn
         }
 
         // Call delegate service to process the authorization response
+        AuthenticationProcessor authProcessor = getAuthenticationProcessor();
         authorizationContext = authorizationResponseService
-                .processAuthorizationResponse(responseObject, authorizationContext, authSession);
+                .processAuthorizationResponse(responseObject, authorizationContext, authSession, authProcessor);
 
         return Response.ok(authorizationContext).build();
     }
@@ -184,10 +186,13 @@ public class OID4VPUserAuthenticationEndpoint extends OID4VPUserAuthenticationEn
      */
     private AuthenticationSessionModel recoverAuthenticationSession(String requestId) {
         String authSessionId = pruneAuthSessionId(requestId);
-        return getAuthSession(authSessionId)
+        AuthenticationSessionModel authSession = getAuthSession(authSessionId)
                 .orElseThrow(() -> new IllegalArgumentException(
                         "No authentication session attached to request ID: " + requestId
                 ));
+        
+        session.getContext().setAuthenticationSession(authSession);
+        return authSession;
     }
 
     /**

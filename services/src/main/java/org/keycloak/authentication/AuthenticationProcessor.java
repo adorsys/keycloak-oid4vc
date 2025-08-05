@@ -1091,9 +1091,11 @@ public class AuthenticationProcessor {
     public Response authenticateOnly() throws AuthenticationFlowException {
         logger.debug("AUTHENTICATE ONLY");
         checkClientSession(false);
-        event.client(authenticationSession.getClient().getClientId())
-                .detail(Details.REDIRECT_URI, authenticationSession.getRedirectUri())
-                .detail(Details.AUTH_METHOD, authenticationSession.getProtocol());
+        if (authenticationSession.getClient() != null) {
+            event.client(authenticationSession.getClient().getClientId())
+                    .detail(Details.REDIRECT_URI, authenticationSession.getRedirectUri())
+                    .detail(Details.AUTH_METHOD, authenticationSession.getProtocol());
+        }
         String authType = authenticationSession.getAuthNote(Details.AUTH_TYPE);
         if (authType != null) {
             event.detail(Details.AUTH_TYPE, authType);

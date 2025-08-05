@@ -19,15 +19,20 @@ package org.keycloak.protocol.oid4vc.oid4vp.authenticator;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
 import org.jboss.logging.Logger;
 import org.keycloak.OAuth2Constants;
 import org.keycloak.authentication.AuthenticationFlowContext;
+import org.keycloak.authentication.AuthenticationFlowError;
 import org.keycloak.authentication.Authenticator;
 import org.keycloak.common.VerificationException;
+import org.keycloak.events.Errors;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
 import org.keycloak.models.UserModel;
 import org.keycloak.models.utils.KeycloakModelUtils;
+import org.keycloak.representations.idm.OAuth2ErrorRepresentation;
 import org.keycloak.sdjwt.SdJwtUtils;
 import org.keycloak.sdjwt.consumer.SdJwtPresentationConsumer;
 import org.keycloak.sdjwt.vp.SdJwtVP;
@@ -68,14 +73,7 @@ public class SdJwtAuthenticator implements Authenticator {
 
         SdJwtAuthRequirements authReqs = getAuthenticationRequirements(context);
         String nonce = authSession.getAuthNote(CHALLENGE_NONCE_KEY);
-
-        SdJwtVP sdJwt = getPresentedSdJwtToken(context);
-        if (nonce == null || sdJwt == null) {
-            failCommunicatingPresentationRequirements(context);
-            return;
-        }
-
-        logger.debugf("SD-JWT received. Starting token verification...");
+        SdJwtVP sdJwt = SdJwtVP.of(authSession.getAuthNote(SDJWT_TOKEN_KEY));
 
         try {
             consumer.verifySdJwtPresentation(
@@ -106,10 +104,6 @@ public class SdJwtAuthenticator implements Authenticator {
     @Override
     public void action(AuthenticationFlowContext context) {
         // No form action is relevant for this authenticator
-    }
-
-    private SdJwtVP getPresentedSdJwtToken(AuthenticationFlowContext context) {
-        throw new UnsupportedOperationException();
     }
 
     private SdJwtAuthRequirements getAuthenticationRequirements(AuthenticationFlowContext context) {
@@ -155,21 +149,38 @@ public class SdJwtAuthenticator implements Authenticator {
         return null;
     }
 
-    private void failCommunicatingPresentationRequirements(AuthenticationFlowContext context) {
-        logger.info("Communicate presentation requirements via authentication metadata");
-        throw new UnsupportedOperationException();
-    }
-
     private void failRejectingPresentedSdJwtToken(AuthenticationFlowContext context) {
-        AuthenticationSessionModel authSession = context.getAuthenticationSession();
         logger.info("Presented SD-JWT will be rejected as invalid");
-        throw new UnsupportedOperationException();
+
+        var errorRep = new OAuth2ErrorRepresentation(
+                Errors.INVALID_USER_CREDENTIALS,
+                "Invalid SD-JWT presentation"
+        );
+
+        context.failure(
+                AuthenticationFlowError.INVALID_CREDENTIALS,
+                Response.status(Response.Status.UNAUTHORIZED.getStatusCode())
+                        .type(MediaType.APPLICATION_JSON_TYPE)
+                        .entity(errorRep)
+                        .build()
+        );
     }
 
     private void failDenyingAuthenticatingUser(AuthenticationFlowContext context) {
-        AuthenticationSessionModel authSession = context.getAuthenticationSession();
         logger.info("Presented SD-JWT will be rejected for associated user is unknown");
-        throw new UnsupportedOperationException();
+
+        var errorRep = new OAuth2ErrorRepresentation(
+                Errors.USER_NOT_FOUND,
+                "User with presented SD-JWT unknown"
+        );
+
+        context.failure(
+                AuthenticationFlowError.UNKNOWN_USER,
+                Response.status(Response.Status.UNAUTHORIZED.getStatusCode())
+                        .type(MediaType.APPLICATION_JSON_TYPE)
+                        .entity(errorRep)
+                        .build()
+        );
     }
 
     @Override

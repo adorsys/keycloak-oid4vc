@@ -17,11 +17,12 @@
 
 package org.keycloak.protocol.oid4vc.oid4vp.service;
 
-import jakarta.ws.rs.BadRequestException;
+import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.Response;
 import org.jboss.logging.Logger;
-import org.keycloak.models.KeycloakSession;
+import org.keycloak.authentication.AuthenticationProcessor;
 import org.keycloak.protocol.oid4vc.model.Format;
+import org.keycloak.protocol.oid4vc.oid4vp.authenticator.SdJwtAuthenticator;
 import org.keycloak.protocol.oid4vc.oid4vp.model.ResponseObject;
 import org.keycloak.protocol.oid4vc.oid4vp.model.dto.AuthorizationContext;
 import org.keycloak.protocol.oid4vc.oid4vp.model.dto.AuthorizationContextStatus;
@@ -44,10 +45,7 @@ public class AuthorizationResponseService {
 
     private static final String JSON_PATH_ROOT = "$";
 
-    private final KeycloakSession session;
-
-    public AuthorizationResponseService(KeycloakSession session) {
-        this.session = session;
+    public AuthorizationResponseService() {
     }
 
     /**
@@ -56,36 +54,60 @@ public class AuthorizationResponseService {
     public AuthorizationContext processAuthorizationResponse(
             ResponseObject responseObject,
             AuthorizationContext authContext,
-            AuthenticationSessionModel authSession
+            AuthenticationSessionModel authSession,
+            AuthenticationProcessor authProcessor
     ) {
         logger.debug("Processing authorization response for user authentication...");
         AuthenticationSessionStore store = new AuthenticationSessionStore(authSession);
 
         // Validate that authorization context is not yet closed
         if (authContext.getStatus().equals(AuthorizationContextStatus.SUCCESS)) {
-            throw failAsBadRequest(
+            throw failWithHttpException(
                     ProcessingError.AUTH_CONTEXT_CLOSED,
                     "Authorization context is already closed. Cannot process further responses",
-                    authContext, store
+                    Response.Status.BAD_REQUEST, authContext, store
             );
         }
 
         // Extract SD-JWT VP token from the response object
-        SdJwtVP sdJwtVp = extractSdJwtVpToken(responseObject, authContext, store);
-        logger.debugf("Extracted SD-JWT VP token: %s", sdJwtVp.toString());
+        String sdJwtVp = extractSdJwtVpToken(responseObject, authContext, store);
 
         // Formally, we should then check that the VP token satisfies the constraints of
         // the OpenID4VP presentation definition. Equivalently, we offload this task to
         // the SD-JWT authenticator in the authentication flow.
+        logger.debugf("Initializing authentication with extracted SD-JWT VP token");
+        String nonce = authContext.getRequestObject().getNonce();
+        authSession.setAuthNote(SdJwtAuthenticator.SDJWT_TOKEN_KEY, sdJwtVp);
+        authSession.setAuthNote(SdJwtAuthenticator.CHALLENGE_NONCE_KEY, nonce);
 
-        // Pursue creation process
+        // Run authentication processor to validate the SD-JWT VP token
+        logger.debug("Running authentication processor to validate SD-JWT VP token...");
+        try (Response response = authProcessor.authenticateOnly()) {
+            if (response != null) {
+                var errorResponse = (OAuth2ErrorRepresentation) response.getEntity();
+                String message = String.format("%s: %s",
+                        errorResponse.getError().toUpperCase(),
+                        errorResponse.getErrorDescription());
+                
+                logger.errorf("Authentication processor failed. [%s] %s",
+                        response.getStatus(), message);
+
+                throw failWithHttpException(
+                        ProcessingError.VP_TOKEN_AUTH_ERROR,
+                        message,
+                        Response.Status.fromStatusCode(response.getStatus()),
+                        authContext, store
+                );
+            }
+        }
+
         return authContext;
     }
 
     /**
      * Extract SD-JWT VP token from response object
      */
-    private SdJwtVP extractSdJwtVpToken(
+    private String extractSdJwtVpToken(
             ResponseObject responseObject,
             AuthorizationContext authContext,
             AuthenticationSessionStore store
@@ -95,20 +117,20 @@ public class AuthorizationResponseService {
         var submission = responseObject.getPresentationSubmission();
         if (!definition.getId().equals(submission.getDefinitionId())
                 || definition.getInputDescriptors().size() != submission.getDescriptorMap().size()) {
-            throw failAsBadRequest(
+            throw failWithHttpException(
                     ProcessingError.INVALID_PRESENTATION_SUBMISSION,
                     "Presentation submission does not match the expected presentation definition",
-                    authContext, store
+                    Response.Status.BAD_REQUEST, authContext, store
             );
         }
 
         // Check that the submission's descriptor is of SD-JWT VP format
         var descriptor = submission.getDescriptorMap().get(0);
         if (!descriptor.getFormat().value().equals(Format.SD_JWT_VC)) {
-            throw failAsBadRequest(
+            throw failWithHttpException(
                     ProcessingError.INVALID_PRESENTATION_SUBMISSION,
                     "SD-JWT VP token expected, but received: " + descriptor.getFormat().value(),
-                    authContext, store
+                    Response.Status.BAD_REQUEST, authContext, store
             );
         }
 
@@ -117,50 +139,52 @@ public class AuthorizationResponseService {
         // most implementations will simply use the root path "$", enabling us to avoid full
         // JSON path parsing and to bring in a dependency on a JSON path library.
         if (!JSON_PATH_ROOT.equals(descriptor.getPath()) || descriptor.getPathNested() != null) {
-            throw failAsBadRequest(
+            throw failWithHttpException(
                     ProcessingError.INVALID_PRESENTATION_SUBMISSION,
                     String.format("Invalid path in presentation submission descriptor: %s. Only '%s' without `path_nested` is supported",
                             descriptor.getPath(), JSON_PATH_ROOT),
-                    authContext, store
+                    Response.Status.BAD_REQUEST, authContext, store
             );
         }
 
         // Check that a vp_token was submitted
         if (responseObject.getVpToken() == null || responseObject.getVpToken().isEmpty()) {
-            throw failAsBadRequest(
+            throw failWithHttpException(
                     ProcessingError.INVALID_PRESENTATION_SUBMISSION,
                     "Could not parse submission in search for SD-JWT VP token",
-                    authContext, store
+                    Response.Status.BAD_REQUEST, authContext, store
             );
         }
 
         try {
-            String vpToken = responseObject.getVpToken();
-            return SdJwtVP.of(decodeIfBase64Url(vpToken));
+            String vpToken = decodeIfBase64Url(responseObject.getVpToken());
+            SdJwtVP.of(vpToken);
+            return vpToken;
         } catch (IllegalArgumentException e) {
             logger.errorf(e, "Failed to parse SD-JWT VP token");
-            throw failAsBadRequest(
+            throw failWithHttpException(
                     ProcessingError.INVALID_VP_TOKEN,
                     "Could not parse `vp_token` as an SD-JWT VP token",
-                    authContext, store
+                    Response.Status.BAD_REQUEST, authContext, store
             );
         }
     }
 
     /**
-     * Helper method for repetitive BadRequestException construction.
+     * Helper method for issuing exceptions while keeping a record in the authorization context.
      */
-    private BadRequestException failAsBadRequest(
+    private WebApplicationException failWithHttpException(
             ProcessingError error,
             String message,
+            Response.Status status,
             AuthorizationContext authorizationContext,
             AuthenticationSessionStore store
     ) {
         logger.errorf("%s: %s", error, message);
 
         var errorResponse = new OAuth2ErrorRepresentation(error.getErrorString(), message);
-        var exception = new BadRequestException(Response
-                .status(Response.Status.BAD_REQUEST)
+        var exception = new WebApplicationException(Response
+                .status(status)
                 .entity(errorResponse)
                 .type(MediaType.APPLICATION_JSON)
                 .build()

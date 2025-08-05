@@ -18,12 +18,14 @@
 package org.keycloak.protocol.oid4vc.oid4vp;
 
 import org.jboss.logging.Logger;
+import org.keycloak.authentication.AuthenticationProcessor;
 import org.keycloak.events.EventBuilder;
 import org.keycloak.models.AuthenticatedClientSessionModel;
 import org.keycloak.models.AuthenticationExecutionModel;
 import org.keycloak.models.AuthenticationFlowModel;
 import org.keycloak.models.AuthenticatorConfigModel;
 import org.keycloak.models.ClientModel;
+import org.keycloak.models.KeycloakContext;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.delegate.ClientModelLazyDelegate;
 import org.keycloak.protocol.AuthorizationEndpointBase;
@@ -80,6 +82,24 @@ public class OID4VPUserAuthenticationEndpointBase extends AuthorizationEndpointB
                 .map(AuthenticationExecutionModel::getAuthenticatorConfig)
                 .map(realm::getAuthenticatorConfigById)
                 .orElse(new AuthenticatorConfigModel());
+    }
+
+    /**
+     * Derives authenticator processor from authentication flow.
+     */
+    protected AuthenticationProcessor getAuthenticationProcessor() {
+        KeycloakContext context = session.getContext();
+        AuthenticationFlowModel flow = getOID4VPAuthFlow();
+        return new AuthenticationProcessor()
+                .setAuthenticationSession(context.getAuthenticationSession())
+                .setFlowId(flow.getId())
+                .setFlowPath(null)
+                .setConnection(clientConnection)
+                .setEventBuilder(event)
+                .setRealm(realm)
+                .setSession(session)
+                .setUriInfo(context.getUri())
+                .setRequest(httpRequest);
     }
 
     /**
