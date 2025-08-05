@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Red Hat, Inc. and/or its affiliates
+ * Copyright 2025 Red Hat, Inc. and/or its affiliates
  * and other contributors as indicated by the @author tags.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,25 +21,25 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 /**
- * LDP-VP Proof for Credential Request in OID4VCI (Section 8.2.1.1).
+ * DI-VP Proof for Credential Request in OID4VCI (Section 8.2.1.1).
  * Represents a JSON-LD Verifiable Presentation for holder binding.
  *
  * @see <a href="https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#name-credential-request">OID4VCI Credential Request</a>
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public class LdpVpProof implements Proof {
+public class DiVpProof implements Proof {
 
     @JsonProperty("proof_type")
-    private final String proofType = ProofType.LD_PROOF;
+    private final String proofType = ProofType.DI_PROOF;
 
-    @JsonProperty("ldp_vp")
-    private Object ldpVp;
+    @JsonProperty("di_vp")
+    private Object diVp;
 
-    public LdpVpProof() {
+    public DiVpProof() {
     }
 
-    public LdpVpProof(Object ldpVp) {
-        this.ldpVp = ldpVp;
+    public DiVpProof(Object diVp) {
+        this.diVp = diVp;
     }
 
     @Override
@@ -47,12 +47,12 @@ public class LdpVpProof implements Proof {
         return proofType;
     }
 
-    public Object getLdpVp() {
-        return ldpVp;
+    public Object getDiVp() {
+        return diVp;
     }
 
-    public LdpVpProof setLdpVp(Object ldpVp) {
-        this.ldpVp = ldpVp;
+    public DiVpProof setDiVp(Object diVp) {
+        this.diVp = diVp;
         return this;
     }
 }

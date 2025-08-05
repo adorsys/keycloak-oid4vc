@@ -49,7 +49,7 @@ public class CredentialRequest {
     @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "proof_type")
     @JsonSubTypes({
             @JsonSubTypes.Type(value = JwtProof.class, name = ProofType.JWT),
-            @JsonSubTypes.Type(value = LdpVpProof.class, name = ProofType.LD_PROOF)
+            @JsonSubTypes.Type(value = DiVpProof.class, name = ProofType.DI_PROOF)
     })
     private Proof proof;
 
