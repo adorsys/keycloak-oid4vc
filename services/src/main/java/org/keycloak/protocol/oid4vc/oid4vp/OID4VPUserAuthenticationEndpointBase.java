@@ -37,6 +37,8 @@ import org.keycloak.sessions.RootAuthenticationSessionModel;
 import java.util.Optional;
 import java.util.regex.Pattern;
 
+import static org.keycloak.models.utils.DefaultAuthenticationFlows.OID4VP_AUTH_FLOW;
+
 /**
  * Base endpoint class handling common routines needed by OpenID4VP routes.
  *
@@ -46,7 +48,6 @@ public class OID4VPUserAuthenticationEndpointBase extends AuthorizationEndpointB
 
     private static final Logger logger = Logger.getLogger(OID4VPUserAuthenticationEndpointBase.class);
 
-    public static final String OID4VP_AUTH_FLOW_ALIAS = "oid4vp auth";
     public static final String AUTH_SESSION_DELIMITER = ".";
     public static final String AUTH_SESSION_EOL_MARKER = "::";
 
@@ -57,12 +58,12 @@ public class OID4VPUserAuthenticationEndpointBase extends AuthorizationEndpointB
     /**
      * Returns the OpenID4VP authentication flow model.
      */
-    protected AuthenticationFlowModel getOID4VPAuthFlow() {
-        AuthenticationFlowModel flow = realm.getFlowByAlias(OID4VP_AUTH_FLOW_ALIAS);
+    protected AuthenticationFlowModel getOid4vpAuthFlow() {
+        AuthenticationFlowModel flow = realm.getFlowByAlias(OID4VP_AUTH_FLOW);
         if (flow == null) {
             throw new IllegalStateException(String.format(
                     "Authentication flow '%s' not found. Such is supposed to be built-in",
-                    OID4VP_AUTH_FLOW_ALIAS
+                    OID4VP_AUTH_FLOW
             ));
         }
 
@@ -73,7 +74,7 @@ public class OID4VPUserAuthenticationEndpointBase extends AuthorizationEndpointB
      * Returns the SD-JWT authenticator configuration as part of the OpenID4VP authentication flow.
      */
     protected AuthenticatorConfigModel getSdjwtAuthenticatorConfig() {
-        AuthenticationFlowModel flow = getOID4VPAuthFlow();
+        AuthenticationFlowModel flow = getOid4vpAuthFlow();
         return realm.getAuthenticationExecutionsStream(flow.getId())
                 .filter(execution -> execution.getAuthenticator().equals(SdJwtAuthenticatorFactory.PROVIDER_ID))
                 .findFirst()
@@ -87,7 +88,7 @@ public class OID4VPUserAuthenticationEndpointBase extends AuthorizationEndpointB
      */
     protected AuthenticationProcessor getAuthenticationProcessor() {
         KeycloakContext context = session.getContext();
-        AuthenticationFlowModel flow = getOID4VPAuthFlow();
+        AuthenticationFlowModel flow = getOid4vpAuthFlow();
 
         // Creates an ephemeral authentication session tab. Authentication sessions tabs
         // are automatically removed after successful authentication, which is problematic
