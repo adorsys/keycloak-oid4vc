@@ -70,7 +70,7 @@ public class JwtProofValidator extends AbstractProofValidator {
     public List<JWK> validateProof(VCIssuanceContext vcIssuanceContext) throws VCIssuerException {
         try {
             return validateJwtProof(vcIssuanceContext);
-        } catch (Exception e) {
+        } catch (JWSInputException | VerificationException | IOException e) {
             throw new VCIssuerException("Could not validate proof", e);
         }
     }
@@ -168,7 +168,7 @@ public class JwtProofValidator extends AbstractProofValidator {
 
                     Proofs proofs = vcIssuanceContext.getCredentialRequest().getProofs();
                     if (proofs == null || proofs.getJwt() == null || proofs.getJwt().isEmpty()) {
-                        throw new VCIssuerException("Credential configuration requires a proof of type: jwt");
+                        throw new VCIssuerException("Credential configuration requires a proof of type: " + ProofType.JWT);
                     }
 
                     return Optional.of(proofs.getJwt());
