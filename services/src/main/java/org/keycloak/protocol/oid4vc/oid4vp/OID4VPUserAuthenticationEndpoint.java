@@ -29,10 +29,12 @@ import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import org.jboss.logging.Logger;
+import org.keycloak.OAuthErrorException;
 import org.keycloak.authentication.AuthenticationProcessor;
 import org.keycloak.events.EventBuilder;
 import org.keycloak.events.EventType;
 import org.keycloak.models.AuthenticatorConfigModel;
+import org.keycloak.models.ClientModel;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.protocol.oid4vc.oid4vp.authenticator.SdJwtAuthRequirements;
 import org.keycloak.protocol.oid4vc.oid4vp.model.ResponseObject;
@@ -40,6 +42,9 @@ import org.keycloak.protocol.oid4vc.oid4vp.model.dto.AuthorizationContext;
 import org.keycloak.protocol.oid4vc.oid4vp.service.AuthenticationSessionStore;
 import org.keycloak.protocol.oid4vc.oid4vp.service.AuthorizationRequestService;
 import org.keycloak.protocol.oid4vc.oid4vp.service.AuthorizationResponseService;
+import org.keycloak.protocol.oidc.utils.AuthorizeClientUtil;
+import org.keycloak.services.CorsErrorResponseException;
+import org.keycloak.services.cors.Cors;
 import org.keycloak.services.resource.RealmResourceProvider;
 import org.keycloak.sessions.AuthenticationSessionModel;
 
@@ -61,17 +66,19 @@ public class OID4VPUserAuthenticationEndpoint extends OID4VPUserAuthenticationEn
 
     private final AuthorizationRequestService authorizationRequestService;
     private final AuthorizationResponseService authorizationResponseService;
+    protected Cors cors;
 
     public OID4VPUserAuthenticationEndpoint(KeycloakSession session, EventBuilder event) {
         super(session, event);
         this.authorizationRequestService = new AuthorizationRequestService(session);
-        this.authorizationResponseService = new AuthorizationResponseService();
+        this.authorizationResponseService = new AuthorizationResponseService(session);
+        this.cors = Cors.builder().allowAllOrigins().auth(); // open all origins by default
     }
 
     /**
      * Generates an OpenID4VP authentication request for user authentication.
      */
-    @GET
+    @POST
     @Path("/request")
     @Consumes(MediaType.APPLICATION_FORM_URLENCODED)
     @Produces(MediaType.APPLICATION_JSON)
@@ -79,7 +86,8 @@ public class OID4VPUserAuthenticationEndpoint extends OID4VPUserAuthenticationEn
         logger.debug("Initiating user authentication over OpenID4VP...");
         event.event(EventType.OID4VP_INIT_AUTH);
 
-        AuthenticationSessionModel authSession = createAuthSession();
+        ClientModel client = authenticateClient();
+        AuthenticationSessionModel authSession = createAuthSession(client);
         AuthenticatorConfigModel authConfig = getSdjwtAuthenticatorConfig();
         SdJwtAuthRequirements authReqs = new SdJwtAuthRequirements(session.getContext(), authConfig);
 
@@ -91,7 +99,7 @@ public class OID4VPUserAuthenticationEndpoint extends OID4VPUserAuthenticationEn
                 .setAuthorizationRequest(authorizationContext.getAuthorizationRequest())
                 .setTransactionId(authorizationContext.getTransactionId());
 
-        return Response.ok(authorizationContext).build();
+        return cors.add(Response.ok(authorizationContext));
     }
 
     /**
@@ -111,7 +119,7 @@ public class OID4VPUserAuthenticationEndpoint extends OID4VPUserAuthenticationEn
         }
 
         String requestObjectJwt = authorizationContext.getRequestObjectJwt();
-        return Response.ok(requestObjectJwt).build();
+        return cors.add(Response.ok(requestObjectJwt));
     }
 
     /**
@@ -152,7 +160,7 @@ public class OID4VPUserAuthenticationEndpoint extends OID4VPUserAuthenticationEn
         authorizationContext = authorizationResponseService
                 .processAuthorizationResponse(responseObject, authorizationContext, authSession, authProcessor);
 
-        return Response.ok(authorizationContext).build();
+        return cors.add(Response.ok(authorizationContext));
     }
 
     /**
@@ -178,7 +186,20 @@ public class OID4VPUserAuthenticationEndpoint extends OID4VPUserAuthenticationEn
                 .setError(authorizationContext.getError())
                 .setErrorDescription(authorizationContext.getErrorDescription());
 
-        return Response.ok(reducedContext).build();
+        return cors.add(Response.ok(reducedContext));
+    }
+
+    /**
+     * Authenticates the client making the request.
+     */
+    private ClientModel authenticateClient() {
+        logger.debugf("Attempting client authentication...");
+        ClientModel client = AuthorizeClientUtil
+                .authorizeClient(session, event, cors)
+                .getClient();
+
+        logger.debugf("Client %s authenticated", client.getClientId());
+        return client;
     }
 
     /**

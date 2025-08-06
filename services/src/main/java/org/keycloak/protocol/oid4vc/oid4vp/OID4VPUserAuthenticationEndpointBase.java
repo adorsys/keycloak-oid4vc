@@ -31,6 +31,7 @@ import org.keycloak.models.delegate.ClientModelLazyDelegate;
 import org.keycloak.protocol.AuthorizationEndpointBase;
 import org.keycloak.protocol.oid4vc.oid4vp.authenticator.SdJwtAuthenticatorFactory;
 import org.keycloak.protocol.oidc.OIDCLoginProtocol;
+import org.keycloak.services.cors.Cors;
 import org.keycloak.services.managers.AuthenticationSessionManager;
 import org.keycloak.sessions.AuthenticationSessionModel;
 import org.keycloak.sessions.RootAuthenticationSessionModel;
@@ -135,15 +136,10 @@ public class OID4VPUserAuthenticationEndpointBase extends AuthorizationEndpointB
     /**
      * Creates new authentication session.
      */
-    protected AuthenticationSessionModel createAuthSession() {
-        // The createAuthenticationSession method actually only needs a client ID to associate the session with.
-        // Because we may not enforce client authentication, we're creating this dummy client model.
-        ClientModel dummyClient = new ClientModelLazyDelegate
-                .WithId(UUID.randomUUID().toString(), () -> null);
-
+    protected AuthenticationSessionModel createAuthSession(ClientModel client) {
         AuthenticationSessionModel authSession = new AuthenticationSessionManager(session)
                 .createAuthenticationSession(realm, false)
-                .createAuthenticationSession(dummyClient);
+                .createAuthenticationSession(client);
 
         authSession.setProtocol(OIDCLoginProtocol.LOGIN_PROTOCOL);
         authSession.setAction(AuthenticatedClientSessionModel.Action.AUTHENTICATE.name());

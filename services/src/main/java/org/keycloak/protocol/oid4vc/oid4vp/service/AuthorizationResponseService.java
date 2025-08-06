@@ -20,19 +20,28 @@ package org.keycloak.protocol.oid4vc.oid4vp.service;
 import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.Response;
 import org.jboss.logging.Logger;
+import org.keycloak.OAuth2Constants;
 import org.keycloak.authentication.AuthenticationProcessor;
+import org.keycloak.common.util.SecretGenerator;
+import org.keycloak.common.util.Time;
+import org.keycloak.models.AuthenticatedClientSessionModel;
+import org.keycloak.models.KeycloakSession;
 import org.keycloak.protocol.oid4vc.model.Format;
 import org.keycloak.protocol.oid4vc.oid4vp.authenticator.SdJwtAuthenticator;
 import org.keycloak.protocol.oid4vc.oid4vp.model.ResponseObject;
 import org.keycloak.protocol.oid4vc.oid4vp.model.dto.AuthorizationContext;
 import org.keycloak.protocol.oid4vc.oid4vp.model.dto.AuthorizationContextStatus;
 import org.keycloak.protocol.oid4vc.oid4vp.model.dto.ProcessingError;
+import org.keycloak.protocol.oidc.OIDCLoginProtocol;
+import org.keycloak.protocol.oidc.utils.OAuth2Code;
+import org.keycloak.protocol.oidc.utils.OAuth2CodeParser;
 import org.keycloak.representations.idm.OAuth2ErrorRepresentation;
 import org.keycloak.sdjwt.vp.SdJwtVP;
 import org.keycloak.sessions.AuthenticationSessionModel;
 import org.keycloak.utils.MediaType;
 
 import java.util.Base64;
+import java.util.UUID;
 
 /**
  * Dedicated service for processing OpenID4VP authorization responses for user authentication.
@@ -45,7 +54,10 @@ public class AuthorizationResponseService {
 
     private static final String JSON_PATH_ROOT = "$";
 
-    public AuthorizationResponseService() {
+    private final KeycloakSession session;
+
+    public AuthorizationResponseService(KeycloakSession session) {
+        this.session = session;
     }
 
     /**
@@ -88,7 +100,7 @@ public class AuthorizationResponseService {
                 String message = String.format("%s: %s",
                         errorResponse.getError().toUpperCase(),
                         errorResponse.getErrorDescription());
-                
+
                 logger.errorf("Authentication processor failed. [%s] %s",
                         response.getStatus(), message);
 
@@ -101,6 +113,18 @@ public class AuthorizationResponseService {
             }
         }
 
+        // Log authentication success and retrieve authenticated session
+        logger.debug("Authentication processor succeeded, retrieving user session...");
+        AuthenticatedClientSessionModel clientSession = authProcessor.attachSession().getClientSession();
+        logger.infof("Client session id: %s", clientSession.getId());
+
+        // Produce an authorization code for the authenticated user
+        String authorizationCode = produceAuthorizationCode(authSession, clientSession);
+        authContext.setStatus(AuthorizationContextStatus.SUCCESS);
+        authContext.setAuthorizationCode(authorizationCode);
+
+        // Persist authorization context and return
+        store.storeAuthorizationContext(authContext);
         return authContext;
     }
 
@@ -168,6 +192,33 @@ public class AuthorizationResponseService {
                     Response.Status.BAD_REQUEST, authContext, store
             );
         }
+    }
+
+    /**
+     * Issues an authorization code provided successful authentication
+     * and ensuing user session.
+     */
+    private String produceAuthorizationCode(
+            AuthenticationSessionModel authSession,
+            AuthenticatedClientSessionModel clientSession
+    ) {
+        String code = UUID.randomUUID().toString();
+        String nonce = SecretGenerator.getInstance().randomString();
+        int expiration = Time.currentTime() + clientSession.getRealm().getAccessCodeLifespan();
+
+        OAuth2Code codeData = new OAuth2Code(
+                code,
+                expiration,
+                nonce,
+                OAuth2Constants.SCOPE_OPENID,
+                null,
+                authSession.getClientNote(OIDCLoginProtocol.CODE_CHALLENGE_PARAM),
+                authSession.getClientNote(OIDCLoginProtocol.CODE_CHALLENGE_METHOD_PARAM),
+                null,
+                clientSession.getUserSession().getId()
+        );
+
+        return OAuth2CodeParser.persistCode(session, clientSession, codeData);
     }
 
     /**
