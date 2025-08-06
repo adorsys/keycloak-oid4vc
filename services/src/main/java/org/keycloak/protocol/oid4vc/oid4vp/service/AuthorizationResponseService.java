@@ -32,7 +32,6 @@ import org.keycloak.protocol.oid4vc.oid4vp.model.ResponseObject;
 import org.keycloak.protocol.oid4vc.oid4vp.model.dto.AuthorizationContext;
 import org.keycloak.protocol.oid4vc.oid4vp.model.dto.AuthorizationContextStatus;
 import org.keycloak.protocol.oid4vc.oid4vp.model.dto.ProcessingError;
-import org.keycloak.protocol.oidc.OIDCLoginProtocol;
 import org.keycloak.protocol.oidc.utils.OAuth2Code;
 import org.keycloak.protocol.oidc.utils.OAuth2CodeParser;
 import org.keycloak.representations.idm.OAuth2ErrorRepresentation;
@@ -63,7 +62,7 @@ public class AuthorizationResponseService {
     /**
      * Processes authorization response for user authentication.
      */
-    public AuthorizationContext processAuthorizationResponse(
+    public void processAuthorizationResponse(
             ResponseObject responseObject,
             AuthorizationContext authContext,
             AuthenticationSessionModel authSession,
@@ -88,9 +87,10 @@ public class AuthorizationResponseService {
         // the OpenID4VP presentation definition. Equivalently, we offload this task to
         // the SD-JWT authenticator in the authentication flow.
         logger.debugf("Initializing authentication with extracted SD-JWT VP token");
+        var processorSession = authProcessor.getAuthenticationSession();
         String nonce = authContext.getRequestObject().getNonce();
-        authSession.setAuthNote(SdJwtAuthenticator.SDJWT_TOKEN_KEY, sdJwtVp);
-        authSession.setAuthNote(SdJwtAuthenticator.CHALLENGE_NONCE_KEY, nonce);
+        processorSession.setAuthNote(SdJwtAuthenticator.SDJWT_TOKEN_KEY, sdJwtVp);
+        processorSession.setAuthNote(SdJwtAuthenticator.CHALLENGE_NONCE_KEY, nonce);
 
         // Run authentication processor to validate the SD-JWT VP token
         logger.debug("Running authentication processor to validate SD-JWT VP token...");
@@ -98,15 +98,11 @@ public class AuthorizationResponseService {
             if (response != null) {
                 var errorResponse = (OAuth2ErrorRepresentation) response.getEntity();
                 String message = String.format("%s: %s",
-                        errorResponse.getError().toUpperCase(),
-                        errorResponse.getErrorDescription());
-
-                logger.errorf("Authentication processor failed. [%s] %s",
-                        response.getStatus(), message);
+                        errorResponse.getError().toUpperCase(), errorResponse.getErrorDescription());
+                logger.errorf("Authentication processor failed. [%s] %s", response.getStatus(), message);
 
                 throw failWithHttpException(
-                        ProcessingError.VP_TOKEN_AUTH_ERROR,
-                        message,
+                        ProcessingError.VP_TOKEN_AUTH_ERROR, message,
                         Response.Status.fromStatusCode(response.getStatus()),
                         authContext, store
                 );
@@ -119,13 +115,12 @@ public class AuthorizationResponseService {
         logger.infof("Client session id: %s", clientSession.getId());
 
         // Produce an authorization code for the authenticated user
-        String authorizationCode = produceAuthorizationCode(authSession, clientSession);
+        String authorizationCode = produceAuthorizationCode(clientSession);
         authContext.setStatus(AuthorizationContextStatus.SUCCESS);
         authContext.setAuthorizationCode(authorizationCode);
 
-        // Persist authorization context and return
+        // Persist authorization context
         store.storeAuthorizationContext(authContext);
-        return authContext;
     }
 
     /**
@@ -195,13 +190,9 @@ public class AuthorizationResponseService {
     }
 
     /**
-     * Issues an authorization code provided successful authentication
-     * and ensuing user session.
+     * Issues an authorization code provided successful authentication.
      */
-    private String produceAuthorizationCode(
-            AuthenticationSessionModel authSession,
-            AuthenticatedClientSessionModel clientSession
-    ) {
+    private String produceAuthorizationCode(AuthenticatedClientSessionModel clientSession) {
         String code = UUID.randomUUID().toString();
         String nonce = SecretGenerator.getInstance().randomString();
         int expiration = Time.currentTime() + clientSession.getRealm().getAccessCodeLifespan();
@@ -212,8 +203,8 @@ public class AuthorizationResponseService {
                 nonce,
                 OAuth2Constants.SCOPE_OPENID,
                 null,
-                authSession.getClientNote(OIDCLoginProtocol.CODE_CHALLENGE_PARAM),
-                authSession.getClientNote(OIDCLoginProtocol.CODE_CHALLENGE_METHOD_PARAM),
+                null,
+                null,
                 null,
                 clientSession.getUserSession().getId()
         );
@@ -234,11 +225,14 @@ public class AuthorizationResponseService {
         logger.errorf("%s: %s", error, message);
 
         var errorResponse = new OAuth2ErrorRepresentation(error.getErrorString(), message);
-        var exception = new WebApplicationException(Response
+        var httpErrorResponse = Response
                 .status(status)
                 .entity(errorResponse)
-                .type(MediaType.APPLICATION_JSON)
-                .build()
+                .type(MediaType.APPLICATION_JSON);
+
+        WebApplicationException exception = new WebApplicationException(
+                CorsService.forWebOrigins(store.authenticationSession())
+                        .add(httpErrorResponse)
         );
 
         // Update the authorization context with error details

@@ -24,6 +24,8 @@ import org.keycloak.crypto.SignatureSignerContext;
 import org.keycloak.jose.jwe.JWEUtils;
 import org.keycloak.jose.jws.JWSBuilder;
 import org.keycloak.models.KeycloakSession;
+import org.keycloak.models.RealmModel;
+import org.keycloak.models.utils.SessionExpiration;
 import org.keycloak.protocol.oid4vc.oid4vp.OID4VPUserAuthenticationEndpoint;
 import org.keycloak.protocol.oid4vc.oid4vp.OID4VPUserAuthenticationEndpointBase;
 import org.keycloak.protocol.oid4vc.oid4vp.authenticator.SdJwtAuthRequirements;
@@ -56,9 +58,6 @@ public class AuthorizationRequestService {
     public final static String AUTH_REQ_JWT = "oauth-authz-req+jwt";
     public static final int SECURE_RANDOM_ENTROPY = 20;
 
-    // TODO: Replace by authentication session lifetime
-    public static final int AUTH_REQ_JWT_LIFETIME_SECS = 15 * 60;
-
     // Note: "https://self-issued.me/v2" is a symbolic string and can be used
     // as an aud Claim value even when this specification is used standalone,
     // without SIOPv2.
@@ -68,6 +67,7 @@ public class AuthorizationRequestService {
     private final String openID4VPRootUrl;
     private final KeyWrapper signingKey;
     private final SignatureSignerContext signer;
+    private final int authSessionLifespanSecs;
 
     public AuthorizationRequestService(KeycloakSession session) {
         // Discover client metadata and signing key
@@ -80,6 +80,10 @@ public class AuthorizationRequestService {
         String algorithm = signingKey.getAlgorithmOrDefault();
         SignatureProvider signatureProvider = session.getProvider(SignatureProvider.class, algorithm);
         this.signer = signatureProvider.signer(signingKey);
+
+        // Read the authentication session lifespan from the realm configuration
+        RealmModel realm = session.getContext().getRealm();
+        this.authSessionLifespanSecs = SessionExpiration.getAuthSessionLifespan(realm);
     }
 
     /**
@@ -184,10 +188,10 @@ public class AuthorizationRequestService {
 
     private String signRequestObject(RequestObject requestObject) {
         logger.debugf("Signing request object (%s)", requestObject.getState());
-
-        requestObject
-                .issuedNow()
-                .exp(Instant.now().plusSeconds(AUTH_REQ_JWT_LIFETIME_SECS).getEpochSecond());
+        Long expiration = Instant.now()
+                .plusSeconds(authSessionLifespanSecs)
+                .getEpochSecond();
+        requestObject.issuedNow().exp(expiration);
 
         return new JWSBuilder()
                 .type(AUTH_REQ_JWT)

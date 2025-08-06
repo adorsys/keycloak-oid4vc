@@ -30,17 +30,11 @@ import java.util.Objects;
  *
  * @author <a href="mailto:Ingrid.Kamga@adorsys.com">Ingrid Kamga</a>
  */
-public class AuthenticationSessionStore {
+public record AuthenticationSessionStore(AuthenticationSessionModel authenticationSession) {
 
     private static final Logger logger = Logger.getLogger(AuthenticationSessionStore.class);
 
     private static final String AUTH_CONTEXT_SESSION_KEY = "oid4vp-auth-context";
-
-    private final AuthenticationSessionModel authenticationSession;
-
-    public AuthenticationSessionStore(AuthenticationSessionModel authenticationSession) {
-        this.authenticationSession = authenticationSession;
-    }
 
     /**
      * Stores the given authorization context in the authentication session.

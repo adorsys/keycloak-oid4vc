@@ -27,17 +27,14 @@ import org.keycloak.models.AuthenticatorConfigModel;
 import org.keycloak.models.ClientModel;
 import org.keycloak.models.KeycloakContext;
 import org.keycloak.models.KeycloakSession;
-import org.keycloak.models.delegate.ClientModelLazyDelegate;
 import org.keycloak.protocol.AuthorizationEndpointBase;
 import org.keycloak.protocol.oid4vc.oid4vp.authenticator.SdJwtAuthenticatorFactory;
 import org.keycloak.protocol.oidc.OIDCLoginProtocol;
-import org.keycloak.services.cors.Cors;
 import org.keycloak.services.managers.AuthenticationSessionManager;
 import org.keycloak.sessions.AuthenticationSessionModel;
 import org.keycloak.sessions.RootAuthenticationSessionModel;
 
 import java.util.Optional;
-import java.util.UUID;
 import java.util.regex.Pattern;
 
 /**
@@ -91,8 +88,18 @@ public class OID4VPUserAuthenticationEndpointBase extends AuthorizationEndpointB
     protected AuthenticationProcessor getAuthenticationProcessor() {
         KeycloakContext context = session.getContext();
         AuthenticationFlowModel flow = getOID4VPAuthFlow();
+
+        // Creates an ephemeral authentication session tab. Authentication sessions tabs
+        // are automatically removed after successful authentication, which is problematic
+        // for this OpenID4VP flow, as we need to keep session data for some time to enable
+        // polling the authentication status by an entity other than the wallet. Thus, we
+        // create an ephemeral separate authentication session tab just for processors.
+        AuthenticationSessionModel authSession = context.getAuthenticationSession();
+        AuthenticationSessionModel ephemeralAuthSession = authSession.getParentSession()
+                .createAuthenticationSession(authSession.getClient());
+
         return new AuthenticationProcessor()
-                .setAuthenticationSession(context.getAuthenticationSession())
+                .setAuthenticationSession(ephemeralAuthSession)
                 .setFlowId(flow.getId())
                 .setFlowPath(null)
                 .setConnection(clientConnection)
@@ -123,6 +130,7 @@ public class OID4VPUserAuthenticationEndpointBase extends AuthorizationEndpointB
                 .getRootAuthenticationSession(realm, rootAuthSessionId);
 
         if (rootAuthSession == null) {
+            logger.tracef("Root authentication session not found for ID: %s", authSessionId);
             return Optional.empty();
         }
 
