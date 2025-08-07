@@ -745,6 +745,10 @@ public class DefaultAuthenticationFlows {
     }
 
     public static void oid4vpAuthenticationFlow(final RealmModel realm) {
+        if (!Profile.isFeatureEnabled(Feature.OID4VC_VPAUTH)) {
+            return;
+        }
+
         AuthenticationFlowModel oid4vpAuthFlow = new AuthenticationFlowModel();
 
         oid4vpAuthFlow.setAlias(OID4VP_AUTH_FLOW);
