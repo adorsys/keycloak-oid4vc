@@ -27,8 +27,17 @@ import org.keycloak.sessions.AuthenticationSessionModel;
  */
 public class CorsService {
 
+    private static final String HTTP_METHOD_OPTIONS = "OPTIONS";
+    private static final String HTTP_METHOD_POST = "POST";
+
     public static Cors open() {
         return Cors.builder().allowAllOrigins().auth();
+    }
+
+    public static Cors openPreflight() {
+        return Cors.builder().preflight()
+                .allowedMethods(HTTP_METHOD_OPTIONS, HTTP_METHOD_POST)
+                .auth();
     }
 
     public static Cors forWebOrigins(AuthenticationSessionModel authSession) {
