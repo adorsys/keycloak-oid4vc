@@ -35,7 +35,7 @@ public class Proofs {
     private List<String> jwt;
 
     @JsonProperty("di_vp")
-    private List<Object> diVp;
+    private List<DiVpProof> diVp;
 
     @JsonProperty("attestation")
     private List<String> attestation;
@@ -43,7 +43,7 @@ public class Proofs {
     public Proofs() {
     }
 
-    public Proofs(List<String> jwt, List<Object> diVp, List<String> attestation) {
+    public Proofs(List<String> jwt, List<DiVpProof> diVp, List<String> attestation) {
         this.jwt = jwt;
         this.diVp = diVp;
         this.attestation = attestation;
@@ -58,11 +58,11 @@ public class Proofs {
         return this;
     }
 
-    public List<Object> getDiVp() {
+    public List<DiVpProof> getDiVp() {
         return diVp;
     }
 
-    public Proofs setDiVp(List<Object> diVp) {
+    public Proofs setDiVp(List<DiVpProof> diVp) {
         this.diVp = diVp;
         return this;
     }

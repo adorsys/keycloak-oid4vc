@@ -37,8 +37,6 @@ import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.Response;
 import org.jboss.logging.Logger;
 import org.keycloak.common.util.SecretGenerator;
-import org.keycloak.component.ComponentFactory;
-import org.keycloak.component.ComponentModel;
 import org.keycloak.events.Errors;
 import org.keycloak.events.EventBuilder;
 import org.keycloak.jose.jwe.JWE;
@@ -788,10 +786,8 @@ public class OID4VCIssuerEndpoint {
         try {
             List<JWK> jwks = proofValidator.validateProof(vcIssuanceContext);
             if (jwks != null && !jwks.isEmpty()) {
-                // Add all JWKs to the credential body for key binding
-                for (JWK jwk : jwks) {
-                    vcIssuanceContext.getCredentialBody().addKeyBinding(jwk);
-                }
+                // For now, bind only the first JWK until multiple key binding is supported
+                vcIssuanceContext.getCredentialBody().addKeyBinding(jwks.get(0));
             }
         } catch (VCIssuerException e) {
             throw new BadRequestException(String.format("Could not validate provided %s proof: %s", proofType, e.getMessage()), e);
