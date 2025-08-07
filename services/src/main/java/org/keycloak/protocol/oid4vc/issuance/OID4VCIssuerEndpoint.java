@@ -89,6 +89,7 @@ import org.keycloak.services.CorsErrorResponseException;
 import org.keycloak.services.cors.Cors;
 import org.keycloak.services.managers.AppAuthManager;
 import org.keycloak.services.managers.AuthenticationManager;
+import org.keycloak.services.util.DPoPUtil;
 import org.keycloak.util.JsonSerialization;
 import org.keycloak.utils.MediaType;
 
@@ -230,7 +231,7 @@ public class OID4VCIssuerEndpoint {
      * the OpenId4VCI nonce-endpoint
      *
      * @return a short-lived c_nonce value that must be presented in key-bound proofs at the credential endpoint.
-     * @see https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0-15.html#name-nonce-endpoint
+     * @see https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0-16.html#name-nonce-endpoint
      * @see https://datatracker.ietf.org/doc/html/draft-demarco-nonce-endpoint#name-nonce-response
      */
     @POST
@@ -243,7 +244,15 @@ public class OID4VCIssuerEndpoint {
         String audience = OID4VCIssuerWellKnownProvider.getCredentialsEndpoint(session.getContext());
         String nonce = cNonceHandler.buildCNonce(List.of(audience), Map.of(JwtCNonceHandler.SOURCE_ENDPOINT, sourceEndpoint));
         nonceResponse.setNonce(nonce);
-        return Response.ok().header(HttpHeaders.CACHE_CONTROL, "no-store").entity(nonceResponse).build();
+        
+        // Generate DPoP nonce as defined in RFC 9449 Section 8.2
+        String dpopNonce = DPoPUtil.generateDPoPNonce();
+        
+        return Response.ok()
+                .header(HttpHeaders.CACHE_CONTROL, "no-store")
+                .header(DPoPUtil.DPOP_NONCE_HEADER, dpopNonce)
+                .entity(nonceResponse)
+                .build();
     }
 
     /**
