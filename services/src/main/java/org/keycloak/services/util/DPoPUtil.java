@@ -43,6 +43,7 @@ import org.keycloak.TokenVerifier;
 import org.keycloak.common.Profile;
 import org.keycloak.common.VerificationException;
 import org.keycloak.common.util.Time;
+import org.keycloak.common.util.SecretGenerator;
 import org.keycloak.crypto.Algorithm;
 import org.keycloak.crypto.KeyWrapper;
 import org.keycloak.crypto.SignatureProvider;
@@ -101,6 +102,7 @@ public class DPoPUtil {
     }
 
     public static final String DPOP_HTTP_HEADER = "DPoP";
+    public static final String DPOP_NONCE_HEADER = "DPoP-Nonce";
     private static final String DPOP_JWT_HEADER_TYPE = "dpop+jwt";
     public static final String DPOP_ATH_ALG = "RS256";
 
@@ -118,6 +120,16 @@ public class DPoPUtil {
 
     private static URI normalize(URI uri) {
         return UriBuilder.fromUri(uri).replaceQuery("").build();
+    }
+
+    /**
+     * Generates a DPoP nonce value as defined in RFC 9449 Section 8.2.
+     * The nonce is a cryptographically random string that can be used to prevent replay attacks.
+     *
+     * @return a cryptographically random nonce string
+     */
+    public static String generateDPoPNonce() {
+        return SecretGenerator.getInstance().randomString(32);
     }
 
     /**
