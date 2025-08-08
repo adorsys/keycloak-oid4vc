@@ -772,11 +772,11 @@ public class OID4VCIssuerEndpoint {
 
         // Validate each JWT proof if present
         if (proofs.getJwt() != null && !proofs.getJwt().isEmpty()) {
-            validateProofs(vcIssuanceContext, ProofType.JWT, proofs.getJwt());
+            validateProofs(vcIssuanceContext, ProofType.JWT);
         }
     }
 
-    private void validateProofs(VCIssuanceContext vcIssuanceContext, String proofType, List<?> proofData) {
+    private void validateProofs(VCIssuanceContext vcIssuanceContext, String proofType) {
         ProofValidator proofValidator = session.getProvider(ProofValidator.class, proofType);
         if (proofValidator == null) {
             throw new BadRequestException(String.format("Unable to validate proofs of type %s", proofType));
