@@ -31,7 +31,7 @@ import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 
 /**
- * Represents a  CredentialRequest according to OID4VCI
+ * Represents a CredentialRequest according to OID4VCI
  * {@see https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#name-credential-request}
  *
  * @author <a href="https://github.com/wistefan">Stefan Wiedemann</a>
@@ -57,6 +57,11 @@ public class CredentialRequest {
     // See: https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#name-format-identifier-3
     @JsonProperty("credential_definition")
     private CredentialDefinition credentialDefinition;
+
+    @JsonProperty("credential_response_encryption")
+    private CredentialResponseEncryption credentialResponseEncryption;
+
+    private String format;
 
     public String getCredentialIdentifier() {
         return credentialIdentifier;
@@ -94,6 +99,24 @@ public class CredentialRequest {
         return this;
     }
 
+    public CredentialResponseEncryption getCredentialResponseEncryption() {
+        return credentialResponseEncryption;
+    }
+
+    public CredentialRequest setCredentialResponseEncryption(CredentialResponseEncryption credentialResponseEncryption) {
+        this.credentialResponseEncryption = credentialResponseEncryption;
+        return this;
+    }
+
+    public String getFormat() {
+        return format;
+    }
+
+    public CredentialRequest setFormat(String format) {
+        this.format = format;
+        return this;
+    }
+
     public Optional<CredentialScopeModel> findCredentialScope(KeycloakSession keycloakSession) {
         Map<String, String> searchAttributeMap =
                 Optional.ofNullable(credentialConfigurationId)
@@ -106,9 +129,9 @@ public class CredentialRequest {
         RealmModel currentRealm = keycloakSession.getContext().getRealm();
         final boolean useOrExpression = false;
         return keycloakSession.clientScopes()
-                              .getClientScopesByAttributes(currentRealm, searchAttributeMap, useOrExpression)
-                              .map(CredentialScopeModel::new)
-                              .findAny();
+                .getClientScopesByAttributes(currentRealm, searchAttributeMap, useOrExpression)
+                .map(CredentialScopeModel::new)
+                .findAny();
     }
 
     @Override
