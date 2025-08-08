@@ -50,7 +50,6 @@ import java.security.KeyPairGenerator;
 import java.security.KeyStore;
 import java.security.cert.X509Certificate;
 import java.security.spec.ECGenParameterSpec;
-import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -74,7 +73,9 @@ public class OID4VCKeyAttestationTest extends OID4VCIssuerEndpointTest {
 
     @Test
     public void testValidAttestationProof() {
-        testingClient.server(TEST_REALM_NAME).run(OID4VCKeyAttestationTest::runValidAttestationProofTest);
+        testingClient.server(TEST_REALM_NAME).run(session -> {
+                runValidAttestationProofTest(session, getCNonce());
+        });
     }
 
     @Test
@@ -84,7 +85,9 @@ public class OID4VCKeyAttestationTest extends OID4VCIssuerEndpointTest {
 
     @Test
     public void testValidJwtProofWithKeyAttestation() {
-        testingClient.server(TEST_REALM_NAME).run(OID4VCKeyAttestationTest::runValidJwtProofWithKeyAttestationTest);
+        testingClient.server(TEST_REALM_NAME).run(session -> {
+                runValidJwtProofWithKeyAttestationTest(session, getCNonce());
+        });
     }
 
     @Test
@@ -111,7 +114,14 @@ public class OID4VCKeyAttestationTest extends OID4VCIssuerEndpointTest {
 
     @Test
     public void testInvalidAttestationSignature() {
-        testingClient.server(TEST_REALM_NAME).run(OID4VCKeyAttestationTest::runInvalidAttestationSignatureTest);
+        testingClient.server(TEST_REALM_NAME).run(session -> {
+            try {
+                String cNonce = getCNonce();
+                runInvalidAttestationSignatureTest(session, cNonce);
+            } catch (Exception e) {
+                fail("Unexpected exception: " + e.getMessage());
+            }
+        });
     }
 
     @Test
@@ -121,19 +131,32 @@ public class OID4VCKeyAttestationTest extends OID4VCIssuerEndpointTest {
 
     @Test
     public void testAttestationWithMultipleAttestedKeys() {
-        testingClient.server(TEST_REALM_NAME).run(OID4VCKeyAttestationTest::runAttestationWithMultipleAttestedKeys);
+        String cNonce = getCNonce();
+        testingClient.server(TEST_REALM_NAME).run(session -> {
+            runAttestationWithMultipleAttestedKeys(session, cNonce);
+        });
     }
 
     @Test
     public void testAttestationWithX5cCertificateChain() {
-        testingClient.server(TEST_REALM_NAME).run(OID4VCKeyAttestationTest::runAttestationWithX5cCertificateChain);
+        testingClient.server(TEST_REALM_NAME).run(session -> {
+            try {
+                runAttestationWithX5cCertificateChain(session, getCNonce());
+            } catch (VCIssuerException e) {
+                assertTrue("Expected error about invalid level but got: " + e.getMessage(),
+                        e.getMessage().contains("key_storage") ||
+                                e.getMessage().contains("INVALID_LEVEL"));
+            } catch (Exception e) {
+                fail("Unexpected exception: " + e.getMessage());
+            }
+        });
     }
 
     @Test
     public void testAttestationWithInvalidResistanceLevels() {
         testingClient.server(TEST_REALM_NAME).run(session -> {
             try {
-                runAttestationWithInvalidResistanceLevels(session);
+                runAttestationWithInvalidResistanceLevels(session, getCNonce());
             } catch (VCIssuerException e) {
                 assertTrue("Expected error about invalid level but got: " + e.getMessage(),
                         e.getMessage().contains("key_storage") ||
@@ -146,19 +169,31 @@ public class OID4VCKeyAttestationTest extends OID4VCIssuerEndpointTest {
 
     @Test
     public void testAttestationWithMissingAttestedKeys() {
-        testingClient.server(TEST_REALM_NAME).run(OID4VCKeyAttestationTest::runAttestationWithMissingAttestedKeys);
+        testingClient.server(TEST_REALM_NAME).run(session -> {
+            runAttestationWithMissingAttestedKeys(session, getCNonce());
+        });
     }
 
     @Test
     public void testAttestationWithValidResistanceLevels() {
-        testingClient.server(TEST_REALM_NAME).run(OID4VCKeyAttestationTest::runAttestationWithValidResistanceLevels);
+        String cNonce = getCNonce();
+        testingClient.server(TEST_REALM_NAME).run(session -> {
+            try {
+                runAttestationWithValidResistanceLevels(session, cNonce);
+            } catch (VCIssuerException e) {
+                assertTrue("Expected error about invalid level but got: " + e.getMessage(),
+                        e.getMessage().contains("key_storage") ||
+                                e.getMessage().contains("INVALID_LEVEL"));
+            } catch (Exception e) {
+                fail("Unexpected exception: " + e.getMessage());
+            }
+        });
     }
 
-    private static void runAttestationWithValidResistanceLevels(KeycloakSession session) {
+    private static void runAttestationWithValidResistanceLevels(KeycloakSession session, String cNonce) {
         try {
             KeyWrapper attestationKey = getECKey("attestationKey");
             KeyWrapper proofKey = getECKey("proofKey");
-            String cNonce = getCNonce();
 
             JWK proofJwk = JWKBuilder.create().ec(proofKey.getPublicKey());
             proofJwk.setKeyId(proofKey.getKid());
@@ -223,7 +258,7 @@ public class OID4VCKeyAttestationTest extends OID4VCIssuerEndpointTest {
         }
     }
 
-    private static void runValidAttestationProofTest(KeycloakSession session) throws IOException {
+    private static void runValidAttestationProofTest(KeycloakSession session, String cNonce) throws IOException {
         try {
             KeyWrapper attestationKey = getECKey("attestationKey");
             KeyWrapper proofKey = getECKey("proofKey");
@@ -237,7 +272,6 @@ public class OID4VCKeyAttestationTest extends OID4VCIssuerEndpointTest {
             proofJwk.setKeyId(proofKey.getKid());
             proofJwk.setAlgorithm(proofKey.getAlgorithm());
 
-            String cNonce = getCNonce();
 
             String attestationJwt = createValidAttestationJwt(session, attestationKey, proofJwk, cNonce);
             String jwtProof = generateJwtProofWithKeyAttestation(session, proofKey, attestationJwt, cNonce);
@@ -284,12 +318,11 @@ public class OID4VCKeyAttestationTest extends OID4VCIssuerEndpointTest {
         }
     }
 
-    private static void runValidJwtProofWithKeyAttestationTest(KeycloakSession session) {
+    private static void runValidJwtProofWithKeyAttestationTest(KeycloakSession session, String cNonce) {
         try {
             KeyWrapper attestationKey = getECKey("attestationKey");
             KeyWrapper proofKey = getECKey("proofKey");
             JWK proofJwk = JWKBuilder.create().ec(proofKey.getPublicKey());
-            String cNonce = getCNonce();
 
             String attestationJwt = createValidAttestationJwt(session, attestationKey, proofJwk, cNonce);
             String jwtProof = generateJwtProofWithKeyAttestation(session, proofKey, attestationJwt, cNonce);
@@ -324,11 +357,10 @@ public class OID4VCKeyAttestationTest extends OID4VCIssuerEndpointTest {
         validator.validateProof(vcIssuanceContext);
     }
 
-    private static void runInvalidAttestationSignatureTest(KeycloakSession session) {
+    private static void runInvalidAttestationSignatureTest(KeycloakSession session, String cNonce) {
         KeyWrapper attestationKey = getECKey("attestationKey");
         KeyWrapper proofKey = getECKey("proofKey");
         JWK proofJwk = JWKBuilder.create().ec(proofKey.getPublicKey());
-        String cNonce = getCNonce();
 
         KeyWrapper unrelatedKey = getECKey("unrelatedKey");
         String invalidAttestationJwt = new JWSBuilder()
@@ -377,7 +409,7 @@ public class OID4VCKeyAttestationTest extends OID4VCIssuerEndpointTest {
         }
     }
 
-    private static void runAttestationWithMultipleAttestedKeys(KeycloakSession session) {
+    private static void runAttestationWithMultipleAttestedKeys(KeycloakSession session, String cNonce) {
         try {
             KeyWrapper attestationKey = getECKey("attestationKey");
             KeyWrapper proofKey1 = getECKey("proofKey1");
@@ -391,9 +423,7 @@ public class OID4VCKeyAttestationTest extends OID4VCIssuerEndpointTest {
             proofJwk2.setKeyId(proofKey2.getKid());
             proofJwk2.setAlgorithm(proofKey2.getAlgorithm());
 
-            String cNonce = getCNonce();
-
-            // Create proper payload with attested keys
+            // Create a proper payload with attested keys
             KeyAttestationJwtBody payload = new KeyAttestationJwtBody();
             payload.setIat((long) TIME_PROVIDER.currentTimeSeconds());
             payload.setNonce(cNonce);
@@ -426,14 +456,13 @@ public class OID4VCKeyAttestationTest extends OID4VCIssuerEndpointTest {
         }
     }
 
-    private static void runAttestationWithX5cCertificateChain(KeycloakSession session) {
+    private static void runAttestationWithX5cCertificateChain(KeycloakSession session, String cNonce) {
         try {
             KeyPairGenerator keyGen = KeyPairGenerator.getInstance("EC");
             keyGen.initialize(new ECGenParameterSpec("secp256r1"));
             KeyPair keyPair = keyGen.generateKeyPair();
 
             X509Certificate cert = CertificateUtils.generateV1SelfSignedCertificate(keyPair, "Test Certificate");
-            List<String> x5c = List.of(Base64.getEncoder().encodeToString(cert.getEncoded()));
             Logger.getLogger(OID4VCKeyAttestationTest.class).info("Generated certificate: " + cert.toString());
 
             KeyWrapper signerKey = new KeyWrapper();
@@ -447,7 +476,6 @@ public class OID4VCKeyAttestationTest extends OID4VCIssuerEndpointTest {
             JWK proofJwk = JWKBuilder.create().ec(proofKey.getPublicKey());
             proofJwk.setKeyId(proofKey.getKid());
             proofJwk.setAlgorithm(proofKey.getAlgorithm());
-            String cNonce = getCNonce();
 
             KeyAttestationJwtBody payload = new KeyAttestationJwtBody();
             payload.setNonce(cNonce);
@@ -490,11 +518,10 @@ public class OID4VCKeyAttestationTest extends OID4VCIssuerEndpointTest {
         }
     }
 
-    private static void runAttestationWithInvalidResistanceLevels(KeycloakSession session) {
+    private static void runAttestationWithInvalidResistanceLevels(KeycloakSession session, String cNonce) {
         try {
             KeyWrapper attestationKey = getECKey("attestationKey");
             KeyWrapper proofKey = getECKey("proofKey");
-            String cNonce = getCNonce();
 
             JWK proofJwk = JWKBuilder.create().ec(proofKey.getPublicKey());
             proofJwk.setKeyId(proofKey.getKid());
@@ -529,10 +556,9 @@ public class OID4VCKeyAttestationTest extends OID4VCIssuerEndpointTest {
         }
     }
 
-    private static void runAttestationWithMissingAttestedKeys(KeycloakSession session) {
+    private static void runAttestationWithMissingAttestedKeys(KeycloakSession session, String cNonce) {
         try {
             KeyWrapper attestationKey = getECKey("attestationKey");
-            String cNonce = getCNonce();
 
             KeyAttestationJwtBody payload = new KeyAttestationJwtBody();
             payload.setIat((long) TIME_PROVIDER.currentTimeSeconds());
