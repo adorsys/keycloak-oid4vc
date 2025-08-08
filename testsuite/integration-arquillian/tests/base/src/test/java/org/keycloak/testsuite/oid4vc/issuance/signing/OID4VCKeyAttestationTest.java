@@ -73,8 +73,9 @@ public class OID4VCKeyAttestationTest extends OID4VCIssuerEndpointTest {
 
     @Test
     public void testValidAttestationProof() {
+        String cNonce = getCNonce();
         testingClient.server(TEST_REALM_NAME).run(session -> {
-                runValidAttestationProofTest(session, getCNonce());
+            runValidAttestationProofTest(session, cNonce);
         });
     }
 
@@ -85,10 +86,12 @@ public class OID4VCKeyAttestationTest extends OID4VCIssuerEndpointTest {
 
     @Test
     public void testValidJwtProofWithKeyAttestation() {
+        String cNonce = getCNonce();
         testingClient.server(TEST_REALM_NAME).run(session -> {
-                runValidJwtProofWithKeyAttestationTest(session, getCNonce());
+            runValidJwtProofWithKeyAttestationTest(session, cNonce);
         });
     }
+
 
     @Test
     public void testInvalidJwtProofWithKeyAttestation() {
@@ -139,9 +142,10 @@ public class OID4VCKeyAttestationTest extends OID4VCIssuerEndpointTest {
 
     @Test
     public void testAttestationWithX5cCertificateChain() {
+        String cNonce = getCNonce();
         testingClient.server(TEST_REALM_NAME).run(session -> {
             try {
-                runAttestationWithX5cCertificateChain(session, getCNonce());
+                runAttestationWithX5cCertificateChain(session, cNonce);
             } catch (VCIssuerException e) {
                 assertTrue("Expected error about invalid level but got: " + e.getMessage(),
                         e.getMessage().contains("key_storage") ||
@@ -154,9 +158,10 @@ public class OID4VCKeyAttestationTest extends OID4VCIssuerEndpointTest {
 
     @Test
     public void testAttestationWithInvalidResistanceLevels() {
+        String cNonce = getCNonce();
         testingClient.server(TEST_REALM_NAME).run(session -> {
             try {
-                runAttestationWithInvalidResistanceLevels(session, getCNonce());
+                runAttestationWithInvalidResistanceLevels(session, cNonce);
             } catch (VCIssuerException e) {
                 assertTrue("Expected error about invalid level but got: " + e.getMessage(),
                         e.getMessage().contains("key_storage") ||
