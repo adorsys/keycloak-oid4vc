@@ -69,8 +69,9 @@ import org.keycloak.protocol.oid4vc.model.CredentialRequest;
 import org.keycloak.protocol.oid4vc.model.CredentialResponse;
 import org.keycloak.protocol.oid4vc.model.CredentialResponseEncryption;
 import org.keycloak.protocol.oid4vc.model.CredentialResponseEncryptionMetadata;
-import org.keycloak.protocol.oid4vc.model.CredentialsOffer;
 import org.keycloak.protocol.oid4vc.model.ErrorResponse;
+import org.keycloak.protocol.oid4vc.model.CredentialsOffer;
+import org.keycloak.services.ErrorResponseException;
 import org.keycloak.protocol.oid4vc.model.ErrorType;
 import org.keycloak.protocol.oid4vc.model.Format;
 import org.keycloak.protocol.oid4vc.model.NonceResponse;
@@ -783,6 +784,13 @@ public class OID4VCIssuerEndpoint {
             Optional.ofNullable(proofValidator.validateProof(vcIssuanceContext))
                     .ifPresent(jwk -> vcIssuanceContext.getCredentialBody().addKeyBinding(jwk));
         } catch (VCIssuerException e) {
+            if (e.getMessage() != null && e.getMessage().startsWith("INVALID_NONCE:")) {
+                throw new ErrorResponseException(
+                        ErrorType.INVALID_NONCE.getValue(),
+                        "The proof or proofs parameter in the Credential Request uses an invalid nonce",
+                        Response.Status.BAD_REQUEST
+                );
+            }
             throw new BadRequestException("Could not validate provided proof", e);
         }
     }
