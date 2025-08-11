@@ -118,8 +118,8 @@ public class OID4VCKeyAttestationTest extends OID4VCIssuerEndpointTest {
     @Test
     public void testInvalidAttestationSignature() {
         testingClient.server(TEST_REALM_NAME).run(session -> {
+            String cNonce = getCNonce();
             try {
-                String cNonce = getCNonce();
                 runInvalidAttestationSignatureTest(session, cNonce);
             } catch (Exception e) {
                 fail("Unexpected exception: " + e.getMessage());
@@ -174,8 +174,9 @@ public class OID4VCKeyAttestationTest extends OID4VCIssuerEndpointTest {
 
     @Test
     public void testAttestationWithMissingAttestedKeys() {
+        String cNonce = getCNonce();
         testingClient.server(TEST_REALM_NAME).run(session -> {
-            runAttestationWithMissingAttestedKeys(session, getCNonce());
+            runAttestationWithMissingAttestedKeys(session, cNonce);
         });
     }
 
