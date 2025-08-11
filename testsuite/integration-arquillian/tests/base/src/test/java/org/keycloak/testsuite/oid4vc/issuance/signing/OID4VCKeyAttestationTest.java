@@ -117,8 +117,8 @@ public class OID4VCKeyAttestationTest extends OID4VCIssuerEndpointTest {
 
     @Test
     public void testInvalidAttestationSignature() {
+        String cNonce = getCNonce();
         testingClient.server(TEST_REALM_NAME).run(session -> {
-            String cNonce = getCNonce();
             try {
                 runInvalidAttestationSignatureTest(session, cNonce);
             } catch (Exception e) {
