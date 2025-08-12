@@ -37,8 +37,6 @@ import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.Response;
 import org.jboss.logging.Logger;
 import org.keycloak.common.util.SecretGenerator;
-import org.keycloak.component.ComponentFactory;
-import org.keycloak.component.ComponentModel;
 import org.keycloak.events.Errors;
 import org.keycloak.events.EventBuilder;
 import org.keycloak.jose.jwe.JWE;
@@ -226,7 +224,7 @@ public class OID4VCIssuerEndpoint {
     private String generateNotificationId() {
         return SecretGenerator.getInstance().randomString();
     }
-    
+
     /**
      * the OpenId4VCI nonce-endpoint
      *
@@ -244,15 +242,25 @@ public class OID4VCIssuerEndpoint {
         String audience = OID4VCIssuerWellKnownProvider.getCredentialsEndpoint(session.getContext());
         String nonce = cNonceHandler.buildCNonce(List.of(audience), Map.of(JwtCNonceHandler.SOURCE_ENDPOINT, sourceEndpoint));
         nonceResponse.setNonce(nonce);
-        
-        // Generate DPoP nonce as defined in RFC 9449 Section 8.2
-        String dpopNonce = DPoPUtil.generateDPoPNonce();
-        
-        return Response.ok()
+
+        String dpopNonce = null;
+        try {
+            if (cNonceHandler instanceof JwtCNonceHandler) {
+                dpopNonce = SecretGenerator.getInstance().randomString(32);
+            }
+        } catch (Exception e) {
+            LOGGER.debugf("Could not generate DPoP nonce: %s", e.getMessage());
+        }
+
+        Response.ResponseBuilder responseBuilder = Response.ok()
                 .header(HttpHeaders.CACHE_CONTROL, "no-store")
-                .header(DPoPUtil.DPOP_NONCE_HEADER, dpopNonce)
-                .entity(nonceResponse)
-                .build();
+                .entity(nonceResponse);
+
+        if (dpopNonce != null) {
+            responseBuilder.header(DPoPUtil.DPOP_NONCE_HEADER, dpopNonce);
+        }
+
+        return responseBuilder.build();
     }
 
     /**
