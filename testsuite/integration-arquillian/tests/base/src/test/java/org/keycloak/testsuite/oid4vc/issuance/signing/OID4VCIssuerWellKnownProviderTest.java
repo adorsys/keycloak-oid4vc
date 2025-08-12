@@ -158,10 +158,13 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
         Assert.assertEquals(clientScope.getName(), supportedConfig.getCredentialDefinition().getType().get(0));
         Assert.assertEquals(1, supportedConfig.getCredentialDefinition().getContext().size());
         Assert.assertEquals(clientScope.getName(), supportedConfig.getCredentialDefinition().getContext().get(0));
-        Assert.assertNull(supportedConfig.getDisplay());
+        Assert.assertNotNull(supportedConfig.getCredentialMetadata());
         Assert.assertEquals(clientScope.getName(), supportedConfig.getScope());
 
-        compareClaims(supportedConfig.getFormat(), supportedConfig.getClaims(), clientScope.getProtocolMappers());
+        // Claims are now under credential_metadata, so we need to check if credential_metadata exists
+        if (supportedConfig.getCredentialMetadata() != null) {
+            compareClaims(supportedConfig.getFormat(), supportedConfig.getCredentialMetadata().getClaims(), clientScope.getProtocolMappers());
+        }
     }
 
 
@@ -291,13 +294,15 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
             throw new RuntimeException(e);
         }
 
-        compareClaims(expectedFormat, supportedConfig.getClaims(), clientScope.getProtocolMappers());
+        if (supportedConfig.getCredentialMetadata() != null) {
+            compareClaims(expectedFormat, supportedConfig.getCredentialMetadata().getClaims(), clientScope.getProtocolMappers());
+        }
     }
 
     private void compareDisplay(SupportedCredentialConfiguration supportedConfig, ClientScopeRepresentation clientScope) {
         String display = clientScope.getAttributes().get(CredentialScopeModel.VC_DISPLAY);
         if (StringUtil.isBlank(display)) {
-            Assert.assertNull(supportedConfig.getDisplay());
+            Assert.assertNull(supportedConfig.getCredentialMetadata() != null ? supportedConfig.getCredentialMetadata().getDisplay() : null);
             return;
         }
         List<DisplayObject> expectedDisplayObjectList;
@@ -308,9 +313,10 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
             throw new RuntimeException(e);
         }
 
-        Assert.assertEquals(expectedDisplayObjectList.size(), supportedConfig.getDisplay().size());
+        Assert.assertNotNull("Credential metadata should exist when display is configured", supportedConfig.getCredentialMetadata());
+        Assert.assertEquals(expectedDisplayObjectList.size(), supportedConfig.getCredentialMetadata().getDisplay().size());
         MatcherAssert.assertThat("Must contain all expected display-objects",
-                supportedConfig.getDisplay(),
+                supportedConfig.getCredentialMetadata().getDisplay(),
                 Matchers.containsInAnyOrder(expectedDisplayObjectList.toArray()));
     }
 
@@ -409,7 +415,9 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
                     Assert.assertTrue("The test-credential should be supported.", credentialIssuer.getCredentialsSupported().containsKey("test-credential"));
                     Assert.assertEquals("The test-credential should offer type VerifiableCredential", "VerifiableCredential", credentialIssuer.getCredentialsSupported().get("test-credential").getScope());
                     Assert.assertEquals("The test-credential should be offered in the jwt-vc format.", Format.JWT_VC, credentialIssuer.getCredentialsSupported().get("test-credential").getFormat());
-                    Assert.assertNotNull("The test-credential can optionally provide a claims claim.", credentialIssuer.getCredentialsSupported().get("test-credential").getClaims());
+                    Assert.assertNotNull("The test-credential can optionally provide a claims claim.",
+                            credentialIssuer.getCredentialsSupported().get("test-credential").getCredentialMetadata() != null ?
+                                    credentialIssuer.getCredentialsSupported().get("test-credential").getCredentialMetadata().getClaims() : null);
                 }));
     }
 
