@@ -26,6 +26,7 @@ import jakarta.ws.rs.NotFoundException;
 import jakarta.ws.rs.OPTIONS;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
+import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
@@ -111,13 +112,14 @@ public class OID4VPUserAuthenticationEndpoint extends OID4VPUserAuthenticationEn
     }
 
     /**
-     * Deferences request URIs into signed request objects.
+     * Dereferences request URIs into signed request objects.
      */
     @GET
     @Path(REQUEST_JWT_PATH + "/{requestId}")
     @Produces(MediaType.TEXT_PLAIN)
-    public Response getSignedRequestObject(String requestId) {
+    public Response getSignedRequestObject(@PathParam("requestId") String requestId) {
         logger.debug("Resolving request URI to signed request object...");
+        System.out.println("Request ID: " + requestId);
         AuthorizationContext authorizationContext;
 
         try {
@@ -190,7 +192,7 @@ public class OID4VPUserAuthenticationEndpoint extends OID4VPUserAuthenticationEn
     @GET
     @Path("/status/{transactionId}")
     @Produces(MediaType.APPLICATION_JSON)
-    public Response getAuthorizationContextState(String transactionId) {
+    public Response getAuthorizationContextState(@PathParam("transactionId") String transactionId) {
         logger.debug("Inquiring authorization context state by transaction ID...");
         AuthenticationSessionModel authSession;
         AuthorizationContext authorizationContext;

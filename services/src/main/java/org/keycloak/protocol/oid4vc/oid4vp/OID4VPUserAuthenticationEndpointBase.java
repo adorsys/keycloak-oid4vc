@@ -164,7 +164,7 @@ public class OID4VPUserAuthenticationEndpointBase extends AuthorizationEndpointB
      * additional information to the auth session ID, such as a request or transaction ID,
      * without affecting this session recovery.
      */
-    protected static String pruneAuthSessionId(String authSessionId) {
+    public static String pruneAuthSessionId(String authSessionId) {
         // Strip all characters from the EOL marker onward.
         int markerIndex = authSessionId.indexOf(AUTH_SESSION_EOL_MARKER);
         if (markerIndex != -1) {
