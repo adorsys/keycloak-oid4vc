@@ -29,6 +29,8 @@ import org.apache.http.client.entity.UrlEncodedFormEntity;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
+import org.apache.http.entity.StringEntity;
+import org.apache.http.entity.ContentType;
 import org.apache.http.message.BasicNameValuePair;
 import org.junit.Assert;
 import org.junit.Test;
@@ -1048,5 +1050,49 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
                             credentialConfigurationId,
                             jwtVcConfig.getDisplay().get(0).getName());
                 }));
+    }
+
+    /**
+     * Test that verifies the invalid_nonce error is returned when a proof contains an invalid nonce.
+     */
+    @Test
+    public void testInvalidNonceError() throws Exception {
+        // Get a valid nonce first
+        String validNonce = getCNonce();
+        assertNotNull("Valid nonce should be obtained", validNonce);
+
+        // Create a credential request with an invalid nonce
+        String invalidNonce = "invalid-nonce-value";
+        CredentialRequest credentialRequest = new CredentialRequest()
+                .setCredentialConfigurationId(jwtTypeCredentialConfigurationIdName);
+
+        // Create a proof with the invalid nonce using Keycloak's real implementation
+        // Use the correct issuer identifier (the actual issuer, not the test DID)
+        String issuerIdentifier = suiteContext.getAuthServerInfo().getContextRoot().toString() + "/auth/realms/" + TEST_REALM_NAME;
+        String proofJwt = generateJwtProof(issuerIdentifier, invalidNonce);
+        credentialRequest.setProof(new org.keycloak.protocol.oid4vc.model.JwtProof().setJwt(proofJwt));
+
+        // Get bearer token for authentication
+        String bearerToken = getBearerToken(oauth, client, jwtTypeCredentialClientScope.getName());
+
+        // Make the credential request
+        String credentialEndpoint = getRealmPath(TEST_REALM_NAME) + "/protocol/oid4vc/credential";
+        HttpPost request = new HttpPost(credentialEndpoint);
+        request.setHeader(HttpHeaders.AUTHORIZATION, "Bearer " + bearerToken);
+        request.setHeader(HttpHeaders.CONTENT_TYPE, "application/json");
+        request.setEntity(new StringEntity(JsonSerialization.writeValueAsString(credentialRequest), ContentType.APPLICATION_JSON));
+
+        try (CloseableHttpResponse response = httpClient.execute(request)) {
+            assertEquals("Should return 400 Bad Request for invalid nonce",
+                    HttpStatus.SC_BAD_REQUEST, response.getStatusLine().getStatusCode());
+
+            String responseBody = IOUtils.toString(response.getEntity().getContent(), StandardCharsets.UTF_8);
+            Map<String, Object> errorResponse = JsonSerialization.readValue(responseBody, Map.class);
+
+            assertEquals("Error type should be invalid_nonce", "invalid_nonce", errorResponse.get("error"));
+            assertNotNull("Error description should be present", errorResponse.get("error_description"));
+            assertTrue("Error description should contain information about invalid nonce",
+                    errorResponse.get("error_description").toString().contains("invalid nonce"));
+        }
     }
 }
