@@ -104,14 +104,12 @@ public class JwtProofValidator extends AbstractProofValidator {
 
         // Validate all JWT proofs in the array
         List<JWK> validJwks = new ArrayList<>();
-        int validatedCount = 0;
 
         for (int i = 0; i < jwtProofs.size(); i++) {
             String jwt = jwtProofs.get(i);
             try {
                 JWK jwk = validateSingleJwtProof(vcIssuanceContext, jwt);
                 validJwks.add(jwk);
-                validatedCount++;
                 LOGGER.debugf("Successfully validated JWT proof at index %d", i);
             } catch (VCIssuerException e) {
                 // If any proof fails validation, throw the exception
@@ -123,7 +121,7 @@ public class JwtProofValidator extends AbstractProofValidator {
             throw new VCIssuerException("No valid JWT proof found in the proofs array");
         }
 
-        LOGGER.debugf("Successfully validated %d JWT proofs", validatedCount);
+        LOGGER.debugf("Successfully validated %d JWT proofs", validJwks.size());
         return validJwks;
     }
 

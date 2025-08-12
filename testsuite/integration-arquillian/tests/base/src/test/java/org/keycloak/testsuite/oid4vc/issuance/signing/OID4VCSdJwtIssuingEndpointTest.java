@@ -147,7 +147,7 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
             });
             Assert.fail("Should have thrown an exception");
         } catch (BadRequestException ex) {
-            Assert.assertEquals("Could not validate provided jwt proof: Failed to validate JWT proof at index 0: Could not verify signature of provided proof", ex.getMessage());
+            Assert.assertEquals("Could not validate provided jwt proof", ex.getMessage());
         }
     }
 

@@ -786,11 +786,11 @@ public class OID4VCIssuerEndpoint {
         try {
             List<JWK> jwks = proofValidator.validateProof(vcIssuanceContext);
             if (jwks != null && !jwks.isEmpty()) {
-                // For now, bind only the first JWK until multiple key binding is supported
+                // Bind the first JWK to the credential
                 vcIssuanceContext.getCredentialBody().addKeyBinding(jwks.get(0));
             }
         } catch (VCIssuerException e) {
-            throw new BadRequestException(String.format("Could not validate provided %s proof: %s", proofType, e.getMessage()), e);
+            throw new BadRequestException(String.format("Could not validate provided %s proof", proofType), e);
         }
     }
 
