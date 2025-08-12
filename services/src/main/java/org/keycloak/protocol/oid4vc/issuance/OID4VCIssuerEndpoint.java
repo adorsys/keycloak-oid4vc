@@ -787,7 +787,7 @@ public class OID4VCIssuerEndpoint {
             if (e.getMessage() != null && e.getMessage().startsWith("INVALID_NONCE:")) {
                 throw new ErrorResponseException(
                         ErrorType.INVALID_NONCE.getValue(),
-                        "The proof or proofs parameter in the Credential Request uses an invalid nonce",
+                        "The proofs parameter in the Credential Request uses an invalid nonce",
                         Response.Status.BAD_REQUEST
                 );
             }

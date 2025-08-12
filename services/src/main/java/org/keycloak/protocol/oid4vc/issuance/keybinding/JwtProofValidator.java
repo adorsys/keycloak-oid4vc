@@ -224,7 +224,7 @@ public class JwtProofValidator extends AbstractProofValidator {
                                        Map.of(JwtCNonceHandler.SOURCE_ENDPOINT,
                                               OID4VCIssuerWellKnownProvider.getNonceEndpoint(keycloakContext)));
         } catch (VerificationException e) {
-            throw new VCIssuerException("INVALID_NONCE: The proof or proofs parameter in the Credential Request uses an invalid nonce", e);
+            throw new VCIssuerException("INVALID_NONCE: The proofs parameter in the Credential Request uses an invalid nonce", e);
         }
     }
 }
