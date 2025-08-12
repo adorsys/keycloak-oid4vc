@@ -34,6 +34,16 @@ import org.keycloak.representations.JsonWebToken;
 import org.keycloak.services.resources.RealmsResource;
 import org.keycloak.testsuite.AbstractTestRealmKeycloakTest;
 import org.keycloak.testsuite.util.oauth.OAuthClient;
+import org.keycloak.protocol.oid4vc.model.NonceResponse;
+import org.keycloak.testsuite.util.AdminClientUtil;
+import org.keycloak.util.JsonSerialization;
+import org.keycloak.services.util.DPoPUtil;
+import jakarta.ws.rs.client.Client;
+import jakarta.ws.rs.client.Invocation;
+import jakarta.ws.rs.client.WebTarget;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
+import org.apache.http.HttpStatus;
 
 import java.net.URI;
 import java.util.Arrays;
@@ -87,4 +97,29 @@ public class NonceEndpointTest extends OID4VCIssuerEndpointTest {
         });
     }
 
+    @Test
+    public void testGetCNonceWithDPoPNonceHeader() throws Exception {
+        UriBuilder builder = UriBuilder.fromUri(OAuthClient.AUTH_SERVER_ROOT);
+        URI oid4vcUri = RealmsResource.protocolUrl(builder).build(AbstractTestRealmKeycloakTest.TEST_REALM_NAME,
+                OID4VCLoginProtocolFactory.PROTOCOL_ID);
+        String nonceUrl = String.format("%s/%s", oid4vcUri.toString(), OID4VCIssuerEndpoint.NONCE_PATH);
+
+        try (Client client = AdminClientUtil.createResteasyClient()) {
+            WebTarget nonceTarget = client.target(nonceUrl);
+            Invocation.Builder nonceInvocationBuilder = nonceTarget.request(MediaType.APPLICATION_JSON_TYPE);
+
+            try (Response response = nonceInvocationBuilder.post(null)) {
+                Assert.assertEquals(HttpStatus.SC_OK, response.getStatus());
+
+                String dpopNonce = response.getHeaderString(DPoPUtil.DPOP_NONCE_HEADER);
+                Assert.assertNotNull("DPoP-Nonce header should be present", dpopNonce);
+                Assert.assertFalse("DPoP-Nonce should not be empty", dpopNonce.trim().isEmpty());
+
+                String responseBody = response.readEntity(String.class);
+                NonceResponse nonceResponse = JsonSerialization.readValue(responseBody, NonceResponse.class);
+                Assert.assertNotNull("NonceResponse should not be null", nonceResponse);
+                Assert.assertNotNull("c_nonce should not be null", nonceResponse.getNonce());
+            }
+        }
+    }
 }

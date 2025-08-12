@@ -37,8 +37,6 @@ import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.Response;
 import org.jboss.logging.Logger;
 import org.keycloak.common.util.SecretGenerator;
-import org.keycloak.component.ComponentFactory;
-import org.keycloak.component.ComponentModel;
 import org.keycloak.events.Errors;
 import org.keycloak.events.EventBuilder;
 import org.keycloak.jose.jwe.JWE;
@@ -89,6 +87,7 @@ import org.keycloak.services.CorsErrorResponseException;
 import org.keycloak.services.cors.Cors;
 import org.keycloak.services.managers.AppAuthManager;
 import org.keycloak.services.managers.AuthenticationManager;
+import org.keycloak.services.util.DPoPUtil;
 import org.keycloak.util.JsonSerialization;
 import org.keycloak.utils.MediaType;
 
@@ -225,12 +224,12 @@ public class OID4VCIssuerEndpoint {
     private String generateNotificationId() {
         return SecretGenerator.getInstance().randomString();
     }
-    
+
     /**
      * the OpenId4VCI nonce-endpoint
      *
      * @return a short-lived c_nonce value that must be presented in key-bound proofs at the credential endpoint.
-     * @see https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0-15.html#name-nonce-endpoint
+     * @see https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0-16.html#name-nonce-endpoint
      * @see https://datatracker.ietf.org/doc/html/draft-demarco-nonce-endpoint#name-nonce-response
      */
     @POST
@@ -243,7 +242,25 @@ public class OID4VCIssuerEndpoint {
         String audience = OID4VCIssuerWellKnownProvider.getCredentialsEndpoint(session.getContext());
         String nonce = cNonceHandler.buildCNonce(List.of(audience), Map.of(JwtCNonceHandler.SOURCE_ENDPOINT, sourceEndpoint));
         nonceResponse.setNonce(nonce);
-        return Response.ok().header(HttpHeaders.CACHE_CONTROL, "no-store").entity(nonceResponse).build();
+
+        String dpopNonce = null;
+        try {
+            if (cNonceHandler instanceof JwtCNonceHandler) {
+                dpopNonce = SecretGenerator.getInstance().randomString(32);
+            }
+        } catch (Exception e) {
+            LOGGER.debugf("Could not generate DPoP nonce: %s", e.getMessage());
+        }
+
+        Response.ResponseBuilder responseBuilder = Response.ok()
+                .header(HttpHeaders.CACHE_CONTROL, "no-store")
+                .entity(nonceResponse);
+
+        if (dpopNonce != null) {
+            responseBuilder.header(DPoPUtil.DPOP_NONCE_HEADER, dpopNonce);
+        }
+
+        return responseBuilder.build();
     }
 
     /**

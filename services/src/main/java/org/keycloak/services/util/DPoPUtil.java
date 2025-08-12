@@ -101,6 +101,7 @@ public class DPoPUtil {
     }
 
     public static final String DPOP_HTTP_HEADER = "DPoP";
+    public static final String DPOP_NONCE_HEADER = "DPoP-Nonce";
     private static final String DPOP_JWT_HEADER_TYPE = "dpop+jwt";
     public static final String DPOP_ATH_ALG = "RS256";
 
