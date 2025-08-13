@@ -51,7 +51,7 @@ public class AuthorizationResponseService {
 
     private static final Logger logger = Logger.getLogger(AuthorizationResponseService.class);
 
-    private static final String JSON_PATH_ROOT = "$";
+    public static final String JSON_PATH_ROOT = "$";
 
     private final KeycloakSession session;
 
