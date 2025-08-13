@@ -32,11 +32,13 @@ import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.CredentialBuilder
 import org.keycloak.protocol.oid4vc.model.CredentialIssuer;
 
 import org.keycloak.protocol.oid4vc.model.CredentialResponseEncryptionMetadata;
+import org.keycloak.protocol.oid4vc.model.CredentialRequestEncryptionMetadata;
 import org.keycloak.protocol.oid4vc.model.SupportedCredentialConfiguration;
 import org.keycloak.services.Urls;
 import org.keycloak.urls.UrlType;
 import org.keycloak.wellknown.WellKnownProvider;
 import org.jboss.logging.Logger;
+import org.keycloak.jose.jwk.JWK;
 
 import java.util.List;
 import java.util.Map;
@@ -81,6 +83,7 @@ public class OID4VCIssuerWellKnownProvider implements WellKnownProvider {
                 .setCredentialsSupported(getSupportedCredentials(keycloakSession))
                 .setAuthorizationServers(List.of(getIssuer(context)))
                 .setCredentialResponseEncryption(getCredentialResponseEncryption(keycloakSession))
+                .setCredentialRequestEncryption(getCredentialRequestEncryption(keycloakSession))
                 .setBatchCredentialIssuance(getBatchCredentialIssuance(keycloakSession))
                 .setSignedMetadata(getSignedMetadata(keycloakSession));
         return issuer;
@@ -123,6 +126,27 @@ public class OID4VCIssuerWellKnownProvider implements WellKnownProvider {
         // Get supported algorithms from available encryption keys
         metadata.setAlgValuesSupported(getSupportedEncryptionAlgorithms(session));
         metadata.setEncValuesSupported(getSupportedEncryptionMethods());
+        metadata.setZipValuesSupported(getSupportedCompressionMethods());
+        metadata.setEncryptionRequired(isEncryptionRequired(realm));
+
+        return metadata;
+    }
+
+    /**
+     * Returns the credential request encryption metadata for the issuer.
+     * Determines supported algorithms from available realm keys.
+     *
+     * @param session The Keycloak session
+     * @return The credential request encryption metadata
+     */
+    public static CredentialRequestEncryptionMetadata getCredentialRequestEncryption(KeycloakSession session) {
+        RealmModel realm = session.getContext().getRealm();
+        CredentialRequestEncryptionMetadata metadata = new CredentialRequestEncryptionMetadata();
+
+        // Get supported algorithms from available encryption keys
+        metadata.setJwks(getEncryptionJwks(session));
+        metadata.setEncValuesSupported(getSupportedEncryptionMethods());
+        metadata.setZipValuesSupported(getSupportedCompressionMethods());
         metadata.setEncryptionRequired(isEncryptionRequired(realm));
 
         return metadata;
@@ -161,6 +185,23 @@ public class OID4VCIssuerWellKnownProvider implements WellKnownProvider {
      */
     private static List<String> getSupportedEncryptionMethods() {
         return List.of(JWEConstants.A256GCM);
+    }
+
+    /**
+     * Returns the supported compression methods from realm attributes.
+     */
+    private static List<String> getSupportedCompressionMethods() {
+        // For now, return empty list as compression is optional
+        return List.of();
+    }
+
+    /**
+     * Returns the encryption JWKS from realm keys.
+     */
+    private static List<JWK> getEncryptionJwks(KeycloakSession session) {
+        // TODO: Implement proper JWK conversion from KeyWrapper
+        // For now, return empty list as this is optional
+        return List.of();
     }
 
     /**

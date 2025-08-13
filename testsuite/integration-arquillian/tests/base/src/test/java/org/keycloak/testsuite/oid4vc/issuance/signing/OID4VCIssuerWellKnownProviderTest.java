@@ -45,6 +45,7 @@ import org.keycloak.protocol.oid4vc.model.ClaimDisplay;
 import org.keycloak.protocol.oid4vc.model.Claims;
 import org.keycloak.protocol.oid4vc.model.CredentialIssuer;
 import org.keycloak.protocol.oid4vc.model.CredentialResponseEncryptionMetadata;
+import org.keycloak.protocol.oid4vc.model.CredentialRequestEncryptionMetadata;
 import org.keycloak.protocol.oid4vc.model.DisplayObject;
 import org.keycloak.protocol.oid4vc.model.Format;
 import org.keycloak.protocol.oid4vc.model.ProofTypesSupported;
@@ -125,7 +126,15 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
         Assert.assertNotNull("credential_response_encryption should be present", encryption);
         Assert.assertEquals(List.of(RSA_OAEP, RSA_OAEP_256), encryption.getAlgValuesSupported());
         Assert.assertEquals(List.of(A256GCM), encryption.getEncValuesSupported());
+        Assert.assertNotNull("zip_values_supported should be present", encryption.getZipValuesSupported());
         Assert.assertTrue("encryption_required should be true", encryption.getEncryptionRequired());
+
+        // Check credential_request_encryption
+        CredentialRequestEncryptionMetadata requestEncryption = credentialIssuer.getCredentialRequestEncryption();
+        Assert.assertNotNull("credential_request_encryption should be present", requestEncryption);
+        Assert.assertEquals(List.of(A256GCM), requestEncryption.getEncValuesSupported());
+        Assert.assertNotNull("zip_values_supported should be present", requestEncryption.getZipValuesSupported());
+        Assert.assertTrue("encryption_required should be true", requestEncryption.getEncryptionRequired());
 
         CredentialIssuer.BatchCredentialIssuance batch = credentialIssuer.getBatchCredentialIssuance();
         Assert.assertNotNull("batch_credential_issuance should be present", batch);
@@ -182,7 +191,15 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
 
                     Assert.assertTrue(encryption.getAlgValuesSupported().contains(RSA_OAEP));
                     Assert.assertTrue("Supported encryption methods should include A256GCM", encryption.getEncValuesSupported().contains(A256GCM));
+                    Assert.assertNotNull("zip_values_supported should be present", encryption.getZipValuesSupported());
                     Assert.assertTrue(encryption.getEncryptionRequired());
+
+                    // Check credential_request_encryption
+                    CredentialRequestEncryptionMetadata requestEncryption = issuer.getCredentialRequestEncryption();
+                    Assert.assertNotNull("credential_request_encryption should be present", requestEncryption);
+                    Assert.assertTrue("Supported encryption methods should include A256GCM", requestEncryption.getEncValuesSupported().contains(A256GCM));
+                    Assert.assertNotNull("zip_values_supported should be present", requestEncryption.getZipValuesSupported());
+                    Assert.assertTrue("encryption_required should be true", requestEncryption.getEncryptionRequired());
                     Assert.assertEquals(Integer.valueOf(10), issuer.getBatchCredentialIssuance().getBatchSize());
                     Assert.assertEquals("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJmb28iOiJiYXIifQ.XYZ123abc",
                             issuer.getSignedMetadata());
@@ -218,10 +235,20 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
                         oid4vciIssuerConfig.getCredentialResponseEncryption().getAlgValuesSupported().isEmpty());
                 Assert.assertFalse("Supported encryption methods should not be empty",
                         oid4vciIssuerConfig.getCredentialResponseEncryption().getEncValuesSupported().isEmpty());
+                Assert.assertNotNull("zip_values_supported should be present",
+                        oid4vciIssuerConfig.getCredentialResponseEncryption().getZipValuesSupported());
                 Assert.assertTrue("Supported algorithms should include RSA-OAEP",
                         oid4vciIssuerConfig.getCredentialResponseEncryption().getAlgValuesSupported().contains("RSA-OAEP"));
                 Assert.assertTrue("Supported encryption methods should include A256GCM",
                         oid4vciIssuerConfig.getCredentialResponseEncryption().getEncValuesSupported().contains("A256GCM"));
+                Assert.assertNotNull("Credential request encryption should be advertised in metadata",
+                        oid4vciIssuerConfig.getCredentialRequestEncryption());
+                Assert.assertFalse("Supported encryption methods should not be empty",
+                        oid4vciIssuerConfig.getCredentialRequestEncryption().getEncValuesSupported().isEmpty());
+                Assert.assertNotNull("zip_values_supported should be present",
+                        oid4vciIssuerConfig.getCredentialRequestEncryption().getZipValuesSupported());
+                Assert.assertTrue("Supported encryption methods should include A256GCM",
+                        oid4vciIssuerConfig.getCredentialRequestEncryption().getEncValuesSupported().contains("A256GCM"));
             }
         }
     }

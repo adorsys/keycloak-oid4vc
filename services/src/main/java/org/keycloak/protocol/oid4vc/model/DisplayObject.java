@@ -235,6 +235,7 @@ public class DisplayObject {
 
     /**
      * Represents a logo object as defined in the OID4VCI specification.
+     * {@see https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#name-credential-issuer-metadata-p}
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public static class LogoObject {
@@ -277,6 +278,7 @@ public class DisplayObject {
 
     /**
      * Represents a background image object as defined in the OID4VCI specification.
+     * {@see https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#name-credential-issuer-metadata-p}
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public static class BackgroundImageObject {
