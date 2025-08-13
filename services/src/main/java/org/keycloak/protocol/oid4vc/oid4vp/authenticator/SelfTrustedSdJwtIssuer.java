@@ -29,7 +29,6 @@ import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
 import org.keycloak.sdjwt.IssuerSignedJWT;
 import org.keycloak.sdjwt.consumer.TrustedSdJwtIssuer;
-import org.keycloak.sdjwt.vp.SdJwtVP;
 
 import java.util.List;
 import java.util.stream.Stream;
@@ -44,11 +43,9 @@ public class SelfTrustedSdJwtIssuer implements TrustedSdJwtIssuer {
     private static final Logger logger = Logger.getLogger(SelfTrustedSdJwtIssuer.class);
 
     private final KeycloakSession session;
-    private final String signingKeyId;
 
-    public SelfTrustedSdJwtIssuer(AuthenticationFlowContext context, SdJwtVP sdJwt) {
+    public SelfTrustedSdJwtIssuer(AuthenticationFlowContext context) {
         this.session = context.getSession();
-        this.signingKeyId = sdJwt.getIssuerSignedJWT().getHeader().getKeyId();
     }
 
     @Override
@@ -60,6 +57,7 @@ public class SelfTrustedSdJwtIssuer implements TrustedSdJwtIssuer {
         Stream<KeyWrapper> keyStream = keyManager.getKeysStream(realm)
                 .filter(key -> KeyUse.SIG.equals(key.getUse()));
 
+        String signingKeyId = issuerSignedJWT.getHeader().getKeyId();
         if (signingKeyId != null) {
             keyStream = keyStream.filter(key -> signingKeyId.equals(key.getKid()));
         }
