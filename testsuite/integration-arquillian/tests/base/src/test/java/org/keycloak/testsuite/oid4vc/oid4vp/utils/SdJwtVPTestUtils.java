@@ -56,9 +56,9 @@ import static org.keycloak.testsuite.AbstractTestRealmKeycloakTest.TEST_REALM_NA
  */
 public class SdJwtVPTestUtils {
 
-    private static final int ISSUER_SIGNED_JWT_LIFESPAN_SECS = 300;
-    private static final int KB_JWT_LIFESPAN_SECS = 60;
-    private static final String EXP_CLAIM_KEY = "exp";
+    public static final int ISSUER_SIGNED_JWT_LIFESPAN_SECS = 300;
+    public static final int KB_JWT_LIFESPAN_SECS = 60;
+    public static final String EXP_CLAIM_KEY = "exp";
 
     private final KeycloakTestingClient testingClient;
 

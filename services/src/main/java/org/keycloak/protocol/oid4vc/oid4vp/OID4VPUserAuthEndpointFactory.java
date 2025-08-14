@@ -31,7 +31,7 @@ import org.keycloak.services.resource.RealmResourceProviderFactory;
  *
  * @author <a href="mailto:Ingrid.Kamga@adorsys.com">Ingrid Kamga</a>
  */
-public class OID4VPUserAuthenticationEndpointFactory
+public class OID4VPUserAuthEndpointFactory
         implements RealmResourceProviderFactory, OID4VPEnvironmentProviderFactory {
 
     public static final String PROVIDER_ID = "oid4vp-auth";
@@ -46,7 +46,7 @@ public class OID4VPUserAuthenticationEndpointFactory
         KeycloakContext context = session.getContext();
         RealmModel realm = context.getRealm();
         EventBuilder event = new EventBuilder(realm, session, context.getConnection());
-        return new OID4VPUserAuthenticationEndpoint(session, event);
+        return new OID4VPUserAuthEndpoint(session, event);
     }
 
     @Override

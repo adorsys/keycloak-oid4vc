@@ -85,7 +85,7 @@ public class SdJwtAuthenticator implements Authenticator {
             );
         } catch (VerificationException e) {
             logger.errorf(e, "Token verification failed");
-            failRejectingPresentedSdJwtToken(context);
+            failRejectingPresentedSdJwtToken(context, e.getMessage());
             return;
         }
 
@@ -149,12 +149,12 @@ public class SdJwtAuthenticator implements Authenticator {
         return null;
     }
 
-    private void failRejectingPresentedSdJwtToken(AuthenticationFlowContext context) {
+    private void failRejectingPresentedSdJwtToken(AuthenticationFlowContext context, String reason) {
         logger.info("Presented SD-JWT will be rejected as invalid");
 
         var errorRep = new OAuth2ErrorRepresentation(
                 Errors.INVALID_USER_CREDENTIALS,
-                "Invalid SD-JWT presentation"
+                String.format("Invalid SD-JWT presentation (%s)", reason)
         );
 
         context.failure(

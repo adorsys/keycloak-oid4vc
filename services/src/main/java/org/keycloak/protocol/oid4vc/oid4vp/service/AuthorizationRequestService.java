@@ -26,8 +26,8 @@ import org.keycloak.jose.jws.JWSBuilder;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
 import org.keycloak.models.utils.SessionExpiration;
-import org.keycloak.protocol.oid4vc.oid4vp.OID4VPUserAuthenticationEndpoint;
-import org.keycloak.protocol.oid4vc.oid4vp.OID4VPUserAuthenticationEndpointBase;
+import org.keycloak.protocol.oid4vc.oid4vp.OID4VPUserAuthEndpoint;
+import org.keycloak.protocol.oid4vc.oid4vp.OID4VPUserAuthEndpointBase;
 import org.keycloak.protocol.oid4vc.oid4vp.authenticator.SdJwtAuthRequirements;
 import org.keycloak.protocol.oid4vc.oid4vp.model.ClientIdScheme;
 import org.keycloak.protocol.oid4vc.oid4vp.model.ClientMetadata;
@@ -135,8 +135,8 @@ public class AuthorizationRequestService {
      * Generates a request or transaction ID.
      */
     private static String generateRequestOrTransactionId(AuthenticationSessionModel authSession) {
-        return OID4VPUserAuthenticationEndpointBase.getAuthSessionId(authSession)
-                + OID4VPUserAuthenticationEndpointBase.AUTH_SESSION_EOL_MARKER
+        return OID4VPUserAuthEndpointBase.getAuthSessionId(authSession)
+                + OID4VPUserAuthEndpointBase.AUTH_SESSION_EOL_MARKER
                 + generateRandomString();
     }
 
@@ -156,7 +156,7 @@ public class AuthorizationRequestService {
      */
     private RequestObject bootstrapRequestObject() {
         String clientId = clientMetadata.getClientId();
-        String responseUri = openID4VPRootUrl + OID4VPUserAuthenticationEndpoint.RESPONSE_URI_PATH;
+        String responseUri = openID4VPRootUrl + OID4VPUserAuthEndpoint.RESPONSE_URI_PATH;
 
         String nonce = Stream.generate(AuthorizationRequestService::generateRandomString)
                 .limit(2)
@@ -177,7 +177,7 @@ public class AuthorizationRequestService {
     private String buildAuthorizationRequestLink(String requestId) {
         var clientId = clientMetadata.getClientId();
         var requestUri = openID4VPRootUrl + "%s/%s".formatted(
-                OID4VPUserAuthenticationEndpoint.REQUEST_JWT_PATH,
+                OID4VPUserAuthEndpoint.REQUEST_JWT_PATH,
                 requestId
         );
 

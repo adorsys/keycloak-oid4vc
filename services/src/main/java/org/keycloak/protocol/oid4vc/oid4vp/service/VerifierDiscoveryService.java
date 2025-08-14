@@ -26,7 +26,7 @@ import org.keycloak.models.KeyManager;
 import org.keycloak.models.KeycloakContext;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
-import org.keycloak.protocol.oid4vc.oid4vp.OID4VPUserAuthenticationEndpointFactory;
+import org.keycloak.protocol.oid4vc.oid4vp.OID4VPUserAuthEndpointFactory;
 import org.keycloak.protocol.oid4vc.oid4vp.model.ClientMetadata;
 import org.keycloak.protocol.oid4vc.oid4vp.model.prex.SdGenericFormat;
 import org.keycloak.provider.ProviderFactory;
@@ -77,7 +77,7 @@ public class VerifierDiscoveryService {
                 context.getUri(UrlType.FRONTEND).getBaseUri(),
                 context.getRealm().getName());
 
-        return baseRealmUrl + "/" + OID4VPUserAuthenticationEndpointFactory.PROVIDER_ID;
+        return baseRealmUrl + "/" + OID4VPUserAuthEndpointFactory.PROVIDER_ID;
     }
 
     /**

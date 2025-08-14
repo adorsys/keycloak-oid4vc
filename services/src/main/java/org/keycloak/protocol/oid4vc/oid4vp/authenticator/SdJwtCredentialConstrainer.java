@@ -17,7 +17,7 @@
 
 package org.keycloak.protocol.oid4vc.oid4vp.authenticator;
 
-import org.keycloak.protocol.oid4vc.oid4vp.OID4VPUserAuthenticationEndpointFactory;
+import org.keycloak.protocol.oid4vc.oid4vp.OID4VPUserAuthEndpointFactory;
 import org.keycloak.protocol.oid4vc.oid4vp.model.prex.Constraints;
 import org.keycloak.protocol.oid4vc.oid4vp.model.prex.Field;
 import org.keycloak.protocol.oid4vc.oid4vp.model.prex.Filter;
@@ -69,7 +69,7 @@ public class SdJwtCredentialConstrainer {
      */
     public PresentationDefinition prebuildPresentationDefinition(String issuerVct) {
         PresentationDefinition template = new PresentationDefinition();
-        template.setName(OID4VPUserAuthenticationEndpointFactory.PROVIDER_ID);
+        template.setName(OID4VPUserAuthEndpointFactory.PROVIDER_ID);
 
         InputDescriptor descriptor = new InputDescriptor();
         descriptor.setId(UUID.randomUUID().toString());

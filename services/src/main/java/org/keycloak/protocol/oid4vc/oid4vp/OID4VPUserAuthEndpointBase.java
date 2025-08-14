@@ -44,14 +44,14 @@ import static org.keycloak.models.utils.DefaultAuthenticationFlows.OID4VP_AUTH_F
  *
  * @author <a href="mailto:Ingrid.Kamga@adorsys.com">Ingrid Kamga</a>
  */
-public class OID4VPUserAuthenticationEndpointBase extends AuthorizationEndpointBase {
+public class OID4VPUserAuthEndpointBase extends AuthorizationEndpointBase {
 
-    private static final Logger logger = Logger.getLogger(OID4VPUserAuthenticationEndpointBase.class);
+    private static final Logger logger = Logger.getLogger(OID4VPUserAuthEndpointBase.class);
 
     public static final String AUTH_SESSION_DELIMITER = ".";
     public static final String AUTH_SESSION_EOL_MARKER = "::";
 
-    public OID4VPUserAuthenticationEndpointBase(KeycloakSession session, EventBuilder event) {
+    public OID4VPUserAuthEndpointBase(KeycloakSession session, EventBuilder event) {
         super(session, event);
     }
 

@@ -245,10 +245,9 @@ public abstract class OID4VCTest extends AbstractTestRealmKeycloakTest {
         componentExportRepresentation.setId(UUID.randomUUID().toString());
         componentExportRepresentation.setProviderId("ecdsa-generated");
         componentExportRepresentation.setConfig(new MultivaluedHashMap<>(
-                new HashMap<>(Map.of(
+                Map.of(
                         "ecdsaEllipticCurveKey", List.of("P-256"),
-                        "algorithm", List.of("ES256")
-                ))
+                        "algorithm", List.of("ES256"))
         ));
         return componentExportRepresentation;
     }

@@ -60,10 +60,10 @@ import java.util.Map;
  *
  * @author <a href="mailto:Ingrid.Kamga@adorsys.com">Ingrid Kamga</a>
  */
-public class OID4VPUserAuthenticationEndpoint extends OID4VPUserAuthenticationEndpointBase
+public class OID4VPUserAuthEndpoint extends OID4VPUserAuthEndpointBase
         implements RealmResourceProvider {
 
-    private static final Logger logger = Logger.getLogger(OID4VPUserAuthenticationEndpoint.class);
+    private static final Logger logger = Logger.getLogger(OID4VPUserAuthEndpoint.class);
 
     public static final String REQUEST_JWT_PATH = "/request.jwt";
     public static final String RESPONSE_URI_PATH = "/response";
@@ -71,7 +71,7 @@ public class OID4VPUserAuthenticationEndpoint extends OID4VPUserAuthenticationEn
     private final AuthorizationRequestService authorizationRequestService;
     private final AuthorizationResponseService authorizationResponseService;
 
-    public OID4VPUserAuthenticationEndpoint(KeycloakSession session, EventBuilder event) {
+    public OID4VPUserAuthEndpoint(KeycloakSession session, EventBuilder event) {
         super(session, event);
         this.authorizationRequestService = new AuthorizationRequestService(session);
         this.authorizationResponseService = new AuthorizationResponseService(session);
@@ -119,7 +119,6 @@ public class OID4VPUserAuthenticationEndpoint extends OID4VPUserAuthenticationEn
     @Produces(MediaType.TEXT_PLAIN)
     public Response getSignedRequestObject(@PathParam("requestId") String requestId) {
         logger.debug("Resolving request URI to signed request object...");
-        System.out.println("Request ID: " + requestId);
         AuthorizationContext authorizationContext;
 
         try {
