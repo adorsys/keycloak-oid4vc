@@ -413,6 +413,60 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
                 }));
     }
 
+    @Test
+    public void testBatchCredentialIssuanceValidation() {
+        KeycloakTestingClient testingClient = this.testingClient;
+
+        // Test case 1: Valid batch size (2 or greater) should be accepted
+        testBatchSizeValidation(testingClient, "5", true, 5);
+
+        // Test case 2: Invalid batch size (less than 2) should be rejected
+        testBatchSizeValidation(testingClient, "1", false, null);
+
+        // Test case 3: Edge case - batch size exactly 2 should be accepted
+        testBatchSizeValidation(testingClient, "2", true, 2);
+
+        // Test case 4: Zero batch size should be rejected
+        testBatchSizeValidation(testingClient, "0", false, null);
+
+        // Test case 5: Negative batch size should be rejected
+        testBatchSizeValidation(testingClient, "-1", false, null);
+    }
+
+    private void testBatchSizeValidation(KeycloakTestingClient testingClient, String batchSize, boolean shouldBePresent, Integer expectedValue) {
+        testingClient
+                .server(TEST_REALM_NAME)
+                .run(session -> {
+                    RealmModel realm = session.getContext().getRealm();
+                    // Store original value
+                    String originalBatchSize = realm.getAttribute("batch_credential_issuance.batch_size");
+
+                    try {
+                        realm.setAttribute("batch_credential_issuance.batch_size", batchSize);
+
+                        OID4VCIssuerWellKnownProvider provider = new OID4VCIssuerWellKnownProvider(session);
+                        CredentialIssuer issuer = (CredentialIssuer) provider.getConfig();
+
+                        if (shouldBePresent) {
+                            Assert.assertNotNull("batch_credential_issuance should be present for batch size " + batchSize,
+                                    issuer.getBatchCredentialIssuance());
+                            Assert.assertEquals("batch_credential_issuance should have correct batch size for " + batchSize,
+                                    expectedValue, issuer.getBatchCredentialIssuance().getBatchSize());
+                        } else {
+                            Assert.assertNull("batch_credential_issuance should be null for invalid batch size " + batchSize,
+                                    issuer.getBatchCredentialIssuance());
+                        }
+                    } finally {
+                        // Restore original value
+                        if (originalBatchSize != null) {
+                            realm.setAttribute("batch_credential_issuance.batch_size", originalBatchSize);
+                        } else {
+                            realm.removeAttribute("batch_credential_issuance.batch_size");
+                        }
+                    }
+                });
+    }
+
     public static void extendConfigureTestRealm(RealmRepresentation testRealm, ClientRepresentation clientRepresentation) {
         if (testRealm.getComponents() == null) {
             testRealm.setComponents(new MultivaluedHashMap<>());
