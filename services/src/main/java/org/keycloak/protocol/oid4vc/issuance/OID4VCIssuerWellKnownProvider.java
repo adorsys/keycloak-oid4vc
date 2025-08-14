@@ -95,8 +95,13 @@ public class OID4VCIssuerWellKnownProvider implements WellKnownProvider {
         String batchSize = realm.getAttribute("batch_credential_issuance.batch_size");
         if (batchSize != null) {
             try {
+                int parsedBatchSize = Integer.parseInt(batchSize);
+                if (parsedBatchSize < 2) {
+                    LOGGER.warnf("batch_credential_issuance.batch_size must be 2 or greater, but was %d. Skipping batch_credential_issuance.", parsedBatchSize);
+                    return null;
+                }
                 return new CredentialIssuer.BatchCredentialIssuance()
-                        .setBatchSize(Integer.parseInt(batchSize));
+                        .setBatchSize(parsedBatchSize);
             } catch (Exception e) {
                 LOGGER.warnf(e, "Failed to parse batch_credential_issuance.batch_size from realm attributes.");
             }
