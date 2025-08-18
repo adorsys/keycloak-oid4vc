@@ -17,11 +17,19 @@
 
 package org.keycloak.protocol.oid4vc.issuance;
 
+import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.UriInfo;
+import org.keycloak.common.util.Time;
 import org.keycloak.constants.Oid4VciConstants;
 import org.keycloak.crypto.KeyUse;
 import org.keycloak.crypto.KeyWrapper;
+import org.keycloak.crypto.SignatureProvider;
+import org.keycloak.crypto.SignatureSignerContext;
 import org.keycloak.jose.jwe.JWEConstants;
+import org.keycloak.jose.jwk.JWK;
+import org.keycloak.jose.jwk.JWKBuilder;
+import org.keycloak.jose.jws.Algorithm;
+import org.keycloak.jose.jws.JWSBuilder;
 import org.keycloak.models.KeyManager;
 import org.keycloak.models.KeycloakContext;
 import org.keycloak.models.KeycloakSession;
@@ -35,11 +43,15 @@ import org.keycloak.protocol.oid4vc.model.CredentialResponseEncryptionMetadata;
 import org.keycloak.protocol.oid4vc.model.SupportedCredentialConfiguration;
 import org.keycloak.services.Urls;
 import org.keycloak.urls.UrlType;
+import org.keycloak.util.JsonSerialization;
 import org.keycloak.wellknown.WellKnownProvider;
 import org.jboss.logging.Logger;
 
+import java.security.PrivateKey;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 import static org.keycloak.crypto.KeyType.RSA;
@@ -52,6 +64,14 @@ import static org.keycloak.crypto.KeyType.RSA;
  * @author <a href="https://github.com/wistefan">Stefan Wiedemann</a>
  */
 public class OID4VCIssuerWellKnownProvider implements WellKnownProvider {
+
+    public static final String SIGNED_METADATA_JWT_TYPE = "openidvci-issuer-metadata+jwt";
+
+    // Realm attributes for signed metadata configuration
+    public static final String SIGNED_METADATA_ENABLED_ATTR = "oid4vci.signed_metadata.enabled";
+    public static final String SIGNED_METADATA_EXPIRATION_ATTR = "oid4vci.signed_metadata.exp";
+    public static final String SIGNED_METADATA_ISS_ATTR = "oid4vci.signed_metadata.iss";
+    public static final String SIGNED_METADATA_ALG_ATTR = "oid4vci.signed_metadata.alg";
 
     public static final String VC_KEY = "vc";
 
@@ -73,7 +93,29 @@ public class OID4VCIssuerWellKnownProvider implements WellKnownProvider {
     @Override
     public Object getConfig() {
         KeycloakContext context = keycloakSession.getContext();
-        CredentialIssuer issuer = new CredentialIssuer()
+        RealmModel realm = context.getRealm();
+
+        CredentialIssuer issuer = createCredentialIssuer(context);
+
+        if (!isSignedMetadataRequested(realm, context)) {
+            return issuer;
+        }
+
+        String signedMetadata = generateSignedMetadata(issuer, keycloakSession);
+        return signedMetadata != null ? signedMetadata : issuer;
+    }
+
+    private boolean isSignedMetadataRequested(RealmModel realm, KeycloakContext context) {
+        if (!Boolean.parseBoolean(realm.getAttribute(SIGNED_METADATA_ENABLED_ATTR))) {
+            return false;
+        }
+
+        String accept = context.getRequestHeaders().getHeaderString(HttpHeaders.ACCEPT);
+        return accept != null && accept.contains(SIGNED_METADATA_JWT_TYPE);
+    }
+
+    private CredentialIssuer createCredentialIssuer(KeycloakContext context) {
+        return new CredentialIssuer()
                 .setCredentialIssuer(getIssuer(context))
                 .setCredentialEndpoint(getCredentialsEndpoint(context))
                 .setNonceEndpoint(getNonceEndpoint(context))
@@ -81,9 +123,7 @@ public class OID4VCIssuerWellKnownProvider implements WellKnownProvider {
                 .setCredentialsSupported(getSupportedCredentials(keycloakSession))
                 .setAuthorizationServers(List.of(getIssuer(context)))
                 .setCredentialResponseEncryption(getCredentialResponseEncryption(keycloakSession))
-                .setBatchCredentialIssuance(getBatchCredentialIssuance(keycloakSession))
-                .setSignedMetadata(getSignedMetadata(keycloakSession));
-        return issuer;
+                .setBatchCredentialIssuance(getBatchCredentialIssuance(keycloakSession));
     }
 
     private static String getDeferredCredentialEndpoint(KeycloakContext context) {
@@ -104,9 +144,84 @@ public class OID4VCIssuerWellKnownProvider implements WellKnownProvider {
         return null;
     }
 
-    private String getSignedMetadata(KeycloakSession session) {
+    /**
+     * Generates signed metadata as a JWS.
+     *
+     * @param metadata The CredentialIssuer metadata object to sign.
+     * @param session  The Keycloak session.
+     * @return The compact JWS string.
+     * @throws IllegalStateException if generation fails due to configuration or signing issues.
+     */
+    public String generateSignedMetadata(CredentialIssuer metadata, KeycloakSession session) {
+        Objects.requireNonNull(metadata, "Metadata cannot be null");
+        Objects.requireNonNull(session, "Session cannot be null");
+
         RealmModel realm = session.getContext().getRealm();
-        return realm.getAttribute("signed_metadata");
+        KeyManager keyManager = session.keys();
+
+        // Select asymmetric signing algorithm
+        List<String> supportedAlgorithms = getSupportedSignatureAlgorithms(session)
+                .stream()
+                .filter(alg -> !alg.startsWith("HS"))
+                .collect(Collectors.toList());
+        if (supportedAlgorithms.isEmpty()) {
+            throw new IllegalStateException("No asymmetric signing algorithms available for realm: " + realm.getName());
+        }
+
+        String alg = Optional.ofNullable(realm.getAttribute(SIGNED_METADATA_ALG_ATTR))
+                .filter(supportedAlgorithms::contains)
+                .orElse(supportedAlgorithms.get(0));
+
+        // Retrieve active key
+        KeyWrapper keyWrapper = Optional.ofNullable(keyManager.getActiveKey(realm, KeyUse.SIG, alg))
+                .orElseThrow(() -> new IllegalStateException(
+                        String.format("No active key found for realm '%s' with algorithm '%s'", realm.getName(), alg)));
+
+        // Convert metadata to claims
+        Map<String, Object> claims;
+        try {
+            claims = JsonSerialization.mapper.convertValue(metadata, Map.class);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalStateException("Failed to convert metadata to claims", e);
+        }
+
+        // Add required JWT claims
+        claims.put("sub", metadata.getCredentialIssuer());
+        claims.put("iat", Time.currentTime());
+
+        // Add optional expiration claim
+        Optional.ofNullable(realm.getAttribute(SIGNED_METADATA_EXPIRATION_ATTR))
+                .map(expDurationStr -> {
+                    try {
+                        return Long.parseLong(expDurationStr);
+                    } catch (NumberFormatException e) {
+                        LOGGER.warnf("Invalid expiration duration for signed metadata: %s", expDurationStr);
+                        return null;
+                    }
+                })
+                .filter(Objects::nonNull)
+                .ifPresent(expDuration -> claims.put("exp", Time.currentTime() + expDuration));
+
+        // Add an optional issuer claim
+        Optional.ofNullable(realm.getAttribute(SIGNED_METADATA_ISS_ATTR))
+                .ifPresent(iss -> claims.put("iss", iss));
+
+        // Sign the JWS
+        JWSBuilder jwsBuilder = new JWSBuilder()
+                .type(SIGNED_METADATA_JWT_TYPE)
+                .kid(keyWrapper.getKid());
+
+        SignatureProvider signerProvider = Optional.ofNullable(session.getProvider(SignatureProvider.class, alg))
+                .orElseThrow(() -> new IllegalStateException("No signature provider for algorithm: " + alg));
+
+        SignatureSignerContext signer = Optional.ofNullable(signerProvider.signer(keyWrapper))
+                .orElseThrow(() -> new IllegalStateException("No signer context for algorithm: " + alg));
+
+        try {
+            return jwsBuilder.jsonContent(claims).sign(signer);
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to sign metadata", e);
+        }
     }
 
     /**
