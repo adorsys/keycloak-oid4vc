@@ -19,32 +19,16 @@ package org.keycloak.testsuite.oid4vc.issuance.signing;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.github.dockerjava.zerodep.shaded.org.apache.hc.client5.http.classic.methods.HttpGet;
-import com.github.dockerjava.zerodep.shaded.org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
-import com.github.dockerjava.zerodep.shaded.org.apache.hc.client5.http.impl.classic.CloseableHttpResponse;
-import com.github.dockerjava.zerodep.shaded.org.apache.hc.core5.http.HttpEntity;
-import com.github.dockerjava.zerodep.shaded.org.apache.hc.core5.http.HttpStatus;
-import com.github.dockerjava.zerodep.shaded.org.apache.hc.core5.http.ParseException;
-import com.github.dockerjava.zerodep.shaded.org.apache.hc.core5.http.io.entity.EntityUtils;
 import jakarta.ws.rs.client.Client;
 import jakarta.ws.rs.client.WebTarget;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriBuilder;
-import org.apache.http.client.methods.HttpUriRequest;
-import org.apache.xml.security.stax.impl.processor.input.AbstractSignatureInputHandler;
 import org.hamcrest.MatcherAssert;
 import org.hamcrest.Matchers;
 import org.junit.Assert;
 import org.junit.Test;
 import org.keycloak.common.util.MultivaluedHashMap;
-import org.keycloak.common.util.Time;
 import org.keycloak.crypto.Algorithm;
-import org.keycloak.crypto.KeyWrapper;
-import org.keycloak.crypto.SignatureException;
-import org.keycloak.crypto.SignatureProvider;
-import org.keycloak.crypto.SignatureVerifierContext;
-import org.keycloak.jose.jws.JWSInput;
-import org.keycloak.jose.jws.JWSInputException;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
 import org.keycloak.models.oid4vci.CredentialScopeModel;
@@ -65,7 +49,6 @@ import org.keycloak.protocol.oid4vc.model.DisplayObject;
 import org.keycloak.protocol.oid4vc.model.Format;
 import org.keycloak.protocol.oid4vc.model.ProofTypesSupported;
 import org.keycloak.protocol.oid4vc.model.SupportedCredentialConfiguration;
-import org.keycloak.representations.JsonWebToken;
 import org.keycloak.representations.idm.ClientRepresentation;
 import org.keycloak.representations.idm.ClientScopeRepresentation;
 import org.keycloak.representations.idm.ProtocolMapperRepresentation;
@@ -77,13 +60,10 @@ import org.keycloak.testsuite.util.AdminClientUtil;
 import org.keycloak.testsuite.util.oauth.OAuthClient;
 import org.keycloak.util.JsonSerialization;
 import org.keycloak.utils.StringUtil;
-import org.testcontainers.shaded.com.google.common.net.HttpHeaders;
 
 import java.io.IOException;
 import java.io.Serializable;
 import java.net.URI;
-import java.nio.charset.StandardCharsets;
-import java.security.PublicKey;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -99,45 +79,30 @@ import static org.keycloak.jose.jwe.JWEConstants.A256GCM;
 import static org.keycloak.jose.jwe.JWEConstants.RSA_OAEP;
 import static org.keycloak.jose.jwe.JWEConstants.RSA_OAEP_256;
 import static org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerWellKnownProvider.ATTR_ENCRYPTION_REQUIRED;
-import static org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerWellKnownProvider.SIGNED_METADATA_JWT_TYPE;
-
+import static org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerWellKnownProvider.SIGNED_METADATA_ALG_ATTR;
+import static org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerWellKnownProvider.SIGNED_METADATA_ENABLED_ATTR;
+import static org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerWellKnownProvider.SIGNED_METADATA_EXPIRATION_ATTR;
+import static org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerWellKnownProvider.SIGNED_METADATA_ISS_ATTR;
 
 public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest {
 
-    private static final String SIGNED_METADATA_ALG = "RS256";
-    private static final String SIGNED_METADATA_ISS = "test-issuer";
-    private static final long SIGNED_METADATA_EXP = 3600; // 1 hour
-    private static final String WELL_KNOWN_ENDPOINT = "/.well-known/openid-credential-issuer";
-
-    private CloseableHttpClient httpClient;
-    private String realmPath;
-
     @Override
     public void configureTestRealm(RealmRepresentation testRealm) {
-        // Enable signed metadata and configure it
         Map<String, String> attributes = Optional.ofNullable(testRealm.getAttributes()).orElseGet(HashMap::new);
         attributes.put("credential_response_encryption.encryption_required", "true");
         attributes.put("batch_credential_issuance.batch_size", "10");
-        attributes.put("signed_metadata", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJmb28iOiJiYXIifQ.XYZ123abc");
-        attributes.put(ATTR_ENCRYPTION_REQUIRED, "true");
-        attributes.put(OID4VCIssuerWellKnownProvider.SIGNED_METADATA_ENABLED_ATTR, "true");
-        attributes.put(OID4VCIssuerWellKnownProvider.SIGNED_METADATA_ALG_ATTR, SIGNED_METADATA_ALG);
-        attributes.put(OID4VCIssuerWellKnownProvider.SIGNED_METADATA_ISS_ATTR, SIGNED_METADATA_ISS);
-        attributes.put(OID4VCIssuerWellKnownProvider.SIGNED_METADATA_EXPIRATION_ATTR, String.valueOf(SIGNED_METADATA_EXP));
-        testRealm.setAttributes(attributes);
+        attributes.put(SIGNED_METADATA_ENABLED_ATTR, "true");
+        attributes.put(SIGNED_METADATA_ALG_ATTR, "RS256");
+        attributes.put(SIGNED_METADATA_ISS_ATTR, "https://issuer.example.com");
+        attributes.put(SIGNED_METADATA_EXPIRATION_ATTR, "3600"); // 1 hour
         testRealm.setAttributes(attributes);
 
-        // Configure key providers
         if (testRealm.getComponents() == null) {
             testRealm.setComponents(new MultivaluedHashMap<>());
         }
 
-        testRealm.getComponents().add("org.keycloak.keys.KeyProvider",
-                getRsaEncKeyProvider(RSA_OAEP_256, "enc-key-oaep256", 100));
-        testRealm.getComponents().add("org.keycloak.keys.KeyProvider",
-                getRsaEncKeyProvider(RSA_OAEP, "enc-key-oaep", 101));
-        testRealm.getComponents().add("org.keycloak.keys.KeyProvider", getRsaKeyProvider(RSA_KEY));
-
+        testRealm.getComponents().add("org.keycloak.keys.KeyProvider", getRsaEncKeyProvider("RSA-OAEP", "enc-key-oaep", 101));
+        testRealm.getComponents().add("org.keycloak.keys.KeyProvider", getRsaEncKeyProvider("RSA-OAEP-256", "enc-key-oaep256", 102));
 
         super.configureTestRealm(testRealm);
     }
