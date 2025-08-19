@@ -10,6 +10,9 @@
         <relativePath>../pom.xml</relativePath>
     </parent>
 
+    <name>Keycloak Clustering Tests</name>
+    <description>Keycloak Clustering Tests</description>
+
     <artifactId>keycloak-tests-clustering</artifactId>
 
     <dependencyManagement>
@@ -48,6 +51,12 @@
         <dependency>
             <groupId>org.keycloak.testframework</groupId>
             <artifactId>keycloak-test-framework-ui</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.keycloak.tests</groupId>
+            <artifactId>keycloak-tests-base</artifactId>
+            <version>${project.version}</version>
+            <type>test-jar</type>
         </dependency>
     </dependencies>
 

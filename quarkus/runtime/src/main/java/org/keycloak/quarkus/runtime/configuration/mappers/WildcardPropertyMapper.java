@@ -7,6 +7,7 @@ import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.BooleanSupplier;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import org.keycloak.config.LoggingOptions;
@@ -46,16 +47,16 @@ public class WildcardPropertyMapper<T> extends PropertyMapper<T> {
             replacementChar = '.';
         }
 
-        if (to != null) {
-            if (!to.startsWith(NS_QUARKUS_PREFIX) && !to.startsWith(NS_KEYCLOAK_PREFIX)) {
-                throw new IllegalArgumentException("Wildcards should map to Quarkus or Keycloak options (option '%s' mapped to '%s'). If not, PropertyMappers logic will need adjusted".formatted(option.getKey(), to));
+        if (getTo() != null) {
+            if (!getTo().startsWith(NS_QUARKUS_PREFIX) && !getTo().startsWith(NS_KEYCLOAK_PREFIX)) {
+                throw new IllegalArgumentException("Wildcards should map to Quarkus or Keycloak options (option '%s' mapped to '%s'). If not, PropertyMappers logic will need adjusted".formatted(option.getKey(), getTo()));
             }
-            this.toPrefix = to.substring(0, to.indexOf(WILDCARD_FROM_START));
-            int lastIndexOf = to.lastIndexOf(">");
+            this.toPrefix = getTo().substring(0, getTo().indexOf(WILDCARD_FROM_START));
+            int lastIndexOf = getTo().lastIndexOf(">");
             if (lastIndexOf == -1) {
                 throw new IllegalArgumentException("Invalid wildcard map to.");
             }
-            this.toSuffix = to.substring(lastIndexOf + 1, to.length());
+            this.toSuffix = getTo().substring(lastIndexOf + 1);
         }
 
         this.wildcardKeysTransformer = wildcardKeysTransformer;
@@ -66,7 +67,7 @@ public class WildcardPropertyMapper<T> extends PropertyMapper<T> {
         return true;
     }
 
-    String getTo(String wildcardKey) {
+    public String getTo(String wildcardKey) {
         return toPrefix + wildcardKey + toSuffix;
     }
 
@@ -83,7 +84,7 @@ public class WildcardPropertyMapper<T> extends PropertyMapper<T> {
 
     @Override
     public PropertyMapper<?> forKey(String key) {
-        String wildcardValue = extractWildcardValue(key).orElseThrow();
+        String wildcardValue = extractWildcardValue(key).orElseThrow(() -> new IllegalArgumentException("Invalid wildcard value"));
         String to = getTo(wildcardValue);
         String from = getFrom(wildcardValue);
         String mapFrom = getMapFrom();
@@ -96,7 +97,17 @@ public class WildcardPropertyMapper<T> extends PropertyMapper<T> {
                 wildcardMapFrom == null ? null : (name, v, context) -> wildcardMapFrom.map(wildcardValue, v, context));
     }
 
-    private Optional<String> extractWildcardValue(String key) {
+    /**
+     * Get connected options mapped to use the wildcard value
+     */
+    public Set<String> getConnectedOptions(String key) {
+        return option.getConnectedOptions().stream().map(option -> {
+            var index = option.indexOf(WildcardPropertyMapper.WILDCARD_FROM_START);
+            return index != 1 ? option.substring(0, index).concat(key) : option;
+        }).collect(Collectors.toSet());
+    }
+
+    public Optional<String> extractWildcardValue(String key) {
         String result = null;
         if (key.startsWith(fromPrefix)) {
             result = key.substring(fromPrefix.length());

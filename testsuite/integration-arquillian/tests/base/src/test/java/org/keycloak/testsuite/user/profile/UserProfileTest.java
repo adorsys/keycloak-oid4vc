@@ -49,7 +49,6 @@ import org.hamcrest.Matchers;
 import org.junit.Assert;
 import org.junit.Test;
 import org.keycloak.admin.client.resource.RealmResource;
-import org.keycloak.common.Profile;
 import org.keycloak.common.util.MultivaluedHashMap;
 import org.keycloak.component.ComponentModel;
 import org.keycloak.component.ComponentValidationException;
@@ -58,6 +57,7 @@ import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.LDAPConstants;
 import org.keycloak.models.RealmModel;
 import org.keycloak.models.UserModel;
+import org.keycloak.models.UserModel.RequiredAction;
 import org.keycloak.representations.idm.AbstractUserRepresentation;
 import org.keycloak.representations.idm.ClientRepresentation;
 import org.keycloak.representations.idm.RealmRepresentation;
@@ -65,7 +65,6 @@ import org.keycloak.representations.idm.UserRepresentation;
 import org.keycloak.representations.userprofile.config.UPConfig.UnmanagedAttributePolicy;
 import org.keycloak.representations.userprofile.config.UPGroup;
 import org.keycloak.services.messages.Messages;
-import org.keycloak.testsuite.arquillian.annotation.EnableFeature;
 import org.keycloak.testsuite.arquillian.annotation.ModelTest;
 import org.keycloak.testsuite.runonserver.RunOnServer;
 import org.keycloak.userprofile.AttributeGroupMetadata;
@@ -82,6 +81,7 @@ import org.keycloak.userprofile.UserProfile;
 import org.keycloak.userprofile.UserProfileConstants;
 import org.keycloak.userprofile.UserProfileContext;
 import org.keycloak.userprofile.UserProfileProvider;
+import org.keycloak.userprofile.UserProfileUtil;
 import org.keycloak.userprofile.ValidationException;
 import org.keycloak.userprofile.config.UPConfigUtils;
 import org.keycloak.userprofile.validator.MultiValueValidator;
@@ -577,6 +577,7 @@ public class UserProfileTest extends AbstractUserProfileTest {
         String userName = org.keycloak.models.utils.KeycloakModelUtils.generateId();
 
         attributes.put(UserModel.USERNAME, userName);
+        attributes.put(UserModel.EMAIL, "user@keycloak.org");
         attributes.put(UserModel.FIRST_NAME, "Joe");
         attributes.put(UserModel.LAST_NAME, "Doe");
         attributes.put("address", "fixed-address");
@@ -589,12 +590,14 @@ public class UserProfileTest extends AbstractUserProfileTest {
 
         attributes.put(UserModel.FIRST_NAME, "Alice");
         attributes.put(UserModel.LAST_NAME, "In Chains");
+        attributes.put(UserModel.EMAIL, "alice@keycloak.org");
 
         profile = provider.create(UserProfileContext.ACCOUNT, attributes, user);
         Set<String> attributesUpdated = new HashSet<>();
         Map<String, String> attributesUpdatedOldValues = new HashMap<>();
         attributesUpdatedOldValues.put(UserModel.FIRST_NAME, "Joe");
         attributesUpdatedOldValues.put(UserModel.LAST_NAME, "Doe");
+        attributesUpdatedOldValues.put(UserModel.EMAIL, "user@keycloak.org");
 
         profile.update((attributeName, userModel, oldValue) -> {
             assertTrue(attributesUpdated.add(attributeName));
@@ -602,7 +605,7 @@ public class UserProfileTest extends AbstractUserProfileTest {
             assertEquals(attributes.get(attributeName), userModel.getFirstAttribute(attributeName));
             });
 
-        assertThat(attributesUpdated, containsInAnyOrder(UserModel.FIRST_NAME, UserModel.LAST_NAME));
+        assertThat(attributesUpdated, containsInAnyOrder(UserModel.FIRST_NAME, UserModel.LAST_NAME, UserModel.EMAIL));
 
         configureAuthenticationSession(session);
 
@@ -634,6 +637,7 @@ public class UserProfileTest extends AbstractUserProfileTest {
         attributes.put(UserModel.USERNAME, org.keycloak.models.utils.KeycloakModelUtils.generateId());
         attributes.put(UserModel.FIRST_NAME, "John");
         attributes.put(UserModel.LAST_NAME, "Doe");
+        attributes.put(UserModel.EMAIL, org.keycloak.models.utils.KeycloakModelUtils.generateId() + "@keycloak.org");
         attributes.put("address", Arrays.asList("fixed-address"));
         attributes.put("department", Arrays.asList("sales"));
 
@@ -762,12 +766,9 @@ public class UserProfileTest extends AbstractUserProfileTest {
 
         profile = provider.create(UserProfileContext.ACCOUNT, attributes, user);
 
-        try {
-            profile.update();
-            fail("Should fail since email can be updated only via update-email action");
-        } catch (ValidationException ve) {
-            assertTrue(ve.isAttributeOnError("email"));
-        }
+        profile.update();
+
+        assertEquals("E-Mail address should have been changed!", "changed@foo.bar", user.getEmail());
     }
 
     @Test
@@ -781,6 +782,7 @@ public class UserProfileTest extends AbstractUserProfileTest {
         attributes.put(UserModel.USERNAME, org.keycloak.models.utils.KeycloakModelUtils.generateId());
         attributes.put(UserModel.FIRST_NAME, "John");
         attributes.put(UserModel.LAST_NAME, "Doe");
+        attributes.put(UserModel.EMAIL, org.keycloak.models.utils.KeycloakModelUtils.generateId() + "@keycloak.org");
         attributes.put("address", Arrays.asList("fixed-address"));
         attributes.put("department", Arrays.asList("sales"));
         attributes.put("phone", Arrays.asList("fixed-phone"));
@@ -2227,7 +2229,12 @@ public class UserProfileTest extends AbstractUserProfileTest {
 
     @Test
     public void testEmailAttributeInUpdateEmailContext() {
-        getTestingClient().server(TEST_REALM_NAME).run((RunOnServer) UserProfileTest::testEmailAttributeInUpdateEmailContext);
+        ApiUtil.enableRequiredAction(testRealm(), RequiredAction.UPDATE_EMAIL, true);
+        try {
+            getTestingClient().server(TEST_REALM_NAME).run((RunOnServer) UserProfileTest::testEmailAttributeInUpdateEmailContext);
+        } finally {
+            ApiUtil.enableRequiredAction(testRealm(), RequiredAction.UPDATE_EMAIL, false);
+        }
     }
 
     private static void testEmailAttributeInUpdateEmailContext(KeycloakSession session) {
@@ -2310,10 +2317,14 @@ public class UserProfileTest extends AbstractUserProfileTest {
         }
     }
 
-    @EnableFeature(Profile.Feature.UPDATE_EMAIL)
     @Test
     public void testEmailAnnotationsInAccountContext() {
-        getTestingClient().server(TEST_REALM_NAME).run((RunOnServer) UserProfileTest::testEmailAnnotationsInAccountContext);
+        ApiUtil.enableRequiredAction(testRealm(), RequiredAction.UPDATE_EMAIL, true);
+        try {
+            getTestingClient().server(TEST_REALM_NAME).run((RunOnServer) UserProfileTest::testEmailAnnotationsInAccountContext);
+        } finally {
+            ApiUtil.enableRequiredAction(testRealm(), RequiredAction.UPDATE_EMAIL, false);
+        }
     }
 
     private static void testEmailAnnotationsInAccountContext(KeycloakSession session) {
@@ -2384,6 +2395,70 @@ public class UserProfileTest extends AbstractUserProfileTest {
     @Test
     public void testMultivalued() {
         getTestingClient().server(TEST_REALM_NAME).run((RunOnServer) UserProfileTest::testMultivalued);
+    }
+
+    @Test
+    public void testDefaultValue() {
+        getTestingClient().server(TEST_REALM_NAME).run((RunOnServer) UserProfileTest::testInvalidConfigDefaultValue);
+        getTestingClient().server(TEST_REALM_NAME).run((RunOnServer) UserProfileTest::testDefaultValue);
+        getTestingClient().server(TEST_REALM_NAME).run((RunOnServer) UserProfileTest::testNoDefaultValueForRootAttributes);
+    }
+
+    private static void testInvalidConfigDefaultValue(KeycloakSession session) {
+        UserProfileProvider provider = getUserProfileProvider(session);
+        UPConfig upConfig = UPConfigUtils.parseSystemDefaultConfig();
+        provider.setConfiguration(upConfig);
+
+        UPAttribute foo = new UPAttribute("foo", new UPAttributePermissions(Set.of(), Set.of(UserProfileConstants.ROLE_ADMIN)));
+        foo.setDefaultValue("def");
+        foo.setValidations(Map.of("length", Map.of("min", "5", "max", "15")));
+        upConfig.addOrReplaceAttribute(foo);
+
+        try {
+            provider.setConfiguration(upConfig);
+            fail("Should fail because default value is not reach min length");
+        } catch (ComponentValidationException cve) {
+            //ignore
+        }
+    }
+
+    private static void testDefaultValue(KeycloakSession session) {
+        UserProfileProvider provider = getUserProfileProvider(session);
+        UPConfig upConfig = UPConfigUtils.parseSystemDefaultConfig();
+        UPAttribute foo = new UPAttribute("foo", new UPAttributePermissions(Set.of(), Set.of(UserProfileConstants.ROLE_ADMIN)));
+        foo.setDefaultValue("def");
+        upConfig.addOrReplaceAttribute(foo);
+        provider.setConfiguration(upConfig);
+
+        String userName = org.keycloak.models.utils.KeycloakModelUtils.generateId();
+        Map<String, List<String>> attributes = new HashMap<>();
+        attributes.put(UserModel.USERNAME, List.of(userName));
+        UserProfile profile = provider.create(UserProfileContext.USER_API, attributes);
+        UserModel user = profile.create();
+        List<String> actualValue = user.getAttributes().get("foo");
+        List<String> expectedValue = List.of("def");
+        assertThat(actualValue, Matchers.equalTo(expectedValue));
+    }
+
+    private static void testNoDefaultValueForRootAttributes(KeycloakSession session) {
+        UserProfileProvider provider = getUserProfileProvider(session);
+        UPConfig upConfig = UPConfigUtils.parseSystemDefaultConfig();
+        upConfig.getAttribute(UserModel.USERNAME).setDefaultValue("def");
+        upConfig.getAttribute(UserModel.EMAIL).setDefaultValue("def");
+        upConfig.getAttribute(UserModel.FIRST_NAME).setDefaultValue("def");
+        upConfig.getAttribute(UserModel.LAST_NAME).setDefaultValue("def");
+
+        try {
+            provider.setConfiguration(upConfig);
+            fail("Should fail validation for default value");
+        } catch (ComponentValidationException cve) {
+            String message = cve.getMessage();
+            for (String attributeName : List.of(UserModel.USERNAME, UserModel.EMAIL, UserModel.FIRST_NAME, UserModel.LAST_NAME)) {
+                if (UserProfileUtil.isRootAttribute(attributeName)) {
+                    assertThat(message, Matchers.containsString("Default value not supported for attribute '" + attributeName + "'"));
+                }
+            }
+        }
     }
 
     private static void testMultivalued(KeycloakSession session) {

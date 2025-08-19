@@ -289,6 +289,13 @@ public class PicocliTest extends AbstractConfigurationTest {
     }
 
     @Test
+    public void testShowConfigDisplaysPrimaryValue() {
+        build("build", "--db=postgres");
+        NonRunningPicocli nonRunningPicocli = pseudoLaunch("show-config");
+        assertThat(nonRunningPicocli.getOutString(), containsString("postgres (Persisted)"));
+    }
+
+    @Test
     public void failSingleParamWithSpace() {
         NonRunningPicocli nonRunningPicocli = pseudoLaunch("start", "--db postgres");
         assertEquals(CommandLine.ExitCode.USAGE, nonRunningPicocli.exitCode);
@@ -471,6 +478,9 @@ public class PicocliTest extends AbstractConfigurationTest {
         var value = nonRunningPicocli.config.getConfigValue("quarkus.log.category.\"org.keycloak\".level");
         assertEquals("quarkus.log.category.\"org.keycloak\".level", value.getName());
         assertEquals("WARN", value.getValue());
+        value = nonRunningPicocli.config.getConfigValue("quarkus.log.category.\"org.keycloak1\".level");
+        assertEquals("quarkus.log.category.\"org.keycloak1\".level", value.getName());
+        assertNull(value.getValue());
     }
 
     @Test
@@ -480,6 +490,9 @@ public class PicocliTest extends AbstractConfigurationTest {
         var value = nonRunningPicocli.config.getConfigValue("quarkus.log.category.\"org.keycloak\".level");
         assertEquals("quarkus.log.category.\"org.keycloak\".level", value.getName());
         assertEquals("WARN", value.getValue());
+        value = nonRunningPicocli.config.getConfigValue("quarkus.log.category.\"org.keycloak1\".level");
+        assertEquals("quarkus.log.category.\"org.keycloak1\".level", value.getName());
+        assertNull(value.getValue());
     }
 
     @Test
@@ -536,7 +549,7 @@ public class PicocliTest extends AbstractConfigurationTest {
         onAfter();
         nonRunningPicocli = pseudoLaunch("start-dev", "--log=syslog", "--log-syslog-protocol=ssl-tcp", "--log-syslog-counting-framing=protocol-dependent");
         assertThat(nonRunningPicocli.exitCode, is(CommandLine.ExitCode.OK));
-        assertThat(nonRunningPicocli.config.getConfigValue("quarkus.log.syslog.use-counting-framing").getValue(), is("true"));
+        assertThat(nonRunningPicocli.config.getConfigValue("quarkus.log.syslog.use-counting-framing").getValue(), is("protocol-dependent"));
 
         onAfter();
         nonRunningPicocli = pseudoLaunch("start-dev", "--log=syslog", "--log-syslog-counting-framing=wrong");
@@ -863,5 +876,38 @@ public class PicocliTest extends AbstractConfigurationTest {
         assertEquals(CommandLine.ExitCode.OK, nonRunningPicocli.exitCode);
         assertTrue(nonRunningPicocli.reaug);
         assertThat(nonRunningPicocli.getOutString(), containsString("The following SPI options"));
+    }
+
+    @Test
+    public void httpAccessLog() {
+        // http-access-log-pattern disabled
+        NonRunningPicocli nonRunningPicocli = pseudoLaunch("start-dev", "--http-access-log-pattern=long");
+        assertEquals(CommandLine.ExitCode.USAGE, nonRunningPicocli.exitCode);
+        assertThat(nonRunningPicocli.getErrString(), containsString("Available only when HTTP Access log is enabled"));
+        onAfter();
+
+        // http-access-log-pattern disabled
+        nonRunningPicocli = pseudoLaunch("start-dev", "--http-access-log-exclude=something/");
+        assertEquals(CommandLine.ExitCode.USAGE, nonRunningPicocli.exitCode);
+        assertThat(nonRunningPicocli.getErrString(), containsString("Available only when HTTP Access log is enabled"));
+        onAfter();
+
+        // accept other patterns - error will be thrown on Quarkus side
+        nonRunningPicocli = pseudoLaunch("start-dev", "--http-access-log-enabled=true", "--http-access-log-pattern=not-named-pattern");
+        assertEquals(CommandLine.ExitCode.OK, nonRunningPicocli.exitCode);
+        onAfter();
+
+        // accept other patterns
+        nonRunningPicocli = pseudoLaunch("start-dev", "--http-access-log-enabled=true", "--http-access-log-pattern='%r n%{ALL_REQUEST_HEADERS}'");
+        assertEquals(CommandLine.ExitCode.OK, nonRunningPicocli.exitCode);
+        onAfter();
+
+        // exclude
+        nonRunningPicocli = pseudoLaunch("start-dev", "--http-access-log-enabled=true", "--http-access-log-exclude=something.*");
+        assertEquals(CommandLine.ExitCode.OK, nonRunningPicocli.exitCode);
+        onAfter();
+
+        nonRunningPicocli = pseudoLaunch("start-dev", "--http-access-log-enabled=true", "--http-access-log-exclude='/realms/my-realm/.*");
+        assertEquals(CommandLine.ExitCode.OK, nonRunningPicocli.exitCode);
     }
 }
