@@ -17,8 +17,6 @@
 
 package org.keycloak.protocol.oid4vc.issuance;
 
-import jakarta.ws.rs.core.HttpHeaders;
-import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriInfo;
 import org.keycloak.common.util.Time;
 import org.keycloak.constants.Oid4VciConstants;
@@ -27,9 +25,6 @@ import org.keycloak.crypto.KeyWrapper;
 import org.keycloak.crypto.SignatureProvider;
 import org.keycloak.crypto.SignatureSignerContext;
 import org.keycloak.jose.jwe.JWEConstants;
-import org.keycloak.jose.jwk.JWK;
-import org.keycloak.jose.jwk.JWKBuilder;
-import org.keycloak.jose.jws.Algorithm;
 import org.keycloak.jose.jws.JWSBuilder;
 import org.keycloak.models.KeyManager;
 import org.keycloak.models.KeycloakContext;
@@ -45,12 +40,9 @@ import org.keycloak.protocol.oid4vc.model.SupportedCredentialConfiguration;
 import org.keycloak.services.Urls;
 import org.keycloak.urls.UrlType;
 import org.keycloak.util.JsonSerialization;
-import org.keycloak.utils.MediaType;
 import org.keycloak.wellknown.WellKnownProvider;
 import org.jboss.logging.Logger;
 
-import java.security.PrivateKey;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -96,40 +88,9 @@ public class OID4VCIssuerWellKnownProvider implements WellKnownProvider {
     @Override
     public Object getConfig() {
         KeycloakContext context = keycloakSession.getContext();
-        RealmModel realm = context.getRealm();
+        RealmModel realm = keycloakSession.getContext().getRealm();
 
-        CredentialIssuer issuer = createCredentialIssuer(context);
-
-        if (!isSignedMetadataRequested(realm, context)) {
-            return Response.ok(issuer, MediaType.APPLICATION_JSON_TYPE).build();
-        }
-
-        String signedMetadata = generateSignedMetadata(issuer, keycloakSession);
-        if (signedMetadata != null) {
-            return Response.ok(signedMetadata, SIGNED_METADATA_JWT_TYPE).build();
-        }
-        return Response.ok(issuer, MediaType.APPLICATION_JSON_TYPE).build();
-    }
-
-    private boolean isSignedMetadataRequested(RealmModel realm, KeycloakContext context) {
-        if (!Boolean.parseBoolean(realm.getAttribute(SIGNED_METADATA_ENABLED_ATTR))) {
-            return false;
-        }
-
-        List<String> acceptHeaders = context.getRequestHeaders().getRequestHeaders().get(HttpHeaders.ACCEPT);
-        if (acceptHeaders == null) {
-            return false;
-        }
-
-        return acceptHeaders.stream()
-                .filter(Objects::nonNull)
-                .flatMap(header -> Arrays.stream(header.split(",")))
-                .map(String::trim)
-                .anyMatch(header -> header.startsWith(SIGNED_METADATA_JWT_TYPE));
-    }
-
-    private CredentialIssuer createCredentialIssuer(KeycloakContext context) {
-        return new CredentialIssuer()
+        CredentialIssuer issuer = new CredentialIssuer()
                 .setCredentialIssuer(getIssuer(context))
                 .setCredentialEndpoint(getCredentialsEndpoint(context))
                 .setNonceEndpoint(getNonceEndpoint(context))
@@ -138,9 +99,20 @@ public class OID4VCIssuerWellKnownProvider implements WellKnownProvider {
                 .setAuthorizationServers(List.of(getIssuer(context)))
                 .setCredentialResponseEncryption(getCredentialResponseEncryption(keycloakSession))
                 .setBatchCredentialIssuance(getBatchCredentialIssuance(keycloakSession));
+
+        boolean signedMetadataEnabled = Boolean.parseBoolean(realm.getAttribute(SIGNED_METADATA_ENABLED_ATTR));
+        if (signedMetadataEnabled) {
+            try {
+                return generateSignedMetadata(issuer, keycloakSession);
+            } catch (Exception e) {
+                LOGGER.errorf("Failed to generate signed metadata for realm: %s", realm.getName(), e);
+                throw new RuntimeException("Unable to generate signed metadata", e);
+            }
+        }
+        return issuer;
     }
 
-    public static String getDeferredCredentialEndpoint(KeycloakContext context) {
+    private static String getDeferredCredentialEndpoint(KeycloakContext context) {
         return getIssuer(context) + "/protocol/" + OID4VCLoginProtocolFactory.PROTOCOL_ID + "/deferred_credential";
     }
 
@@ -218,11 +190,21 @@ public class OID4VCIssuerWellKnownProvider implements WellKnownProvider {
         Optional.ofNullable(realm.getAttribute(SIGNED_METADATA_ISS_ATTR))
                 .ifPresent(iss -> claims.put("iss", iss));
 
-        // Sign the JWS
+        // Build JWS with x5c support
         JWSBuilder jwsBuilder = new JWSBuilder()
                 .type(SIGNED_METADATA_JWT_TYPE)
                 .kid(keyWrapper.getKid());
 
+        // Add x5c if a certificate or certificate chain is available
+        if (keyWrapper.getCertificateChain() != null && !keyWrapper.getCertificateChain().isEmpty()) {
+            jwsBuilder.x5c(keyWrapper.getCertificateChain());
+        } else if (keyWrapper.getCertificate() != null) {
+            jwsBuilder.x5c(List.of(keyWrapper.getCertificate()));
+        } else {
+            LOGGER.warnf("No certificate or certificate chain available for x5c header in realm: %s", realm.getName());
+        }
+
+        // Sign the JWS
         SignatureProvider signerProvider = Optional.ofNullable(session.getProvider(SignatureProvider.class, alg))
                 .orElseThrow(() -> new IllegalStateException("No signature provider for algorithm: " + alg));
 
