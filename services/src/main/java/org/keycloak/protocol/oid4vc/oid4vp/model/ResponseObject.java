@@ -22,6 +22,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import org.keycloak.protocol.oid4vc.oid4vp.model.prex.PresentationSubmission;
 import org.keycloak.util.JsonSerialization;
+import org.keycloak.utils.StringUtil;
 
 /**
  * Response object payload for OpenID4VP Authorization Response.
@@ -51,12 +52,19 @@ public class ResponseObject {
 
     public ResponseObject(String vpToken, String presentationSubmission, String state)
             throws JsonProcessingException {
-        PresentationSubmission mappedPresentationSubmission = JsonSerialization.mapper
-                .readValue(presentationSubmission, PresentationSubmission.class);
+        this.vpToken = requireNonBlank(vpToken, VP_TOKEN_KEY);
+        this.presentationSubmission = JsonSerialization.mapper
+                .readValue(requireNonBlank(presentationSubmission, PRESENTATION_SUBMISSION_KEY),
+                        PresentationSubmission.class);
+        this.state = requireNonBlank(state, STATE_KEY);
+    }
 
-        this.vpToken = vpToken;
-        this.presentationSubmission = mappedPresentationSubmission;
-        this.state = state;
+    private static String requireNonBlank(String value, String fieldName) {
+        if (StringUtil.isBlank(value)) {
+            throw new IllegalArgumentException(fieldName + " must not be null or blank");
+        }
+
+        return value;
     }
 
     public String getVpToken() {

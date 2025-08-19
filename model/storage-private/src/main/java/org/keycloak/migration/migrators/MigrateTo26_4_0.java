@@ -19,6 +19,7 @@
 
 package org.keycloak.migration.migrators;
 
+import org.jboss.logging.Logger;
 import org.keycloak.migration.ModelVersion;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
@@ -26,6 +27,7 @@ import org.keycloak.models.utils.DefaultAuthenticationFlows;
 
 public class MigrateTo26_4_0 extends RealmMigration {
 
+    private static final Logger LOG = Logger.getLogger(MigrateTo24_0_0.class);
     public static final ModelVersion VERSION = new ModelVersion("26.4.0");
 
     @Override
@@ -36,7 +38,10 @@ public class MigrateTo26_4_0 extends RealmMigration {
     @Override
     public void migrateRealm(KeycloakSession session, RealmModel realm) {
         if (realm.getFlowByAlias(DefaultAuthenticationFlows.OID4VP_AUTH_FLOW) == null) {
+            LOG.infof("Creating default OpenID4VP user auth flow for realm '%s'", realm.getName());
             DefaultAuthenticationFlows.oid4vpAuthenticationFlow(realm);
+        } else {
+            LOG.debugf("OpenID4VP user auth flow flow already exists for realm '%s'", realm.getName());
         }
     }
 }

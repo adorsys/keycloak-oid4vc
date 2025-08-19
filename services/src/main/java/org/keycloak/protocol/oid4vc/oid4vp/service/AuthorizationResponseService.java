@@ -40,6 +40,7 @@ import org.keycloak.sdjwt.vp.SdJwtVP;
 import org.keycloak.sessions.AuthenticationSessionModel;
 import org.keycloak.utils.MediaType;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.List;
 import java.util.UUID;
@@ -98,9 +99,7 @@ public class AuthorizationResponseService {
         logger.debug("Running authentication processor to validate SD-JWT VP token...");
         try (Response response = authProcessor.authenticateOnly()) {
             if (response != null) {
-                var errorResponse = (OAuth2ErrorRepresentation) response.getEntity();
-                String message = String.format("%s: %s",
-                        errorResponse.getError().toUpperCase(), errorResponse.getErrorDescription());
+                String message = getAuthenticatorErrorMessage(response);
                 logger.errorf("Authentication processor failed. [%s] %s", response.getStatus(), message);
 
                 throw failWithHttpException(
@@ -123,6 +122,18 @@ public class AuthorizationResponseService {
 
         // Persist authorization context
         store.storeAuthorizationContext(authContext);
+    }
+
+    private static String getAuthenticatorErrorMessage(Response response) {
+        Object responseEntity = response.getEntity();
+        if (!(responseEntity instanceof OAuth2ErrorRepresentation errorResponse)) {
+            throw new IllegalStateException(String.format(
+                    "Unexpected error response type from authenticator: %s",
+                    responseEntity.getClass().getName()
+            ));
+        }
+
+        return String.format("%s: %s", errorResponse.getError().toUpperCase(), errorResponse.getErrorDescription());
     }
 
     /**
@@ -258,7 +269,7 @@ public class AuthorizationResponseService {
         try {
             // Try to decode as Base64URL
             byte[] decoded = Base64.getUrlDecoder().decode(input);
-            return new String(decoded);
+            return new String(decoded, StandardCharsets.UTF_8);
         } catch (IllegalArgumentException e) {
             // Not valid Base64URL, return as is
             return input;

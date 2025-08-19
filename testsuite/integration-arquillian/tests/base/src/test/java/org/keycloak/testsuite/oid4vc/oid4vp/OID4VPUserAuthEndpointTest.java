@@ -255,6 +255,26 @@ public class OID4VPUserAuthEndpointTest extends OID4VCIssuerEndpointTest {
     }
 
     @Test
+    public void shouldFailAuthentication_InvalidSdJwtVPToken_Empty() throws Exception {
+        // Retrieve an authorization request
+        AuthorizationContext authContext = requestAuthorizationRequest();
+        RequestObject requestObject = resolveRequestObject(authContext.getAuthorizationRequest());
+
+        // Prepare and send the OpenID4VP response to Keycloak
+        HttpResponse response = sendAuthorizationResponseWithVPToken(
+                "", // This token is invalid because empty
+                requestObject,
+                new TestOpts()
+        );
+        assertEquals(HttpStatus.SC_BAD_REQUEST, response.getStatusLine().getStatusCode());
+
+        // Assert error response
+        OAuth2ErrorRepresentation errorRep = parseErrorResponse(response);
+        assertEquals("Unparseable response params (vp_token must not be null or blank)",
+                errorRep.getErrorDescription());
+    }
+
+    @Test
     public void shouldFailAuthentication_NonMatchingPresentationDefinitionId() throws Exception {
         // Request a valid SD-JWT credential from Keycloak to use for authentication
         String sdJwt = sdJwtVPTestUtils.requestSdJwtCredential(VCT_CONFIG_DEFAULT, TEST_USER);
@@ -300,22 +320,6 @@ public class OID4VPUserAuthEndpointTest extends OID4VCIssuerEndpointTest {
                 HttpStatus.SC_BAD_REQUEST,
                 ProcessingError.INVALID_PRESENTATION_SUBMISSION.getErrorString(),
                 "SD-JWT VP token expected, but received: jwt_vp"
-        );
-    }
-
-    @Test
-    public void shouldFailAuthentication_InvalidSdJwtVPToken_Empty() throws Exception {
-        // Retrieve an authorization request
-        AuthorizationContext authContext = requestAuthorizationRequest();
-        RequestObject requestObject = resolveRequestObject(authContext.getAuthorizationRequest());
-
-        testFailingAuthenticationWithVPToken(
-                "", // This token is invalid because empty
-                requestObject,
-                authContext.getTransactionId(),
-                HttpStatus.SC_BAD_REQUEST,
-                ProcessingError.INVALID_PRESENTATION_SUBMISSION.getErrorString(),
-                "Could not parse submission in search for SD-JWT VP token"
         );
     }
 

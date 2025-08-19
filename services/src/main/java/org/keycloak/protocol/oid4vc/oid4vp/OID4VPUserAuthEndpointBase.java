@@ -34,6 +34,7 @@ import org.keycloak.services.managers.AuthenticationSessionManager;
 import org.keycloak.sessions.AuthenticationSessionModel;
 import org.keycloak.sessions.RootAuthenticationSessionModel;
 
+import java.util.Objects;
 import java.util.Optional;
 import java.util.regex.Pattern;
 
@@ -139,6 +140,11 @@ public class OID4VPUserAuthEndpointBase extends AuthorizationEndpointBase {
                 .getAuthenticationSessions()
                 .get(tabSessionId);
 
+        if (authSession == null) {
+            logger.tracef("Authentication session not found for ID: %s", authSessionId);
+            return Optional.empty();
+        }
+
         return Optional.of(authSession);
     }
 
@@ -165,6 +171,8 @@ public class OID4VPUserAuthEndpointBase extends AuthorizationEndpointBase {
      * without affecting this session recovery.
      */
     public static String pruneAuthSessionId(String authSessionId) {
+        Objects.requireNonNull(authSessionId);
+
         // Strip all characters from the EOL marker onward.
         int markerIndex = authSessionId.indexOf(AUTH_SESSION_EOL_MARKER);
         if (markerIndex != -1) {
@@ -178,8 +186,12 @@ public class OID4VPUserAuthEndpointBase extends AuthorizationEndpointBase {
      * Returns a unique identifier to recover the authentication session.
      */
     public static String getAuthSessionId(AuthenticationSessionModel authSession) {
+        Objects.requireNonNull(authSession);
+        Objects.requireNonNull(authSession.getParentSession());
+
         String rootAuthSessionId = authSession.getParentSession().getId();
         String tabSessionId = authSession.getTabId();
+
         return rootAuthSessionId + AUTH_SESSION_DELIMITER + tabSessionId;
     }
 }

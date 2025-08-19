@@ -154,10 +154,10 @@ public class OID4VPUserAuthEndpoint extends OID4VPUserAuthEndpointBase
         ResponseObject responseObject;
         try {
             responseObject = new ResponseObject(vpToken, presentationSubmission, state);
-        } catch (JsonProcessingException e) {
+        } catch (IllegalArgumentException | JsonProcessingException e) {
             throw new BadRequestException(errorResponse(
                     Response.Status.BAD_REQUEST,
-                    "Unparseable response params"
+                    String.format("Unparseable response params (%s)", e.getMessage())
             ), e);
         }
 
