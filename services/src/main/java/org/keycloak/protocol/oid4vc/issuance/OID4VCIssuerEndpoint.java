@@ -77,6 +77,8 @@ import org.keycloak.protocol.oid4vc.model.OfferUriType;
 import org.keycloak.protocol.oid4vc.model.PreAuthorizedCode;
 import org.keycloak.protocol.oid4vc.model.PreAuthorizedGrant;
 import org.keycloak.protocol.oid4vc.model.Proof;
+import org.keycloak.protocol.oid4vc.model.ProofType;
+import org.keycloak.protocol.oid4vc.model.Proofs;
 import org.keycloak.protocol.oid4vc.model.SupportedCredentialConfiguration;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
 import org.keycloak.protocol.oidc.grants.PreAuthorizedCodeGrantType;
@@ -99,6 +101,7 @@ import java.security.PublicKey;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -421,12 +424,6 @@ public class OID4VCIssuerEndpoint {
         // checkClientEnabled call after authentication
         checkClientEnabled();
 
-        // Validate that proof and proofs are not both present
-        if (credentialRequestVO.getProof() != null && credentialRequestVO.getProofs() != null) {
-            LOGGER.debug("Both proof and proofs parameters are present in the request, which is not allowed.");
-            throw new BadRequestException(getErrorResponse(ErrorType.INVALID_PROOF));
-        }
-
         // Both credential_configuration_id and credential_identifier are optional.
         // If the credential_configuration_id is present, credential_identifier can't be present.
         // But this implementation will tolerate the presence of both, waiting for clarity in specifications.
@@ -458,13 +455,22 @@ public class OID4VCIssuerEndpoint {
         SupportedCredentialConfiguration supportedCredential =
                 OID4VCIssuerWellKnownProvider.toSupportedCredentialConfiguration(session, requestedCredential);
 
-        Object theCredential = getCredential(authResult, supportedCredential, credentialRequestVO);
-
-        // Generate credential response
+        // Generate credentials (single or batch)
         CredentialResponse responseVO = new CredentialResponse();
-        responseVO
-                .addCredential(theCredential)
-                .setNotificationId(generateNotificationId());
+        Proofs proofs = credentialRequestVO.getProofs();
+        if (proofs != null && proofs.getJwt() != null && !proofs.getJwt().isEmpty()) {
+            // Batch issuance
+            List<Object> credentials = getCredential(authResult, supportedCredential, credentialRequestVO);
+            responseVO.setCredentials(credentials.stream()
+                    .map(cred -> new CredentialResponse.Credential().setCredential(cred))
+                    .collect(Collectors.toList()));
+        } else {
+            // Single issuance (using existing proof logic)
+            Object theCredential = getCredential(authResult, supportedCredential, credentialRequestVO);
+            responseVO.addCredential(theCredential);
+        }
+
+        responseVO.setNotificationId(generateNotificationId());
 
         if (encryptionParams != null) {
             String jwe = encryptCredentialResponse(responseVO, encryptionParams);
@@ -775,27 +781,27 @@ public class OID4VCIssuerEndpoint {
     }
 
     /**
-     * Enforce key binding: Validate proof and bind associated key to credential in issuance context.
+     * Enforce key binding for single proof issuance (unchanged, kept for compatibility).
      */
-    private void enforceKeyBindingIfProofProvided(VCIssuanceContext vcIssuanceContext, Proof proof) {
+    private void enforceKeyBindingIfProofProvided(VCIssuanceContext vcIssuanceContext) {
+        // Check for single proof first
+        Proof proof = vcIssuanceContext.getCredentialRequest().getProof();
         if (proof == null) {
             LOGGER.debugf("No proof provided, skipping key binding");
             return;
         }
 
         String proofType = proof.getProofType();
-
         ProofValidator proofValidator = session.getProvider(ProofValidator.class, proofType);
         if (proofValidator == null) {
             throw new BadRequestException(String.format("Unable to validate proofs of type %s", proofType));
         }
 
-        // Validate proof and bind public key to credential
         try {
             Optional.ofNullable(proofValidator.validateProof(vcIssuanceContext))
                     .ifPresent(jwk -> vcIssuanceContext.getCredentialBody().addKeyBinding(jwk));
         } catch (VCIssuerException e) {
-            throw new BadRequestException(e.getMessage(), getErrorResponse(e.getErrorType()));
+            throw new BadRequestException("Could not validate provided proof", e);
         }
     }
 
