@@ -40,6 +40,7 @@ import org.keycloak.services.util.ResolveRelative;
 import org.keycloak.utils.ProfileHelper;
 import org.keycloak.wellknown.WellKnownProvider;
 import org.keycloak.wellknown.WellKnownProviderFactory;
+import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerWellKnownProvider;
 
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.NotFoundException;
@@ -57,6 +58,10 @@ import jakarta.ws.rs.ext.Provider;
 
 import java.net.URI;
 import java.util.Comparator;
+import java.util.List;
+import java.util.Locale;
+import jakarta.ws.rs.core.HttpHeaders;
+import jakarta.ws.rs.WebApplicationException;
 
 /**
  * @author <a href="mailto:bill@burkecentral.com">Bill Burke</a>
@@ -222,7 +227,7 @@ public class RealmsResource {
 
     @GET
     @Path("{realm}/.well-known/{alias}")
-    @Produces(MediaType.APPLICATION_JSON)
+    @Produces({MediaType.APPLICATION_JSON, org.keycloak.utils.MediaType.APPLICATION_JWT})
     public Response getWellKnown(final @PathParam("realm") String name,
                                  final @PathParam("alias") String alias) {
         resolveRealmAndUpdateSession(name);
@@ -239,8 +244,49 @@ public class RealmsResource {
         WellKnownProvider wellKnown = session.getProvider(WellKnownProvider.class, wellKnownProviderFactoryFound.getId());
 
         if (wellKnown != null) {
-            ResponseBuilder responseBuilder = Response.ok(wellKnown.getConfig()).cacheControl(CacheControlUtil.noCache());
-            return Cors.builder().allowAllOrigins().auth().add(responseBuilder);
+            Object config = wellKnown.getConfig();
+
+            // Check Accept header for content negotiation
+            String acceptHeader = session.getContext().getRequestHeaders().getHeaderString(HttpHeaders.ACCEPT);
+            boolean preferJwt = acceptHeader != null && acceptHeader.contains(org.keycloak.utils.MediaType.APPLICATION_JWT);
+
+            ResponseBuilder responseBuilder;
+
+            if (preferJwt && wellKnown instanceof OID4VCIssuerWellKnownProvider) {
+                // Return signed JWT metadata if requested and supported
+                OID4VCIssuerWellKnownProvider oid4vcProvider = (OID4VCIssuerWellKnownProvider) wellKnown;
+                String signedJwt = oid4vcProvider.createSignedMetadataJWT(config);
+                if (signedJwt != null) {
+                    responseBuilder = Response.ok(signedJwt).type(org.keycloak.utils.MediaType.APPLICATION_JWT);
+                } else {
+                    throw new WebApplicationException("Signed metadata not available", Response.Status.NOT_ACCEPTABLE);
+                }
+            } else {
+                // Default to JSON response
+                responseBuilder = Response.ok(config).type(MediaType.APPLICATION_JSON);
+            }
+
+            // Add Content-Language header if internationalization is supported
+            if (wellKnown instanceof OID4VCIssuerWellKnownProvider) {
+                RealmModel realm = session.getContext().getRealm();
+                if (realm.isInternationalizationEnabled()) {
+                    List<Locale> acceptableLanguages = session.getContext().getRequestHeaders().getAcceptableLanguages();
+                    if (acceptableLanguages != null && !acceptableLanguages.isEmpty()) {
+                        // Find the first supported language
+                        for (Locale locale : acceptableLanguages) {
+                            if (realm.getSupportedLocalesStream().anyMatch(supported ->
+                                    supported.equals(locale.toLanguageTag()) ||
+                                            supported.startsWith(locale.getLanguage() + "-") ||
+                                            supported.equals(locale.getLanguage()))) {
+                                responseBuilder.header(HttpHeaders.CONTENT_LANGUAGE, locale.toLanguageTag());
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            return Cors.builder().allowAllOrigins().auth().add(responseBuilder.cacheControl(CacheControlUtil.noCache()));
         }
 
         throw new NotFoundException();

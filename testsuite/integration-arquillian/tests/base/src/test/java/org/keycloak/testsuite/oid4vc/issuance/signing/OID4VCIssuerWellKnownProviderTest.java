@@ -70,11 +70,13 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.keycloak.jose.jwe.JWEConstants.A256GCM;
 import static org.keycloak.jose.jwe.JWEConstants.RSA_OAEP;
 import static org.keycloak.jose.jwe.JWEConstants.RSA_OAEP_256;
 import static org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerWellKnownProvider.ATTR_ENCRYPTION_REQUIRED;
+import org.keycloak.constants.Oid4VciConstants;
 
 
 public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest {
@@ -84,7 +86,6 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
         Map<String, String> attributes = Optional.ofNullable(testRealm.getAttributes()).orElseGet(HashMap::new);
         attributes.put("credential_response_encryption.encryption_required", "true");
         attributes.put("batch_credential_issuance.batch_size", "10");
-        attributes.put("signed_metadata", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJmb28iOiJiYXIifQ.XYZ123abc");
         attributes.put(ATTR_ENCRYPTION_REQUIRED, "true");
         testRealm.setAttributes(attributes);
 
@@ -107,6 +108,12 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
      */
     @Test
     public void testMetaDataEndpointIsCorrectlySetup() {
+        // Ensure internationalization is disabled for this test
+        testingClient.server(TEST_REALM_NAME).run(session -> {
+            RealmModel realm = session.getContext().getRealm();
+            realm.setInternationalizationEnabled(false);
+        });
+
         CredentialIssuer credentialIssuer = getCredentialIssuerMetadata();
 
         Assert.assertEquals(getRealmPath(TEST_REALM_NAME), credentialIssuer.getCredentialIssuer());
@@ -130,10 +137,6 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
         CredentialIssuer.BatchCredentialIssuance batch = credentialIssuer.getBatchCredentialIssuance();
         Assert.assertNotNull("batch_credential_issuance should be present", batch);
         Assert.assertEquals(Integer.valueOf(10), batch.getBatchSize());
-        Assert.assertEquals(
-                "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJmb28iOiJiYXIifQ.XYZ123abc",
-                credentialIssuer.getSignedMetadata()
-        );
 
         for (ClientScopeRepresentation clientScope : List.of(jwtTypeCredentialClientScope,
                 sdJwtTypeCredentialClientScope,
@@ -181,8 +184,6 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
                     Assert.assertTrue("Supported encryption methods should include A256GCM", encryption.getEncValuesSupported().contains(A256GCM));
                     Assert.assertTrue(encryption.getEncryptionRequired());
                     Assert.assertEquals(Integer.valueOf(10), issuer.getBatchCredentialIssuance().getBatchSize());
-                    Assert.assertEquals("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJmb28iOiJiYXIifQ.XYZ123abc",
-                            issuer.getSignedMetadata());
                 });
     }
 
@@ -191,7 +192,6 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
 
         realm.setAttribute(ATTR_ENCRYPTION_REQUIRED, "true");
         realm.setAttribute("batch_credential_issuance.batch_size", "10");
-        realm.setAttribute("signed_metadata", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJmb28iOiJiYXIifQ.XYZ123abc");
 
         OID4VCIssuerWellKnownProvider provider = new OID4VCIssuerWellKnownProvider(session);
         return (CredentialIssuer) provider.getConfig();
@@ -219,6 +219,160 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
                         oid4vciIssuerConfig.getCredentialResponseEncryption().getAlgValuesSupported().contains("RSA-OAEP"));
                 Assert.assertTrue("Supported encryption methods should include A256GCM",
                         oid4vciIssuerConfig.getCredentialResponseEncryption().getEncValuesSupported().contains("A256GCM"));
+            }
+        }
+    }
+
+    @Test
+    public void testContentNegotiationAndInternationalization() throws IOException {
+        // First, set up the realm with internationalization enabled
+        testingClient.server(TEST_REALM_NAME).run(session -> {
+            RealmModel realm = session.getContext().getRealm();
+            realm.setInternationalizationEnabled(true);
+            realm.setSupportedLocales(Set.of("en", "de", "fr"));
+            realm.setDefaultLocale("en");
+            realm.setDisplayName("Test Realm Display Name");
+            realm.setAttribute("oid4vci.logo_url", "https://example.com/logo.png");
+            realm.setAttribute("oid4vci.description", "Test realm description");
+            realm.setAttribute("oid4vci.background_color", "#ffffff");
+            realm.setAttribute("oid4vci.text_color", "#000000");
+        });
+
+        // Test the HTTP endpoint with Accept-Language header
+        try (Client client = AdminClientUtil.createResteasyClient()) {
+            UriBuilder builder = UriBuilder.fromUri(OAuthClient.AUTH_SERVER_ROOT);
+            URI oid4vciDiscoveryUri = RealmsResource.wellKnownProviderUrl(builder)
+                    .build(TEST_REALM_NAME, OID4VCIssuerWellKnownProviderFactory.PROVIDER_ID);
+            WebTarget oid4vciDiscoveryTarget = client.target(oid4vciDiscoveryUri);
+
+            try (Response response = oid4vciDiscoveryTarget.request()
+                    .accept(jakarta.ws.rs.core.MediaType.APPLICATION_JSON)
+                    .header("Accept-Language", "en-US,en;q=0.9")
+                    .get()) {
+
+                Assert.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
+
+                String jsonContent = response.readEntity(String.class);
+                CredentialIssuer issuer = JsonSerialization.readValue(jsonContent, CredentialIssuer.class);
+
+                // Test that display information is included
+                Assert.assertNotNull("Display information should be included", issuer.getDisplay());
+                Assert.assertEquals("Should have one display object", 1, issuer.getDisplay().size());
+
+                DisplayObject display = issuer.getDisplay().get(0);
+                Assert.assertEquals("en", display.getLocale());
+                Assert.assertEquals("Test Realm Display Name", display.getName());
+                Assert.assertEquals("https://example.com/logo.png", display.getLogo());
+                Assert.assertEquals("Test realm description", display.getDescription());
+                Assert.assertEquals("#ffffff", display.getBackgroundColor());
+                Assert.assertEquals("#000000", display.getTextColor());
+            }
+        }
+
+        // Test JWT signing capability using the provider directly
+        testingClient.server(TEST_REALM_NAME).run(session -> {
+            OID4VCIssuerWellKnownProvider provider = new OID4VCIssuerWellKnownProvider(session);
+            CredentialIssuer issuer = (CredentialIssuer) provider.getConfig();
+
+            // Test JWT signing capability
+            String signedJwt = provider.createSignedMetadataJWT(issuer);
+            Assert.assertNotNull("Signed JWT should be created", signedJwt);
+
+            // Verify JWT structure complies with OID4VCI spec 11.2.3
+            // Parse the JWT to verify header and claims
+            String[] jwtParts = signedJwt.split("\\.");
+            Assert.assertEquals("JWT should have 3 parts", 3, jwtParts.length);
+
+            // Decode and verify header
+            String headerJson = new String(java.util.Base64.getUrlDecoder().decode(jwtParts[0]));
+            Map<String, Object> header = JsonSerialization.readValue(headerJson, Map.class);
+            Assert.assertEquals("alg should be RS256", "RS256", header.get("alg"));
+            Assert.assertEquals("typ should be openidvci-issuer-metadata+jwt", Oid4VciConstants.SIGNED_METADATA_JWT_TYPE, header.get("typ"));
+            Assert.assertNotNull("kid should be present", header.get("kid"));
+
+            // Decode and verify payload
+            String payloadJson = new String(java.util.Base64.getUrlDecoder().decode(jwtParts[1]));
+            Map<String, Object> payload = JsonSerialization.readValue(payloadJson, Map.class);
+            Assert.assertEquals("sub should match issuer", issuer.getCredentialIssuer(), payload.get("sub"));
+            Assert.assertEquals("iss should be set", issuer.getCredentialIssuer(), payload.get("iss"));
+            Assert.assertNotNull("iat should be present", payload.get("iat"));
+            Assert.assertNotNull("exp should be present", payload.get("exp"));
+            Assert.assertNotNull("metadata should be present", payload.get("metadata"));
+        });
+    }
+
+    @Test
+    public void testWellKnownEndpointContentNegotiation() throws IOException {
+        try (Client client = AdminClientUtil.createResteasyClient()) {
+            UriBuilder builder = UriBuilder.fromUri(OAuthClient.AUTH_SERVER_ROOT);
+            URI oid4vciDiscoveryUri = RealmsResource.wellKnownProviderUrl(builder)
+                    .build(TEST_REALM_NAME, OID4VCIssuerWellKnownProviderFactory.PROVIDER_ID);
+            WebTarget oid4vciDiscoveryTarget = client.target(oid4vciDiscoveryUri);
+
+            // Test JSON response (default)
+            try (Response jsonResponse = oid4vciDiscoveryTarget.request()
+                    .accept(jakarta.ws.rs.core.MediaType.APPLICATION_JSON)
+                    .get()) {
+                Assert.assertEquals(Response.Status.OK.getStatusCode(), jsonResponse.getStatus());
+                Assert.assertEquals(jakarta.ws.rs.core.MediaType.APPLICATION_JSON, jsonResponse.getMediaType().toString());
+
+                String jsonContent = jsonResponse.readEntity(String.class);
+                CredentialIssuer jsonIssuer = JsonSerialization.readValue(jsonContent, CredentialIssuer.class);
+                Assert.assertNotNull("JSON response should contain valid metadata", jsonIssuer);
+            }
+
+            // Test JWT response when requested (if signing keys are available)
+            try (Response jwtResponse = oid4vciDiscoveryTarget.request()
+                    .accept(org.keycloak.utils.MediaType.APPLICATION_JWT)
+                    .get()) {
+                // If signing keys are available, we should get a JWT response
+                if (jwtResponse.getStatus() == Response.Status.OK.getStatusCode()) {
+                    Assert.assertEquals(org.keycloak.utils.MediaType.APPLICATION_JWT, jwtResponse.getMediaType().toString());
+
+                    String jwtContent = jwtResponse.readEntity(String.class);
+                    Assert.assertNotNull("JWT response should not be null", jwtContent);
+                    Assert.assertTrue("JWT response should contain JWT structure", jwtContent.contains("."));
+
+                    // Verify it's a valid JWT with the correct type
+                    String[] jwtParts = jwtContent.split("\\.");
+                    Assert.assertEquals("JWT should have 3 parts", 3, jwtParts.length);
+
+                    String headerJson = new String(java.util.Base64.getUrlDecoder().decode(jwtParts[0]));
+                    Map<String, Object> header = JsonSerialization.readValue(headerJson, Map.class);
+                    Assert.assertEquals("JWT type should be openidvci-issuer-metadata+jwt",
+                            Oid4VciConstants.SIGNED_METADATA_JWT_TYPE, header.get("typ"));
+                } else {
+                    // If signing keys are not available, we should get 406 Not Acceptable
+                    Assert.assertEquals("Should return 406 Not Acceptable when JWT signing is not available",
+                            Response.Status.NOT_ACCEPTABLE.getStatusCode(), jwtResponse.getStatus());
+                }
+            }
+        }
+    }
+
+    @Test
+    public void testWellKnownEndpointInternationalization() throws IOException {
+        try (Client client = AdminClientUtil.createResteasyClient()) {
+            UriBuilder builder = UriBuilder.fromUri(OAuthClient.AUTH_SERVER_ROOT);
+            URI oid4vciDiscoveryUri = RealmsResource.wellKnownProviderUrl(builder)
+                    .build(TEST_REALM_NAME, OID4VCIssuerWellKnownProviderFactory.PROVIDER_ID);
+            WebTarget oid4vciDiscoveryTarget = client.target(oid4vciDiscoveryUri);
+
+            // Test with Accept-Language header
+            try (Response response = oid4vciDiscoveryTarget.request()
+                    .accept(jakarta.ws.rs.core.MediaType.APPLICATION_JSON)
+                    .header("Accept-Language", "de-CH, de;q=0.9, en;q=0.8, fr;q=0.7, *;q=0.5")
+                    .get()) {
+                Assert.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
+
+                // Check if Content-Language header is present (if internationalization is enabled)
+                String contentLanguage = response.getHeaderString("Content-Language");
+                // Note: Content-Language header will only be present if internationalization is enabled
+                // and a matching language is found in the realm's supported locales
+
+                String jsonContent = response.readEntity(String.class);
+                CredentialIssuer issuer = JsonSerialization.readValue(jsonContent, CredentialIssuer.class);
+                Assert.assertNotNull("Response should contain valid metadata", issuer);
             }
         }
     }

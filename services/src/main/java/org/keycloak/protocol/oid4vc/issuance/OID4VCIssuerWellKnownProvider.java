@@ -21,7 +21,10 @@ import jakarta.ws.rs.core.UriInfo;
 import org.keycloak.constants.Oid4VciConstants;
 import org.keycloak.crypto.KeyUse;
 import org.keycloak.crypto.KeyWrapper;
+import org.keycloak.crypto.SignatureProvider;
+import org.keycloak.crypto.SignatureSignerContext;
 import org.keycloak.jose.jwe.JWEConstants;
+import org.keycloak.jose.jws.JWSBuilder;
 import org.keycloak.models.KeyManager;
 import org.keycloak.models.KeycloakContext;
 import org.keycloak.models.KeycloakSession;
@@ -30,16 +33,20 @@ import org.keycloak.models.oid4vci.CredentialScopeModel;
 import org.keycloak.protocol.oid4vc.OID4VCLoginProtocolFactory;
 import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.CredentialBuilder;
 import org.keycloak.protocol.oid4vc.model.CredentialIssuer;
+import org.keycloak.protocol.oid4vc.model.DisplayObject;
 
 import org.keycloak.protocol.oid4vc.model.CredentialResponseEncryptionMetadata;
 import org.keycloak.protocol.oid4vc.model.SupportedCredentialConfiguration;
+import org.keycloak.representations.JsonWebToken;
 import org.keycloak.services.Urls;
 import org.keycloak.urls.UrlType;
 import org.keycloak.wellknown.WellKnownProvider;
 import org.jboss.logging.Logger;
+import org.keycloak.utils.MediaType;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Locale;
 import java.util.stream.Collectors;
 
 import static org.keycloak.crypto.KeyType.RSA;
@@ -82,8 +89,95 @@ public class OID4VCIssuerWellKnownProvider implements WellKnownProvider {
                 .setAuthorizationServers(List.of(getIssuer(context)))
                 .setCredentialResponseEncryption(getCredentialResponseEncryption(keycloakSession))
                 .setBatchCredentialIssuance(getBatchCredentialIssuance(keycloakSession))
-                .setSignedMetadata(getSignedMetadata(keycloakSession));
+                .setDisplay(getInternationalizedDisplay(keycloakSession));
         return issuer;
+    }
+
+    /**
+     * Get internationalized display data based on Accept-Language header
+     */
+    private List<DisplayObject> getInternationalizedDisplay(KeycloakSession session) {
+        RealmModel realm = session.getContext().getRealm();
+
+        if (!realm.isInternationalizationEnabled()) {
+            return null;
+        }
+
+        List<Locale> acceptableLanguages = session.getContext().getRequestHeaders().getAcceptableLanguages();
+
+        // Only return display if Accept-Language header is present
+        if (acceptableLanguages == null || acceptableLanguages.isEmpty()) {
+            return null;
+        }
+
+        // Get the first supported language from the Accept-Language header
+        Locale preferredLocale = null;
+        for (Locale locale : acceptableLanguages) {
+            if (realm.getSupportedLocalesStream().anyMatch(supported ->
+                    supported.equals(locale.toLanguageTag()) ||
+                            supported.startsWith(locale.getLanguage() + "-") ||
+                            supported.equals(locale.getLanguage()))) {
+                preferredLocale = locale;
+                break;
+            }
+        }
+
+        // If no supported language found in Accept-Language header, don't return display
+        if (preferredLocale == null) {
+            return null;
+        }
+
+        // Create display object with the preferred locale
+        DisplayObject display = new DisplayObject();
+        display.setLocale(preferredLocale.getLanguage());
+        display.setName(realm.getDisplayName() != null ? realm.getDisplayName() : realm.getName());
+        display.setLogo(realm.getAttribute("oid4vci.logo_url"));
+        display.setDescription(realm.getAttribute("oid4vci.description"));
+        display.setBackgroundColor(realm.getAttribute("oid4vci.background_color"));
+        display.setTextColor(realm.getAttribute("oid4vci.text_color"));
+
+        return List.of(display);
+    }
+
+    /**
+     * Create signed JWT metadata if requested
+     * Complies with OID4VCI specification section 11.2.3
+     */
+    public String createSignedMetadataJWT(Object metadata) {
+        try {
+            RealmModel realm = keycloakSession.getContext().getRealm();
+            KeyManager keyManager = keycloakSession.keys();
+
+            KeyWrapper activeKey = keyManager.getActiveKey(realm, KeyUse.SIG, "RS256");
+            if (activeKey == null) {
+                LOGGER.warn("No active signing key found for JWT metadata signing");
+                return null;
+            }
+
+            String issuer = getIssuer(keycloakSession.getContext());
+            long now = org.keycloak.common.util.Time.currentTime();
+
+            // Create a JsonWebToken with the metadata as claims
+            JsonWebToken jwt = new JsonWebToken();
+            jwt.issuer(issuer);
+            jwt.subject(issuer);
+            jwt.iat(now);
+            jwt.exp(now + 3600);
+            jwt.setOtherClaims("metadata", metadata);
+
+            SignatureProvider signatureProvider = keycloakSession.getProvider(SignatureProvider.class, "RS256");
+            SignatureSignerContext signer = signatureProvider.signer(activeKey);
+
+            return new JWSBuilder()
+                    .type(Oid4VciConstants.SIGNED_METADATA_JWT_TYPE)
+                    .kid(activeKey.getKid())
+                    .jsonContent(jwt)
+                    .sign(signer);
+
+        } catch (Exception e) {
+            LOGGER.warn("Failed to create signed metadata JWT", e);
+            return null;
+        }
     }
 
     private static String getDeferredCredentialEndpoint(KeycloakContext context) {
@@ -102,11 +196,6 @@ public class OID4VCIssuerWellKnownProvider implements WellKnownProvider {
             }
         }
         return null;
-    }
-
-    private String getSignedMetadata(KeycloakSession session) {
-        RealmModel realm = session.getContext().getRealm();
-        return realm.getAttribute("signed_metadata");
     }
 
     /**

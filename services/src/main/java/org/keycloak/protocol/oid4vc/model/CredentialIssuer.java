@@ -27,7 +27,7 @@ import java.util.Map;
 
 /**
  * Represents a credentials issuer according to the OID4VCI Credentials Issuer Metadata
- * {@see https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0-15.html#name-credential-issuer-metadata}
+ * {@see https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#name-credential-issuer-metadata}
  *
  * @author <a href="https://github.com/wistefan">Stefan Wiedemann</a>
  */
@@ -54,9 +54,6 @@ public class CredentialIssuer {
 
     @JsonProperty("batch_credential_issuance")
     private BatchCredentialIssuance batchCredentialIssuance;
-
-    @JsonProperty("signed_metadata")
-    private String signedMetadata;
 
     @JsonProperty("credential_configurations_supported")
     private Map<String, SupportedCredentialConfiguration> credentialsSupported;
@@ -127,15 +124,6 @@ public class CredentialIssuer {
 
     public CredentialIssuer setBatchCredentialIssuance(BatchCredentialIssuance batchCredentialIssuance) {
         this.batchCredentialIssuance = batchCredentialIssuance;
-        return this;
-    }
-
-    public String getSignedMetadata() {
-        return signedMetadata;
-    }
-
-    public CredentialIssuer setSignedMetadata(String signedMetadata) {
-        this.signedMetadata = signedMetadata;
         return this;
     }
 
