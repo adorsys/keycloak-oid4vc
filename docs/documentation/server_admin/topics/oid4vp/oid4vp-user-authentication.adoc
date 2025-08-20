@@ -64,7 +64,7 @@ For this, send a GET request to the `/oid4vp-auth/status` endpoint, passing the 
 GET /realms/<realm>/oid4vp-auth/status/<transaction_id>
 ----
 
-The response is an object containing the status of the authentication session, which can be one of the following: `PENDING`, `SUCCESS`, or `ERROR`.
+The response is an object containing the status of the authentication session, which can be one of the following: `pending`, `success`, or `error`.
 In case of a successful authentication, the response also contains an *authorization code* to exchange for an access token.
 In case of an error, the response contains error details.
 
@@ -72,7 +72,7 @@ In case of an error, the response contains error details.
 [source,json]
 ----
 {
-  "status": "PENDING"
+  "status": "pending"
 }
 ----
 
@@ -80,7 +80,7 @@ In case of an error, the response contains error details.
 [source,json]
 ----
 {
-  "status": "SUCCESS",
+  "status": "success",
   "authorization_code": "<code>"
 }
 ----
@@ -89,7 +89,7 @@ In case of an error, the response contains error details.
 [source,json]
 ----
 {
-  "status": "ERROR",
+  "status": "error",
   "error": "<error_type>",
   "error_description": "<error_description>"
 }

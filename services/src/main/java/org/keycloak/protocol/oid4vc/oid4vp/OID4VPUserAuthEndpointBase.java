@@ -33,6 +33,7 @@ import org.keycloak.protocol.oidc.OIDCLoginProtocol;
 import org.keycloak.services.managers.AuthenticationSessionManager;
 import org.keycloak.sessions.AuthenticationSessionModel;
 import org.keycloak.sessions.RootAuthenticationSessionModel;
+import org.keycloak.utils.StringUtil;
 
 import java.util.Objects;
 import java.util.Optional;
@@ -171,7 +172,9 @@ public class OID4VPUserAuthEndpointBase extends AuthorizationEndpointBase {
      * without affecting this session recovery.
      */
     public static String pruneAuthSessionId(String authSessionId) {
-        Objects.requireNonNull(authSessionId);
+        if (StringUtil.isBlank(authSessionId)) {
+            throw new IllegalArgumentException("Authentication session ID cannot be null or empty");
+        }
 
         // Strip all characters from the EOL marker onward.
         int markerIndex = authSessionId.indexOf(AUTH_SESSION_EOL_MARKER);
