@@ -43,6 +43,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -56,6 +57,9 @@ public class AuthorizationRequestService {
     private static final Logger logger = Logger.getLogger(AuthorizationRequestService.class);
 
     public final static String AUTH_REQ_JWT = "oauth-authz-req+jwt";
+
+    // The number of bytes to generate for secure random strings,
+    // including request IDs, transaction IDs, and nonces (doubled).
     public static final int SECURE_RANDOM_ENTROPY = 20;
 
     // Note: "https://self-issued.me/v2" is a symbolic string and can be used
@@ -77,6 +81,7 @@ public class AuthorizationRequestService {
         this.signingKey = verifierDiscoveryService.getSigningKey();
 
         // Derive signer context
+        Objects.requireNonNull(signingKey);
         String algorithm = signingKey.getAlgorithmOrDefault();
         SignatureProvider signatureProvider = session.getProvider(SignatureProvider.class, algorithm);
         this.signer = signatureProvider.signer(signingKey);

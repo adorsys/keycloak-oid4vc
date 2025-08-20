@@ -142,7 +142,7 @@ public class SdJwtAuthenticator implements Authenticator {
                     return arrayNode.get(2);
                 }
             } catch (VerificationException e) {
-                throw new RuntimeException(e);
+                logger.warnf(e, "Failed to decode disclosure string");
             }
         }
 
