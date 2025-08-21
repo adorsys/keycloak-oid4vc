@@ -86,6 +86,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.keycloak.constants.Oid4VciConstants.SIGNED_METADATA_JWT_TYPE;
 import static org.keycloak.jose.jwe.JWEConstants.A256GCM;
 import static org.keycloak.jose.jwe.JWEConstants.RSA_OAEP;
 import static org.keycloak.jose.jwe.JWEConstants.RSA_OAEP_256;
@@ -148,7 +149,7 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
             JWSHeader header = jwsInput.getHeader();
             assertEquals("Algorithm should be RS256", "RS256", header.getAlgorithm().name());
             assertEquals("Type should be openidvci-issuer-metadata+jwt",
-                    OID4VCIssuerWellKnownProvider.SIGNED_METADATA_JWT_TYPE,
+                    SIGNED_METADATA_JWT_TYPE,
                     header.getType());
             assertNotNull("Key ID should be present", header.getKeyId());
             assertNotNull("x5c header should be present", header.getX5c());

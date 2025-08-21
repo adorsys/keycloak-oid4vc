@@ -29,6 +29,8 @@ public final class Oid4VciConstants {
 
     public static final String CREDENTIAL_SUBJECT = "credentialSubject";
 
+    public static final String SIGNED_METADATA_JWT_TYPE = "openidvci-issuer-metadata+jwt";
+
     private Oid4VciConstants() {
     }
 }

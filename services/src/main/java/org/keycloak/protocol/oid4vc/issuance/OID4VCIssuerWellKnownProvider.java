@@ -39,6 +39,7 @@ import org.keycloak.protocol.oid4vc.model.CredentialIssuer;
 
 import org.keycloak.protocol.oid4vc.model.CredentialResponseEncryptionMetadata;
 import org.keycloak.protocol.oid4vc.model.SupportedCredentialConfiguration;
+import org.keycloak.representations.JsonWebToken;
 import org.keycloak.services.Urls;
 import org.keycloak.urls.UrlType;
 import org.keycloak.util.JsonSerialization;
@@ -52,6 +53,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+import static org.keycloak.constants.Oid4VciConstants.SIGNED_METADATA_JWT_TYPE;
 import static org.keycloak.crypto.KeyType.RSA;
 
 /**
@@ -62,8 +64,6 @@ import static org.keycloak.crypto.KeyType.RSA;
  * @author <a href="https://github.com/wistefan">Stefan Wiedemann</a>
  */
 public class OID4VCIssuerWellKnownProvider implements WellKnownProvider {
-
-    public static final String SIGNED_METADATA_JWT_TYPE = "openidvci-issuer-metadata+jwt";
 
     // Realm attributes for signed metadata configuration
     public static final String SIGNED_METADATA_ENABLED_ATTR = "oid4vci.signed_metadata.enabled";
@@ -144,7 +144,7 @@ public class OID4VCIssuerWellKnownProvider implements WellKnownProvider {
     }
 
     /**
-     * Generates signed metadata as a JWS.
+     * Generates signed metadata as a JWS using JsonWebToken infrastructure.
      *
      * @param metadata The CredentialIssuer metadata object to sign.
      * @param session  The Keycloak session.
@@ -152,41 +152,76 @@ public class OID4VCIssuerWellKnownProvider implements WellKnownProvider {
      * @throws IllegalStateException if generation fails due to configuration or signing issues.
      */
     public String generateSignedMetadata(CredentialIssuer metadata, KeycloakSession session) {
-
         RealmModel realm = session.getContext().getRealm();
         KeyManager keyManager = session.keys();
 
         // Select asymmetric signing algorithm
+        String alg = getSigningAlgorithm(realm, session);
+
+        // Retrieve active key
+        KeyWrapper keyWrapper = keyManager.getActiveKey(realm, KeyUse.SIG, alg);
+        if (keyWrapper == null) {
+            throw new IllegalStateException(
+                    String.format("No active key found for realm '%s' with algorithm '%s'", realm.getName(), alg));
+        }
+
+        // Create JsonWebToken with metadata as claims
+        JsonWebToken jwt = createMetadataJwt(metadata, realm);
+
+        // Build JWS with proper headers
+        JWSBuilder jwsBuilder = new JWSBuilder()
+                .type(SIGNED_METADATA_JWT_TYPE)
+                .kid(keyWrapper.getKid());
+
+        // Add x5c certificate chain if available
+        addCertificateHeaders(jwsBuilder, keyWrapper, realm);
+
+        // Sign the JWS
+        SignatureProvider signerProvider = session.getProvider(SignatureProvider.class, alg);
+        if (signerProvider == null) {
+            throw new IllegalStateException("No signature provider for algorithm: " + alg);
+        }
+
+        SignatureSignerContext signer = signerProvider.signer(keyWrapper);
+        if (signer == null) {
+            throw new IllegalStateException("No signer context for algorithm: " + alg);
+        }
+
+        try {
+            return jwsBuilder.jsonContent(jwt).sign(signer);
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to sign metadata", e);
+        }
+    }
+
+    private String getSigningAlgorithm(RealmModel realm, KeycloakSession session) {
         List<String> supportedAlgorithms = getSupportedSignatureAlgorithms(session)
                 .stream()
-                .filter(alg -> !alg.startsWith("HS"))
+                .filter(alg -> !alg.startsWith("HS")) // Filter out symmetric algorithms
                 .collect(Collectors.toList());
+
         if (supportedAlgorithms.isEmpty()) {
             throw new IllegalStateException("No asymmetric signing algorithms available for realm: " + realm.getName());
         }
 
-        String alg = Optional.ofNullable(realm.getAttribute(SIGNED_METADATA_ALG_ATTR))
+        return Optional.ofNullable(realm.getAttribute(SIGNED_METADATA_ALG_ATTR))
                 .filter(supportedAlgorithms::contains)
                 .orElse(supportedAlgorithms.get(0));
+    }
 
-        // Retrieve active key
-        KeyWrapper keyWrapper = Optional.ofNullable(keyManager.getActiveKey(realm, KeyUse.SIG, alg))
-                .orElseThrow(() -> new IllegalStateException(
-                        String.format("No active key found for realm '%s' with algorithm '%s'", realm.getName(), alg)));
+    private JsonWebToken createMetadataJwt(CredentialIssuer metadata, RealmModel realm) {
+        JsonWebToken jwt = new JsonWebToken();
 
-        // Convert metadata to claims
-        Map<String, Object> claims;
-        try {
-            claims = JsonSerialization.mapper.convertValue(metadata, Map.class);
-        } catch (IllegalArgumentException e) {
-            throw new IllegalStateException("Failed to convert metadata to claims", e);
-        }
+        // Set standard JWT claims
+        jwt.subject(metadata.getCredentialIssuer());
+        jwt.iat((long) Time.currentTime());
+        jwt.issuedNow();
 
-        // Add required JWT claims
-        claims.put("sub", metadata.getCredentialIssuer());
-        claims.put("iat", Time.currentTime());
+        // Set optional issuer claim
+        Optional.ofNullable(realm.getAttribute(SIGNED_METADATA_ISS_ATTR))
+                .ifPresent(jwt::issuer);
 
-        // Add optional expiration claim
+        // Set optional expiration
         Optional.ofNullable(realm.getAttribute(SIGNED_METADATA_EXPIRATION_ATTR))
                 .map(expDurationStr -> {
                     try {
@@ -197,18 +232,16 @@ public class OID4VCIssuerWellKnownProvider implements WellKnownProvider {
                     }
                 })
                 .filter(Objects::nonNull)
-                .ifPresent(expDuration -> claims.put("exp", Time.currentTime() + expDuration));
+                .ifPresent(expDuration -> jwt.exp(Time.currentTime() + expDuration));
 
-        // Add an optional issuer claim
-        Optional.ofNullable(realm.getAttribute(SIGNED_METADATA_ISS_ATTR))
-                .ifPresent(iss -> claims.put("iss", iss));
+        // Convert metadata to map and add as other claims
+        Map<String, Object> metadataClaims = JsonSerialization.mapper.convertValue(metadata, Map.class);
+        metadataClaims.forEach(jwt::setOtherClaims);
 
-        // Build JWS with x5c support
-        JWSBuilder jwsBuilder = new JWSBuilder()
-                .type(SIGNED_METADATA_JWT_TYPE)
-                .kid(keyWrapper.getKid());
+        return jwt;
+    }
 
-        // Add x5c if a certificate or certificate chain is available
+    private void addCertificateHeaders(JWSBuilder jwsBuilder, KeyWrapper keyWrapper, RealmModel realm) {
         if (keyWrapper.getCertificateChain() != null && !keyWrapper.getCertificateChain().isEmpty()) {
             jwsBuilder.x5c(keyWrapper.getCertificateChain());
         } else if (keyWrapper.getCertificate() != null) {
@@ -216,20 +249,8 @@ public class OID4VCIssuerWellKnownProvider implements WellKnownProvider {
         } else {
             LOGGER.warnf("No certificate or certificate chain available for x5c header in realm: %s", realm.getName());
         }
-
-        // Sign the JWS
-        SignatureProvider signerProvider = Optional.ofNullable(session.getProvider(SignatureProvider.class, alg))
-                .orElseThrow(() -> new IllegalStateException("No signature provider for algorithm: " + alg));
-
-        SignatureSignerContext signer = Optional.ofNullable(signerProvider.signer(keyWrapper))
-                .orElseThrow(() -> new IllegalStateException("No signer context for algorithm: " + alg));
-
-        try {
-            return jwsBuilder.jsonContent(claims).sign(signer);
-        } catch (Exception e) {
-            throw new IllegalStateException("Failed to sign metadata", e);
-        }
     }
+
 
     /**
      * Returns the credential response encryption высоко for the issuer.
