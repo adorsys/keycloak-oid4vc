@@ -17,6 +17,8 @@
 
 package org.keycloak.protocol.oid4vc.issuance;
 
+import jakarta.ws.rs.core.HttpHeaders;
+import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriInfo;
 import org.keycloak.common.util.Time;
 import org.keycloak.constants.Oid4VciConstants;
@@ -40,6 +42,7 @@ import org.keycloak.protocol.oid4vc.model.SupportedCredentialConfiguration;
 import org.keycloak.services.Urls;
 import org.keycloak.urls.UrlType;
 import org.keycloak.util.JsonSerialization;
+import org.keycloak.utils.MediaType;
 import org.keycloak.wellknown.WellKnownProvider;
 import org.jboss.logging.Logger;
 
@@ -100,15 +103,25 @@ public class OID4VCIssuerWellKnownProvider implements WellKnownProvider {
                 .setCredentialResponseEncryption(getCredentialResponseEncryption(keycloakSession))
                 .setBatchCredentialIssuance(getBatchCredentialIssuance(keycloakSession));
 
+        // Check if a client requested signed metadata via Accept header
+        String acceptHeader = context.getRequestHeaders().getHeaderString(HttpHeaders.ACCEPT);
+        boolean jwtPreferred = acceptHeader != null && acceptHeader.contains(MediaType.APPLICATION_JWT);
+
+        // Check if signed metadata is enabled
         boolean signedMetadataEnabled = Boolean.parseBoolean(realm.getAttribute(SIGNED_METADATA_ENABLED_ATTR));
-        if (signedMetadataEnabled) {
+
+        // Return signed metadata if enabled AND explicitly requested with application/jwt
+        if (signedMetadataEnabled && jwtPreferred) {
             try {
                 return generateSignedMetadata(issuer, keycloakSession);
             } catch (Exception e) {
-                LOGGER.errorf("Failed to generate signed metadata for realm: %s", realm.getName(), e);
-                throw new RuntimeException("Unable to generate signed metadata", e);
+                LOGGER.warnf(e, "Failed to generate signed metadata for issuer: %s", issuer.getCredentialIssuer());
+                // Fall back to unsigned JSON if signed metadata generation fails
+                return issuer;
             }
         }
+
+        // Default to unsigned JSON (application/json)
         return issuer;
     }
 
