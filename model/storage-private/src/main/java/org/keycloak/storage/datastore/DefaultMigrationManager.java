@@ -62,6 +62,7 @@ import org.keycloak.migration.migrators.MigrateTo4_6_0;
 import org.keycloak.migration.migrators.MigrateTo6_0_0;
 import org.keycloak.migration.migrators.MigrateTo8_0_0;
 import org.keycloak.migration.migrators.MigrateTo8_0_2;
+import org.keycloak.migration.migrators.MigrateTo26_4_0;
 import org.keycloak.migration.migrators.MigrateTo9_0_0;
 import org.keycloak.migration.migrators.MigrateTo9_0_4;
 import org.keycloak.migration.migrators.Migration;
