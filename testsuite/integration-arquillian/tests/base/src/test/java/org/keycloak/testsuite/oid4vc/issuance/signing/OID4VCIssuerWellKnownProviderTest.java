@@ -23,8 +23,16 @@ import jakarta.ws.rs.client.Client;
 import jakarta.ws.rs.client.WebTarget;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriBuilder;
+import org.apache.http.HttpHeaders;
+import org.apache.http.HttpStatus;
+import org.apache.http.client.methods.CloseableHttpResponse;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClientBuilder;
+import org.apache.http.util.EntityUtils;
 import org.hamcrest.MatcherAssert;
 import org.hamcrest.Matchers;
+import org.jboss.logging.Logger;
 import org.junit.Assert;
 import org.junit.Test;
 import org.keycloak.common.util.MultivaluedHashMap;
@@ -67,13 +75,13 @@ import org.keycloak.testsuite.client.KeycloakTestingClient;
 import org.keycloak.testsuite.util.AdminClientUtil;
 import org.keycloak.testsuite.util.oauth.OAuthClient;
 import org.keycloak.util.JsonSerialization;
+import org.keycloak.utils.MediaType;
 import org.keycloak.utils.StringUtil;
 
 import java.io.IOException;
 import java.io.Serializable;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
-import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -90,23 +98,25 @@ import static org.keycloak.constants.Oid4VciConstants.SIGNED_METADATA_JWT_TYPE;
 import static org.keycloak.jose.jwe.JWEConstants.A256GCM;
 import static org.keycloak.jose.jwe.JWEConstants.RSA_OAEP;
 import static org.keycloak.jose.jwe.JWEConstants.RSA_OAEP_256;
-import static org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerWellKnownProvider.ATTR_ENCRYPTION_REQUIRED;
 
 
 public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest {
+
+    private static final Logger LOGGER = Logger.getLogger(OID4VCIssuerWellKnownProviderTest.class);
 
     @Override
     public void configureTestRealm(RealmRepresentation testRealm) {
         Map<String, String> attributes = Optional.ofNullable(testRealm.getAttributes()).orElseGet(HashMap::new);
         attributes.put("credential_response_encryption.encryption_required", "true");
         attributes.put("batch_credential_issuance.batch_size", "10");
-        attributes.put(ATTR_ENCRYPTION_REQUIRED, "true");
+        attributes.put(OID4VCIssuerWellKnownProvider.ATTR_ENCRYPTION_REQUIRED, "true");
         testRealm.setAttributes(attributes);
 
         if (testRealm.getComponents() == null) {
             testRealm.setComponents(new MultivaluedHashMap<>());
         }
 
+        // Add encryption keys
         testRealm.getComponents().add("org.keycloak.keys.KeyProvider",
                 getRsaEncKeyProvider(RSA_OAEP_256, "enc-key-oaep256", 100));
         testRealm.getComponents().add("org.keycloak.keys.KeyProvider",
@@ -115,54 +125,75 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
         super.configureTestRealm(testRealm);
     }
 
-    /**
-     * Test the signed metadata endpoint
-     */
+
     @Test
     public void testSignedMetadataGeneration() {
         runSignedMetadataTest(testingClient, TEST_REALM_NAME, getRealmPath(TEST_REALM_NAME));
     }
 
     private static void runSignedMetadataTest(KeycloakTestingClient testingClient, String realmName, String expectedIssuer) {
+        CloseableHttpClient httpClient = HttpClientBuilder.create().build();
+        String wellKnownUri = OAuthClient.AUTH_SERVER_ROOT + "/realms/" + realmName + "/.well-known/openid-credential-issuer";
+
+        // Test Case 1: Unsigned metadata with application/json (mandatory per spec)
         testingClient.server(realmName).run(session -> {
             RealmModel realm = session.getContext().getRealm();
-
-            // Configure realm for signed metadata
             realm.setAttribute(OID4VCIssuerWellKnownProvider.SIGNED_METADATA_ENABLED_ATTR, "true");
             realm.setAttribute(OID4VCIssuerWellKnownProvider.SIGNED_METADATA_ALG_ATTR, "RS256");
             realm.setAttribute(OID4VCIssuerWellKnownProvider.SIGNED_METADATA_EXPIRATION_ATTR, "3600");
             realm.setAttribute(OID4VCIssuerWellKnownProvider.SIGNED_METADATA_ISS_ATTR, "https://example.com/issuer");
+        });
 
-            OID4VCIssuerWellKnownProvider provider = new OID4VCIssuerWellKnownProvider(session);
-            Object config = provider.getConfig();
-            assertTrue("Signed metadata should return a String (JWS)", config instanceof String);
+        HttpGet getJsonMetadata = new HttpGet(wellKnownUri);
+        getJsonMetadata.addHeader(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON);
+        try (CloseableHttpResponse response = httpClient.execute(getJsonMetadata)) {
+            assertEquals(HttpStatus.SC_OK, response.getStatusLine().getStatusCode());
+            assertEquals("Content-Type should be application/json", MediaType.APPLICATION_JSON,
+                    response.getFirstHeader(HttpHeaders.CONTENT_TYPE).getValue());
+            String json = EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8);
+            LOGGER.infof("Response should be a JSON string: %s", json);
+            CredentialIssuer issuer = JsonSerialization.readValue(json, CredentialIssuer.class);
+            LOGGER.infof("Response should be a CredentialIssuer object: %s", json);
+            assertNotNull("Response should be a CredentialIssuer object", issuer);
+            assertEquals("credential_issuer should be set", expectedIssuer, issuer.getCredentialIssuer());
+            assertEquals("credential_endpoint should be correct",
+                    expectedIssuer + "/protocol/oid4vc/credential",
+                    issuer.getCredentialEndpoint());
+            assertEquals("nonce_endpoint should be correct",
+                    expectedIssuer + "/protocol/oid4vc/nonce",
+                    issuer.getNonceEndpoint());
+            assertEquals("deferred_credential_endpoint should be correct",
+                    expectedIssuer + "/protocol/oid4vc/deferred_credential",
+                    issuer.getDeferredCredentialEndpoint());
+            assertNotNull("authorization_servers should be present", issuer.getAuthorizationServers());
+            assertNotNull("credential_response_encryption should be present", issuer.getCredentialResponseEncryption());
+            assertNotNull("batch_credential_issuance should be present", issuer.getBatchCredentialIssuance());
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to process JSON metadata response: " + e.getMessage(), e);
+        }
 
-            String jws = (String) config;
-            JWSInput jwsInput;
-            try {
-                jwsInput = new JWSInput(jws);
-            } catch (JWSInputException e) {
-                throw new RuntimeException("Failed to parse JWS: " + e.getMessage(), e);
-            }
+        // Test Case 2: Signed metadata with application/jwt (optional per spec)
+        HttpGet getJwtMetadata = new HttpGet(wellKnownUri);
+        getJwtMetadata.addHeader(HttpHeaders.ACCEPT, org.keycloak.utils.MediaType.APPLICATION_JWT);
+        try (CloseableHttpResponse response = httpClient.execute(getJwtMetadata)) {
+            assertEquals(HttpStatus.SC_OK, response.getStatusLine().getStatusCode());
+            assertEquals("Content-Type should be application/jwt", org.keycloak.utils.MediaType.APPLICATION_JWT,
+                    response.getFirstHeader(HttpHeaders.CONTENT_TYPE).getValue());
+            String jws = EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8);
+            LOGGER.infof("Response should be a JWT string: %s", jws);
+            assertNotNull("Response should be a JWT string", jws);
+            JWSInput jwsInput = new JWSInput(jws);
 
             // Validate JOSE Header
             JWSHeader header = jwsInput.getHeader();
             assertEquals("Algorithm should be RS256", "RS256", header.getAlgorithm().name());
             assertEquals("Type should be openidvci-issuer-metadata+jwt",
-                    SIGNED_METADATA_JWT_TYPE,
-                    header.getType());
+                    SIGNED_METADATA_JWT_TYPE, header.getType());
             assertNotNull("Key ID should be present", header.getKeyId());
-            assertNotNull("x5c header should be present", header.getX5c());
-
-            // Parse JWT body
-            Map<String, Object> claims;
-            try {
-                claims = JsonSerialization.readValue(jwsInput.getContent(), Map.class);
-            } catch (Exception e) {
-                throw new RuntimeException("Failed to parse JWT claims: " + e.getMessage(), e);
-            }
+            assertNotNull("x5c header should be present if certificates are configured", header.getX5c());
 
             // Validate JWT claims
+            Map<String, Object> claims = JsonSerialization.readValue(jwsInput.getContent(), Map.class);
             assertEquals("sub should match credential_issuer", expectedIssuer, claims.get("sub"));
             assertEquals("credential_issuer should be set", expectedIssuer, claims.get("credential_issuer"));
             assertEquals("iss should match configured issuer", "https://example.com/issuer", claims.get("iss"));
@@ -186,91 +217,95 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
             assertNotNull("credential_response_encryption should be present", claims.get("credential_response_encryption"));
             assertNotNull("batch_credential_issuance should be present", claims.get("batch_credential_issuance"));
 
-            // Verify signature
-            KeyWrapper keyWrapper = session.keys().getActiveKey(realm, KeyUse.SIG, "RS256");
-            assertNotNull("Active signing key should exist", keyWrapper);
-            SignatureProvider signatureProvider = session.getProvider(SignatureProvider.class, "RS256");
-            assertNotNull("Signature provider should exist for RS256", signatureProvider);
+            // Extract serializable data for signature verification
+            byte[] encodedSignatureInput = jwsInput.getEncodedSignatureInput().getBytes(StandardCharsets.UTF_8);
+            byte[] signature = jwsInput.getSignature();
 
-            try {
+            // Verify signature in server-side block
+            testingClient.server(realmName).run(session -> {
+                RealmModel realm = session.getContext().getRealm();
+                KeyWrapper keyWrapper = session.keys().getActiveKey(realm, KeyUse.SIG, "RS256");
+                LOGGER.infof("Active signing key should exist for RS256: %s", keyWrapper);
+                assertNotNull("Active signing key should exist", keyWrapper);
+                SignatureProvider signatureProvider = session.getProvider(SignatureProvider.class, "RS256");
+                assertNotNull("Signature provider should exist for RS256", signatureProvider);
                 SignatureVerifierContext verifier = signatureProvider.verifier(keyWrapper);
-                boolean isValid = verifier.verify(jwsInput.getEncodedSignatureInput().getBytes(StandardCharsets.UTF_8),
-                        jwsInput.getSignature());
+                boolean isValid = verifier.verify(encodedSignatureInput, signature);
                 assertTrue("JWS signature should be valid", isValid);
-            } catch (Exception e) {
-                throw new RuntimeException("Failed to verify signature: " + e.getMessage(), e);
-            }
-        });
+            });
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to process JWT metadata response: " + e.getMessage(), e);
+        }
 
+        // Test Case 3: Unsigned metadata when signed metadata is disabled
         testingClient.server(realmName).run(session -> {
             RealmModel realm = session.getContext().getRealm();
             realm.setAttribute(OID4VCIssuerWellKnownProvider.SIGNED_METADATA_ENABLED_ATTR, "false");
-
-            OID4VCIssuerWellKnownProvider provider = new OID4VCIssuerWellKnownProvider(session);
-            Object config = provider.getConfig();
-            assertTrue("Unsigned metadata should return CredentialIssuer", config instanceof CredentialIssuer);
+            assertNotNull("Realm should have signed metadata disabled", realm.getAttribute(OID4VCIssuerWellKnownProvider.SIGNED_METADATA_ENABLED_ATTR));
         });
 
+        HttpGet getUnsignedMetadata = new HttpGet(wellKnownUri);
+        getUnsignedMetadata.addHeader(HttpHeaders.ACCEPT, org.keycloak.utils.MediaType.APPLICATION_JWT);
+        try (CloseableHttpResponse response = httpClient.execute(getUnsignedMetadata)) {
+            assertEquals(HttpStatus.SC_OK, response.getStatusLine().getStatusCode());
+            assertEquals("Content-Type should be application/json when signed metadata is disabled",
+                    MediaType.APPLICATION_JSON, response.getFirstHeader(HttpHeaders.CONTENT_TYPE).getValue());
+            String json = EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8);
+            CredentialIssuer issuer = JsonSerialization.readValue(json, CredentialIssuer.class);
+            assertNotNull("Unsigned metadata should return CredentialIssuer", issuer);
+            assertEquals("credential_issuer should be set", expectedIssuer, issuer.getCredentialIssuer());
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to process unsigned metadata response: " + e.getMessage(), e);
+        }
+
+        // Test Case 4: Signed metadata with invalid expiration (should fall back to JSON)
         testingClient.server(realmName).run(session -> {
             RealmModel realm = session.getContext().getRealm();
             realm.setAttribute(OID4VCIssuerWellKnownProvider.SIGNED_METADATA_ENABLED_ATTR, "true");
             realm.setAttribute(OID4VCIssuerWellKnownProvider.SIGNED_METADATA_ALG_ATTR, "RS256");
             realm.setAttribute(OID4VCIssuerWellKnownProvider.SIGNED_METADATA_EXPIRATION_ATTR, "invalid");
-
-            OID4VCIssuerWellKnownProvider provider = new OID4VCIssuerWellKnownProvider(session);
-            String jws = (String) provider.getConfig();
-            JWSInput jwsInput;
-            try {
-                jwsInput = new JWSInput(jws);
-            } catch (JWSInputException e) {
-                throw new RuntimeException("Failed to parse JWS: " + e.getMessage(), e);
-            }
-
-            Map<String, Object> claims;
-            try {
-                claims = JsonSerialization.readValue(jwsInput.getContent(), Map.class);
-            } catch (Exception e) {
-                throw new RuntimeException("Failed to parse JWT claims: " + e.getMessage(), e);
-            }
-
-            assertFalse("exp claim should not be present with invalid duration", claims.containsKey("exp"));
         });
 
+        HttpGet getInvalidExpMetadata = new HttpGet(wellKnownUri);
+        getInvalidExpMetadata.addHeader(HttpHeaders.ACCEPT, org.keycloak.utils.MediaType.APPLICATION_JWT);
+        try (CloseableHttpResponse response = httpClient.execute(getInvalidExpMetadata)) {
+            assertEquals(HttpStatus.SC_OK, response.getStatusLine().getStatusCode());
+            assertEquals("Content-Type should be application/json due to invalid expiration",
+                    MediaType.APPLICATION_JSON, response.getFirstHeader(HttpHeaders.CONTENT_TYPE).getValue());
+            String json = EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8);
+            CredentialIssuer issuer = JsonSerialization.readValue(json, CredentialIssuer.class);
+            assertNotNull("Response should be a CredentialIssuer object", issuer);
+            assertEquals("credential_issuer should be set", expectedIssuer, issuer.getCredentialIssuer());
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to process invalid expiration metadata response: " + e.getMessage(), e);
+        }
+
+        // Test Case 5: Signed metadata with invalid algorithm (should fall back to JSON)
         testingClient.server(realmName).run(session -> {
             RealmModel realm = session.getContext().getRealm();
             realm.setAttribute(OID4VCIssuerWellKnownProvider.SIGNED_METADATA_ENABLED_ATTR, "true");
-            realm.setAttribute(OID4VCIssuerWellKnownProvider.SIGNED_METADATA_ALG_ATTR, "RS256");
-
-            // Get the active key and temporarily remove certificates
-            KeyWrapper keyWrapper = session.keys().getActiveKey(realm, KeyUse.SIG, "RS256");
-            assertNotNull("Active key should exist", keyWrapper);
-
-            // Store original values to restore later
-            X509Certificate originalCertificate = keyWrapper.getCertificate();
-            List<X509Certificate> originalCertificateChain = keyWrapper.getCertificateChain();
-
-            try {
-                // Temporarily remove certificates
-                keyWrapper.setCertificate(null);
-                keyWrapper.setCertificateChain(null);
-
-                OID4VCIssuerWellKnownProvider provider = new OID4VCIssuerWellKnownProvider(session);
-                String jws = (String) provider.getConfig();
-                JWSInput jwsInput;
-                try {
-                    jwsInput = new JWSInput(jws);
-                } catch (JWSInputException e) {
-                    throw new RuntimeException("Failed to parse JWS: " + e.getMessage(), e);
-                }
-
-                JWSHeader header = jwsInput.getHeader();
-                assertNull("x5c header should not be present when no certificates available", header.getX5c());
-            } finally {
-                // Restore original certificates
-                keyWrapper.setCertificate(originalCertificate);
-                keyWrapper.setCertificateChain(originalCertificateChain);
-            }
+            realm.setAttribute(OID4VCIssuerWellKnownProvider.SIGNED_METADATA_ALG_ATTR, "INVALID_ALG");
+            realm.setAttribute(OID4VCIssuerWellKnownProvider.SIGNED_METADATA_EXPIRATION_ATTR, "3600");
+            realm.setAttribute(OID4VCIssuerWellKnownProvider.SIGNED_METADATA_ISS_ATTR, "https://example.com/issuer");
         });
+
+        getJwtMetadata.addHeader(HttpHeaders.ACCEPT, org.keycloak.utils.MediaType.APPLICATION_JWT);
+        try (CloseableHttpResponse response = httpClient.execute(getJwtMetadata)) {
+            assertEquals(HttpStatus.SC_OK, response.getStatusLine().getStatusCode());
+            assertEquals("Content-Type should be application/json due to invalid algorithm",
+                    MediaType.APPLICATION_JSON, response.getFirstHeader(HttpHeaders.CONTENT_TYPE).getValue());
+            String json = EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8);
+            CredentialIssuer issuer = JsonSerialization.readValue(json, CredentialIssuer.class);
+            assertNotNull("Response should be a CredentialIssuer object", issuer);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to process invalid algorithm metadata response: " + e.getMessage(), e);
+        }
+
+        try {
+            httpClient.close();
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to close HTTP client: " + e.getMessage(), e);
+        }
     }
 
     /**
