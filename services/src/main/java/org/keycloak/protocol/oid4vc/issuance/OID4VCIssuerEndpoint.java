@@ -77,7 +77,6 @@ import org.keycloak.protocol.oid4vc.model.OfferUriType;
 import org.keycloak.protocol.oid4vc.model.PreAuthorizedCode;
 import org.keycloak.protocol.oid4vc.model.PreAuthorizedGrant;
 import org.keycloak.protocol.oid4vc.model.Proof;
-import org.keycloak.protocol.oid4vc.model.ProofType;
 import org.keycloak.protocol.oid4vc.model.Proofs;
 import org.keycloak.protocol.oid4vc.model.SupportedCredentialConfiguration;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
@@ -101,7 +100,6 @@ import java.security.PublicKey;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -455,22 +453,25 @@ public class OID4VCIssuerEndpoint {
         SupportedCredentialConfiguration supportedCredential =
                 OID4VCIssuerWellKnownProvider.toSupportedCredentialConfiguration(session, requestedCredential);
 
-        // Generate credentials (single or batch)
+        // Get the list of all proofs (handles single proof, multiple proofs, or none)
+        List<Proof> allProofs = getAllProofs(credentialRequestVO);
+
+        if (allProofs.isEmpty()) {
+            allProofs.add(null); // Placeholder for single issuance without proof
+        }
+
         CredentialResponse responseVO = new CredentialResponse();
-        Proofs proofs = credentialRequestVO.getProofs();
-        if (proofs != null && proofs.getJwt() != null && !proofs.getJwt().isEmpty()) {
-            // Batch issuance
-            List<Object> credentials = getCredential(authResult, supportedCredential, credentialRequestVO);
-            responseVO.setCredentials(credentials.stream()
-                    .map(cred -> new CredentialResponse.Credential().setCredential(cred))
-                    .collect(Collectors.toList()));
-        } else {
-            // Single issuance (using existing proof logic)
+        responseVO.setNotificationId(generateNotificationId());
+
+        // Issue credentials for each proof (or one if no proofs)
+        Proof originalProof = credentialRequestVO.getProof();
+        for (Proof currentProof : allProofs) {
+            credentialRequestVO.setProof(currentProof);
             Object theCredential = getCredential(authResult, supportedCredential, credentialRequestVO);
             responseVO.addCredential(theCredential);
         }
 
-        responseVO.setNotificationId(generateNotificationId());
+        credentialRequestVO.setProof(originalProof);
 
         if (encryptionParams != null) {
             String jwe = encryptCredentialResponse(responseVO, encryptionParams);
@@ -481,6 +482,31 @@ public class OID4VCIssuerEndpoint {
         }
 
         return Response.ok().entity(responseVO).build();
+    }
+
+    private List<Proof> getAllProofs(CredentialRequest credentialRequestVO) {
+        List<Proof> allProofs = new ArrayList<>();
+        Proof singleProof = credentialRequestVO.getProof();
+        Proofs multiProofs = credentialRequestVO.getProofs();
+
+        if (singleProof != null) {
+            allProofs.add(singleProof);
+        } else if (multiProofs != null) {
+            int typeCount = 0;
+            if (multiProofs.getJwt() != null && !multiProofs.getJwt().isEmpty()) {
+                typeCount++;
+                for (String jwtStr : multiProofs.getJwt()) {
+                    JwtProof jwtProof = new JwtProof();
+                    jwtProof.setJwt(jwtStr);
+                    allProofs.add(jwtProof);
+                }
+            }
+            if (typeCount != 1) {
+                throw new BadRequestException(getErrorResponse(ErrorType.INVALID_PROOF,
+                        "The 'proofs' object must contain exactly one proof type with non-empty array."));
+            }
+        }
+        return allProofs;
     }
 
     /**
@@ -781,7 +807,7 @@ public class OID4VCIssuerEndpoint {
     }
 
     /**
-     * Enforce key binding for single proof issuance (unchanged, kept for compatibility).
+     * Enforce key binding: Validate proof and bind associated key to credential in issuance context.
      */
     private void enforceKeyBindingIfProofProvided(VCIssuanceContext vcIssuanceContext) {
         // Check for single proof first

@@ -900,51 +900,83 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
      */
     @Test
     public void testRequestMultipleCredentialsWithProofs() {
+        final String scopeName = jwtTypeCredentialClientScope.getName();
+        String token = getBearerToken(oauth, client, scopeName);
         String cNonce = getCNonce();
-        String token = getBearerToken(oauth, client, jwtTypeCredentialClientScope.getName());
 
         testingClient.server(TEST_REALM_NAME).run(session -> {
             try {
+                // Setup authenticator
                 AppAuthManager.BearerTokenAuthenticator authenticator = new AppAuthManager.BearerTokenAuthenticator(session);
                 authenticator.setTokenString(token);
                 String issuer = OID4VCIssuerWellKnownProvider.getIssuer(session.getContext());
 
-                // Create proofs
+                // Create two JWT proofs for different keys
                 String jwtProof1 = generateJwtProof(issuer, cNonce);
                 String jwtProof2 = generateJwtProof(issuer, cNonce);
+                Proofs proofs = new Proofs().setJwt(Arrays.asList(jwtProof1, jwtProof2));
 
-                Proofs proofs = new Proofs()
-                        .setJwt(Arrays.asList(jwtProof1, jwtProof2));
-
+                // Get credential configuration ID
                 String configId = Optional.ofNullable(jwtTypeCredentialClientScope)
                         .map(scope -> scope.getAttributes().get(CredentialScopeModel.CONFIGURATION_ID))
                         .orElseThrow(() -> new IllegalStateException("jwtTypeCredentialClientScope is null"));
 
-
+                // Create credential request
                 CredentialRequest request = new CredentialRequest()
+                        .setFormat(Format.JWT_VC)
                         .setCredentialConfigurationId(configId)
                         .setProofs(proofs);
 
+                // Prepare endpoint
                 OID4VCIssuerEndpoint endpoint = prepareIssuerEndpoint(session, authenticator);
 
+                // Execute request
                 Response response = endpoint.requestCredential(request);
-
                 assertEquals("Response status should be OK", Response.Status.OK.getStatusCode(), response.getStatus());
 
-                CredentialResponse credentialResponse = response.readEntity(CredentialResponse.class);
-                assertNotNull("Credential response should not be empty", credentialResponse);
+                // Parse response
+                CredentialResponse credentialResponse = JsonSerialization.mapper
+                        .convertValue(response.getEntity(), CredentialResponse.class);
+                assertNotNull("Credential response should not be null", credentialResponse);
+                assertNotNull("Credentials array should not be null", credentialResponse.getCredentials());
+                assertEquals("Should return 2 credentials due to two proofs", 2, credentialResponse.getCredentials().size());
 
-                assertNotNull("Should have credentials array", credentialResponse.getCredentials());
-
-                int credentialCount = credentialResponse.getCredentials().size();
-                assertEquals("Should have 2 credentials due to multiple proofs", 2, credentialCount);
-
-                credentialResponse.getCredentials().forEach(credential -> {
+                // Validate each credential
+                for (CredentialResponse.Credential credential : credentialResponse.getCredentials()) {
                     assertNotNull("Credential should not be null", credential.getCredential());
-                });
+                    JsonWebToken jsonWebToken;
+                    try {
+                        jsonWebToken = TokenVerifier.create((String) credential.getCredential(), JsonWebToken.class).getToken();
+                    } catch (VerificationException e) {
+                        Assert.fail("Failed to verify JWT: " + e.getMessage());
+                        return;
+                    }
+                    assertNotNull("A valid credential string should be returned", jsonWebToken);
+                    assertNotNull("The credentials should include the vc claim", jsonWebToken.getOtherClaims().get("vc"));
 
+                    VerifiableCredential vc = JsonSerialization.mapper.convertValue(
+                            jsonWebToken.getOtherClaims().get("vc"), VerifiableCredential.class);
+                    assertTrue("The scope-name claim should be set",
+                            vc.getCredentialSubject().getClaims().containsKey("scope-name"));
+                    assertEquals("The scope-name claim should match the scope",
+                            scopeName, vc.getCredentialSubject().getClaims().get("scope-name"));
+                    assertTrue("The given_name claim should be set",
+                            vc.getCredentialSubject().getClaims().containsKey("given_name"));
+                    assertEquals("The given_name claim should be John",
+                            "John", vc.getCredentialSubject().getClaims().get("given_name"));
+                    assertTrue("The email claim should be set",
+                            vc.getCredentialSubject().getClaims().containsKey("email"));
+                    assertEquals("The email claim should be john@email.cz",
+                            "john@email.cz", vc.getCredentialSubject().getClaims().get("email"));
+                    assertFalse("Only supported mappers should be evaluated",
+                            vc.getCredentialSubject().getClaims().containsKey("AnotherCredentialType"));
+
+                }
+
+                // Verify notification ID
+                assertNotNull("Notification ID should be present", credentialResponse.getNotificationId());
             } catch (Exception e) {
-                throw new RuntimeException(e);
+                throw new RuntimeException("Test failed due to: " + e.getMessage(), e);
             }
         });
     }

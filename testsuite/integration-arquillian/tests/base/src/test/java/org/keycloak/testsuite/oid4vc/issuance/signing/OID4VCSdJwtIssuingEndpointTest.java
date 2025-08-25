@@ -148,7 +148,7 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
             });
             Assert.fail("Should have thrown an exception");
         } catch (BadRequestException ex) {
-            Assert.assertEquals("Could not verify signature of provided proof", ex.getMessage());
+            Assert.assertEquals("Could not validate provided proof", ex.getMessage());
         }
     }
 
@@ -176,9 +176,9 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
             Assert.fail("Should have thrown an exception");
         } catch (BadRequestException ex) {
             Assert.assertEquals("""
-                Invalid c_nonce: c_nonce: expected 'aud' to be equal to \
-                '[https://localhost:8543/auth/realms/test/protocol/oid4vc/credential]' but \
-                actual value was '[]'""",
+                                        c_nonce: expected 'aud' to be equal to \
+                                        '[https://localhost:8543/auth/realms/test/protocol/oid4vc/credential]' but \
+                                        actual value was '[]'""",
                     ExceptionUtils.getRootCause(ex).getMessage());
         }
     }
@@ -206,9 +206,9 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
             Assert.fail("Should have thrown an exception");
         } catch (BadRequestException ex) {
             Assert.assertEquals("""
-                Invalid c_nonce: c_nonce: expected 'source_endpoint' to be equal to \
-                'https://localhost:8543/auth/realms/test/protocol/oid4vc/nonce' but \
-                actual value was 'null'""",
+                                        c_nonce: expected 'source_endpoint' to be equal to \
+                                        'https://localhost:8543/auth/realms/test/protocol/oid4vc/nonce' but \
+                                        actual value was 'null'""",
                     ExceptionUtils.getRootCause(ex).getMessage());
         }
     }
@@ -245,7 +245,7 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
         } catch (BadRequestException ex) {
             String message = ExceptionUtils.getRootCause(ex).getMessage();
             Assert.assertTrue(String.format("Message '%s' should match regular expression", message),
-                    message.matches("Invalid c_nonce: c_nonce not valid: \\d+\\(exp\\) < \\d+\\(now\\)"));
+                    message.matches("c_nonce not valid: \\d+\\(exp\\) < \\d+\\(now\\)"));
         }
     }
 
