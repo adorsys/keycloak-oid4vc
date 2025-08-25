@@ -23,16 +23,18 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.stream.Collectors;
 
 import org.infinispan.client.hotrod.RemoteCacheManager;
+import org.infinispan.commons.configuration.io.ConfigurationWriter;
+import org.infinispan.commons.io.StringBuilderWriter;
 import org.infinispan.commons.util.Version;
 import org.infinispan.configuration.cache.Configuration;
-import org.infinispan.eviction.EvictionStrategy;
+import org.infinispan.configuration.global.GlobalConfiguration;
+import org.infinispan.configuration.parsing.ParserRegistry;
 import org.infinispan.health.CacheHealth;
 import org.infinispan.manager.DefaultCacheManager;
 import org.infinispan.manager.EmbeddedCacheManager;
@@ -180,6 +182,16 @@ public class DefaultInfinispanConnectionProviderFactory implements InfinispanCon
 
     protected EmbeddedCacheManager createEmbeddedCacheManager(KeycloakSession session) {
         var holder = session.getProvider(CacheEmbeddedConfigProvider.class).configuration();
+
+        StringBuilderWriter sw = new StringBuilderWriter();
+        ParserRegistry parser = new ParserRegistry();
+        try (ConfigurationWriter w = ConfigurationWriter.to(sw).prettyPrint(true).build()) {
+            var globalConfig = holder.getGlobalConfigurationBuilder().build();
+            var cacheConfigs = holder.getNamedConfigurationBuilders().entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().build()));
+            parser.serialize(w, globalConfig, cacheConfigs);
+            logger.debugf("Infinispan configuration:\n%s", sw);
+        }
+
         var cm = new DefaultCacheManager(holder, true);
         cm.getCache(KEYS_CACHE_NAME, true);
         cm.getCache(CRL_CACHE_NAME, true);
@@ -233,15 +245,7 @@ public class DefaultInfinispanConnectionProviderFactory implements InfinispanCon
      */
     @Deprecated(since = "26.3", forRemoval = true)
     protected Configuration getKeysCacheConfig() {
-        var cb = CacheConfigurator.createCacheConfigurationBuilder();
-
-        cb.memory()
-                .whenFull(EvictionStrategy.REMOVE)
-                .maxCount(KEYS_CACHE_DEFAULT_MAX);
-
-        cb.expiration().maxIdle(KEYS_CACHE_MAX_IDLE_SECONDS, TimeUnit.SECONDS);
-
-        return cb.build();
+        return CacheConfigurator.getCacheConfiguration(KEYS_CACHE_NAME).build();
     }
 
     /**

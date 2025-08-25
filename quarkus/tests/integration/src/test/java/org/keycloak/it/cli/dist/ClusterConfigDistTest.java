@@ -40,6 +40,8 @@ import io.quarkus.test.junit.main.Launch;
 @Tag(DistributionTest.SLOW)
 public class ClusterConfigDistTest {
 
+    private static final String WARN_DEFAULT_CACHE_MUTATIONS = "Modifying the default cache configuration in the config file";
+
     @Test
     @Launch({ "start-dev", "--cache=ispn" })
     void changeClusterSetting(CLIResult result) {
@@ -127,6 +129,13 @@ public class ClusterConfigDistTest {
     }
 
     @Test
+    @Launch({ "start", "--cache=ispn", "--log-level=info,org.keycloak.connections.infinispan:debug", "--http-enabled=true", "--hostname-strict=false"})
+    void testPrintCacheConfigurationsDebug(CLIResult result) {
+        result.assertStarted();
+        result.assertMessage("Infinispan configuration");
+    }
+
+    @Test
     @EnabledOnOs(value = { OS.LINUX, OS.MAC }, disabledReason = "different shell escaping behaviour on Windows.")
     @Launch({ "start", "--db=dev-file", "--log-level=info,org.infinispan.remoting.transport.jgroups.JGroupsTransport:debug","--http-enabled=true", "--hostname-strict=false" })
     void testStartDefaultsToClustering(CLIResult result) {
@@ -165,11 +174,40 @@ public class ClusterConfigDistTest {
         result.assertMessage("ISPN000078: Starting JGroups channel `ISPN` with stack `encrypt-udp`");
     }
 
+    @Test
+    @BeforeStartDistribution(ConfigureCustomCache.class)
+    @Launch({ "start-dev", "--cache-config-file=cache-ispn-custom-cache.xml" })
+    void testCustomCacheConfigurationWarning(CLIResult result) {
+        result.assertMessage(WARN_DEFAULT_CACHE_MUTATIONS);
+    }
+
+    @Test
+    @BeforeStartDistribution(ConfigureCustomCache.class)
+    @Launch({ "start-dev", "--cache-config-file=cache-ispn-custom-cache.xml", "--cache-config-mutate=true" })
+    void testCustomCacheConfigurationNoWarning(CLIResult result) {
+        result.assertNoMessage(WARN_DEFAULT_CACHE_MUTATIONS);
+    }
+
+    @Test
+    @BeforeStartDistribution(ConfigureCustomCache.class)
+    @Launch({ "start-dev", "--cache-config-file=cache-ispn-custom-user-cache.xml"})
+    void testCustomUserCacheConfigurationNoWarning(CLIResult result) {
+        result.assertNoMessage(WARN_DEFAULT_CACHE_MUTATIONS);
+    }
+
     public static class ConfigureCacheUsingAsyncEncryption implements Consumer<KeycloakDistribution> {
 
         @Override
         public void accept(KeycloakDistribution distribution) {
             distribution.copyOrReplaceFileFromClasspath("/cache-ispn-asym-enc.xml", Path.of("conf", "cache-ispn-asym-enc.xml"));
+        }
+    }
+
+    public static class ConfigureCustomCache implements Consumer<KeycloakDistribution> {
+
+        @Override
+        public void accept(KeycloakDistribution distribution) {
+            distribution.copyOrReplaceFileFromClasspath("/cache-ispn-custom-cache.xml", Path.of("conf", "cache-ispn-custom-cache.xml"));
         }
     }
 }
