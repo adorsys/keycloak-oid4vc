@@ -80,6 +80,7 @@ import java.security.Security;
 import java.security.cert.Certificate;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -568,4 +569,28 @@ public abstract class OID4VCTest extends AbstractTestRealmKeycloakTest {
             throw new RuntimeException(e);
         }
     }
+
+    public static String extractKeyIdFromJwtProof(String jwtProof) {
+        try {
+            String[] parts = jwtProof.split("\\.");
+            if (parts.length != 3) {
+                throw new IllegalArgumentException("Invalid JWT proof format");
+            }
+            String headerJson = new String(Base64.getDecoder().decode(parts[0]));
+            Map<String, Object> header = JsonSerialization.readValue(headerJson, Map.class);
+            Map<String, Object> jwk = (Map<String, Object>) header.get("jwk");
+            if (jwk == null) {
+                throw new IllegalArgumentException("JWT proof header missing jwk");
+            }
+            String keyId = (String) jwk.get("kid");
+            if (keyId == null) {
+                throw new IllegalArgumentException("JWT proof JWK missing kid");
+            }
+            return keyId;
+        } catch (Exception e) {
+            LOGGER.error("Failed to extract key ID from JWT proof: " + e.getMessage(), e);
+            throw new RuntimeException("Failed to extract key ID from JWT proof", e);
+        }
+    }
+
 }
