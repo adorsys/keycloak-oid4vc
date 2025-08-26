@@ -9,7 +9,6 @@ import org.keycloak.events.admin.ResourceType;
 import org.keycloak.models.Constants;
 import org.keycloak.representations.idm.GroupRepresentation;
 import org.keycloak.representations.idm.MappingsRepresentation;
-import org.keycloak.representations.idm.RealmRepresentation;
 import org.keycloak.representations.idm.RoleRepresentation;
 import org.keycloak.testframework.annotations.InjectRealm;
 import org.keycloak.testframework.annotations.KeycloakIntegrationTest;
@@ -21,8 +20,7 @@ import org.keycloak.testframework.realm.ManagedRealm;
 import org.keycloak.testframework.realm.UserConfigBuilder;
 import org.keycloak.tests.utils.admin.AdminEventPaths;
 import org.keycloak.tests.utils.admin.ApiUtil;
-import org.keycloak.testsuite.events.TestEventsListenerProviderFactory;
-import org.keycloak.testsuite.util.RoleBuilder;
+import org.keycloak.testframework.realm.RoleConfigBuilder;
 
 import java.util.Collections;
 import java.util.LinkedList;
@@ -42,15 +40,11 @@ public class UserRoleTest extends AbstractUserTest {
     @Test
     public void roleMappings() {
         RealmResource realm = managedRealm.admin();
-        // Enable events
-        RealmRepresentation realmRep = addTestEventListener(managedRealm.admin().toRepresentation());
-        managedRealm.admin().update(realmRep);
+        RoleRepresentation realmCompositeRole = RoleConfigBuilder.create().name("realm-composite").singleAttribute("attribute1", "value1").build();
 
-        RoleRepresentation realmCompositeRole = RoleBuilder.create().name("realm-composite").singleAttribute("attribute1", "value1").build();
-
-        realm.roles().create(RoleBuilder.create().name("realm-role").build());
+        realm.roles().create(RoleConfigBuilder.create().name("realm-role").build());
         realm.roles().create(realmCompositeRole);
-        realm.roles().create(RoleBuilder.create().name("realm-child").build());
+        realm.roles().create(RoleConfigBuilder.create().name("realm-child").build());
         realm.roles().get("realm-composite").addComposites(Collections.singletonList(realm.roles().get("realm-child").toRepresentation()));
 
         final String clientUuid;
@@ -58,13 +52,13 @@ public class UserRoleTest extends AbstractUserTest {
             clientUuid = ApiUtil.getCreatedId(response);
         }
 
-        RoleRepresentation clientCompositeRole = RoleBuilder.create().name("client-composite").singleAttribute("attribute1", "value1").build();
+        RoleRepresentation clientCompositeRole = RoleConfigBuilder.create().name("client-composite").singleAttribute("attribute1", "value1").build();
 
 
-        realm.clients().get(clientUuid).roles().create(RoleBuilder.create().name("client-role").build());
-        realm.clients().get(clientUuid).roles().create(RoleBuilder.create().name("client-role2").build());
+        realm.clients().get(clientUuid).roles().create(RoleConfigBuilder.create().name("client-role").build());
+        realm.clients().get(clientUuid).roles().create(RoleConfigBuilder.create().name("client-role2").build());
         realm.clients().get(clientUuid).roles().create(clientCompositeRole);
-        realm.clients().get(clientUuid).roles().create(RoleBuilder.create().name("client-child").build());
+        realm.clients().get(clientUuid).roles().create(RoleConfigBuilder.create().name("client-child").build());
         realm.clients().get(clientUuid).roles().get("client-composite").addComposites(Collections.singletonList(realm.clients().get(clientUuid).roles().get("client-child").toRepresentation()));
 
         final String userId;
@@ -145,23 +139,23 @@ public class UserRoleTest extends AbstractUserTest {
     public void rolesCanBeAssignedEvenWhenTheyAreAlreadyIndirectlyAssigned() {
         RealmResource realm = managedRealm.admin();
 
-        RoleRepresentation realmCompositeRole = RoleBuilder.create().name("realm-composite").build();
+        RoleRepresentation realmCompositeRole = RoleConfigBuilder.create().name("realm-composite").build();
         realm.roles().create(realmCompositeRole);
-        realm.roles().create(RoleBuilder.create().name("realm-child").build());
+        realm.roles().create(RoleConfigBuilder.create().name("realm-child").build());
         realm.roles().get("realm-composite")
                 .addComposites(Collections.singletonList(realm.roles().get("realm-child").toRepresentation()));
-        realm.roles().create(RoleBuilder.create().name("realm-role-in-group").build());
+        realm.roles().create(RoleConfigBuilder.create().name("realm-role-in-group").build());
 
         Response response = realm.clients().create(ClientConfigBuilder.create().clientId("myclient").build());
         String clientUuid = ApiUtil.getCreatedId(response);
         response.close();
 
-        RoleRepresentation clientCompositeRole = RoleBuilder.create().name("client-composite").build();
+        RoleRepresentation clientCompositeRole = RoleConfigBuilder.create().name("client-composite").build();
         realm.clients().get(clientUuid).roles().create(clientCompositeRole);
-        realm.clients().get(clientUuid).roles().create(RoleBuilder.create().name("client-child").build());
+        realm.clients().get(clientUuid).roles().create(RoleConfigBuilder.create().name("client-child").build());
         realm.clients().get(clientUuid).roles().get("client-composite").addComposites(Collections
                 .singletonList(realm.clients().get(clientUuid).roles().get("client-child").toRepresentation()));
-        realm.clients().get(clientUuid).roles().create(RoleBuilder.create().name("client-role-in-group").build());
+        realm.clients().get(clientUuid).roles().create(RoleConfigBuilder.create().name("client-role-in-group").build());
 
         GroupRepresentation group = GroupConfigBuilder.create().name("mygroup").build();
         response = realm.groups().add(group);
@@ -238,17 +232,5 @@ public class UserRoleTest extends AbstractUserTest {
         }
 
         return null;
-    }
-
-    private RealmRepresentation addTestEventListener(RealmRepresentation rep) {
-        if (rep.getEventsListeners() == null) {
-            rep.setEventsListeners(new LinkedList<String>());
-        }
-
-        if (!rep.getEventsListeners().contains(TestEventsListenerProviderFactory.PROVIDER_ID)) {
-            rep.getEventsListeners().add(TestEventsListenerProviderFactory.PROVIDER_ID);
-        }
-
-        return rep;
     }
 }

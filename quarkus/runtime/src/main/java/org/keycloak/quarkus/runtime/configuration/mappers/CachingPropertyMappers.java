@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.function.BooleanSupplier;
 
+import org.hibernate.boot.model.source.spi.Caching;
 import org.keycloak.common.Profile;
 import org.keycloak.config.CachingOptions;
 import org.keycloak.config.Option;
@@ -63,6 +64,9 @@ final class CachingPropertyMappers {
                             }
                         })
                         .paramLabel("file")
+                        .build(),
+                fromOption(CachingOptions.CACHE_CONFIG_MUTATE)
+                        .to("kc.spi-cache-embedded--default--config-mutate")
                         .build(),
                 fromOption(CachingOptions.CACHE_EMBEDDED_MTLS_ENABLED)
                         .to("kc.spi-jgroups-mtls--default--enabled")
@@ -185,7 +189,7 @@ final class CachingPropertyMappers {
         return getOptionalKcValue(CachingOptions.CACHE_REMOTE_HOST_PROPERTY).isPresent();
     }
 
-    private static boolean cacheSetToInfinispan() {
+    public static boolean cacheSetToInfinispan() {
         if (InfinispanUtils.isRemoteInfinispan()) {
             return false;
         }
