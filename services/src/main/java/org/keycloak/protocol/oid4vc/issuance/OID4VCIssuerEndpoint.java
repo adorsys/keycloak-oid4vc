@@ -37,8 +37,6 @@ import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.Response;
 import org.jboss.logging.Logger;
 import org.keycloak.common.util.SecretGenerator;
-import org.keycloak.component.ComponentFactory;
-import org.keycloak.component.ComponentModel;
 import org.keycloak.constants.Oid4VciConstants;
 import org.keycloak.events.Errors;
 import org.keycloak.events.EventBuilder;
