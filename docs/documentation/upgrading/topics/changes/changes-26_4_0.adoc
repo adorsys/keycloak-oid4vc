@@ -34,6 +34,13 @@ Starting with this release, and when using the original PostgreSQL driver, {proj
 
 You can override this behavior by setting your own value for `targetServerType` in the DB URL or additional properties.
 
+=== Operator default affinity configuration changed
+
+The default affinity strategy has been updated so that a `preferredDuringSchedulingIgnoredDuringExecution` anti-affinity rule
+is created for both zones and nodes in order to increase availability in the presence of failures. Previously the default
+preferred that all nodes were deployed to the same availability zone. See the link:{highavailabilityguide_link}[{highavailabilityguide_name}]
+for more details.
+
 === JGroups system properties replaced with CLI options
 
 Until now it was necessary to configure JGroups network addresses and ports using the `+jgroups.bind.*+` and `+jgroups.external_*+`
@@ -92,6 +99,12 @@ When tracing is enabled, now also calls to other nodes of a {project_name} clust
 
 To disable this kind of tracing, set the option `tracing-infinispan-enabled` to `false`.
 
+=== Login theme optimized for OTP and recovery code entry
+
+The input fields  in the login theme for OTP and recovery codes and have been optimized:
+
+* The input mode is now `numeric`, which will ease the input on mobile devices.
+* The auto-complete is set to `one-time-code` to avoid interference with password managers.
 
 // ------------------------ Deprecated features ------------------------ //
 == Deprecated features

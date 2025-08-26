@@ -148,6 +148,7 @@ public class TokenEndpoint {
 
         OAuth2GrantType.Context context = new OAuth2GrantType.Context(session, clientConfig, clientAuthAttributes,
                                                                       formParams, event, cors, tokenManager);
+        context.setProtocol(new OIDCLoginProtocol(session, realm, session.getContext().getUri(), headers, event));
         return grant.process(context);
     }
 
@@ -211,8 +212,8 @@ public class TokenEndpoint {
     }
 
     private void checkParameterDuplicated() {
-        for (String key : formParams.keySet()) {
-            if (formParams.get(key).size() != 1 && !grant.getSupportedMultivaluedRequestParameters().contains(key)) {
+        for (var entry : formParams.entrySet()) {
+            if (entry.getValue().size() != 1 && !grant.getSupportedMultivaluedRequestParameters().contains(entry.getKey())) {
                 throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_REQUEST, "duplicated parameter",
                         Response.Status.BAD_REQUEST);
             }
