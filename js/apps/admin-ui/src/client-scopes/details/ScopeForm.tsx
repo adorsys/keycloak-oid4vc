@@ -240,7 +240,8 @@ export const ScopeForm = ({ clientScope, save }: ScopeFormProps) => {
               controller={{ defaultValue: "dc+sd-jwt" }}
               options={[
                 { key: "dc+sd-jwt", value: "SD-JWT VC (dc+sd-jwt)" },
-                { key: "jwt_vc_json", value: "JWT VC (jwt_vc_json)" },
+                { key: "jwt_vc", value: "JWT VC (jwt_vc)" },
+                { key: "ldp_vc", value: "LDP VC (ldp_vc)" },
               ]}
             />
           </>
