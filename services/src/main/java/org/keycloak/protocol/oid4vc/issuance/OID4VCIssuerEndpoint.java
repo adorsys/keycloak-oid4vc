@@ -127,8 +127,6 @@ public class OID4VCIssuerEndpoint {
     public static final String CREDENTIAL_OFFER_PATH = "credential-offer/";
     public static final String RESPONSE_TYPE_IMG_PNG = Oid4VciConstants.RESPONSE_TYPE_IMG_PNG;
     public static final String CREDENTIAL_OFFER_URI_CODE_SCOPE = Oid4VciConstants.CREDENTIAL_OFFER_URI_CODE_SCOPE;
-    public static final String RESPONSE_TYPE_IMG_PNG = Oid4VciConstants.RESPONSE_TYPE_IMG_PNG;
-    public static final String CREDENTIAL_OFFER_URI_CODE_SCOPE = Oid4VciConstants.CREDENTIAL_OFFER_URI_CODE_SCOPE;
     private final KeycloakSession session;
     private final AppAuthManager.BearerTokenAuthenticator bearerTokenAuthenticator;
     private final TimeProvider timeProvider;
