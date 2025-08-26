@@ -1,5 +1,5 @@
 import type ClientScopeRepresentation from "@keycloak/keycloak-admin-client/lib/defs/clientScopeRepresentation";
-import { ActionGroup, Button } from "@patternfly/react-core";
+import { ActionGroup, Alert, Button } from "@patternfly/react-core";
 import { useEffect } from "react";
 import { FormProvider, useForm, useWatch } from "react-hook-form";
 import { useTranslation } from "react-i18next";
@@ -34,7 +34,7 @@ export const ScopeForm = ({ clientScope, save }: ScopeFormProps) => {
   const form = useForm<ClientScopeDefaultOptionalType>({ mode: "onChange" });
   const { control, handleSubmit, setValue, formState } = form;
   const { isDirty, isValid } = formState;
-  const { realm } = useRealm();
+  const { realm, realmRepresentation } = useRealm();
 
   const providers = useLoginProviders();
   const isFeatureEnabled = useIsFeatureEnabled();
@@ -55,6 +55,19 @@ export const ScopeForm = ({ clientScope, save }: ScopeFormProps) => {
     defaultValue: "false",
   });
 
+  // Watch for protocol selection to conditionally show OID4VCI fields
+  const selectedProtocol: string | undefined = useWatch({
+    control,
+    name: "protocol",
+    defaultValue: clientScope?.protocol ?? providers[0],
+  });
+
+  const isOid4vcProtocol = selectedProtocol === "oid4vc";
+  const isOid4vcFeatureEnabled = isFeatureEnabled(Feature.OpenId4VCI);
+  const isOid4vcRealmEnabled =
+    realmRepresentation?.verifiableCredentialsEnabled === true;
+  const isOid4vcEnabled = isOid4vcFeatureEnabled && isOid4vcRealmEnabled;
+
   const setDynamicRegex = (value: string, append: boolean) =>
     setValue(
       convertAttributeNameToForm<ClientScopeDefaultOptionalType>(
@@ -66,7 +79,7 @@ export const ScopeForm = ({ clientScope, save }: ScopeFormProps) => {
 
   useEffect(() => {
     convertToFormValues(clientScope ?? {}, setValue);
-  }, [clientScope]);
+  }, [clientScope, setValue]);
   return (
     <FormAccess
       role="manage-clients"
@@ -184,6 +197,62 @@ export const ScopeForm = ({ clientScope, save }: ScopeFormProps) => {
           type="number"
           min={0}
         />
+
+        {/* OID4VCI Credential Configuration Section */}
+        {isOid4vcProtocol && isOid4vcEnabled && (
+          <>
+            <TextControl
+              name={convertAttributeNameToForm<ClientScopeDefaultOptionalType>(
+                "attributes.vc.credential_configuration_id",
+              )}
+              label={t("credentialConfigurationId")}
+              labelIcon={t("credentialConfigurationIdHelp")}
+            />
+            <TextControl
+              name={convertAttributeNameToForm<ClientScopeDefaultOptionalType>(
+                "attributes.vc.credential_identifier",
+              )}
+              label={t("credentialIdentifier")}
+              labelIcon={t("credentialIdentifierHelp")}
+            />
+            <TextControl
+              name={convertAttributeNameToForm<ClientScopeDefaultOptionalType>(
+                "attributes.vc.issuer_did",
+              )}
+              label={t("issuerDid")}
+              labelIcon={t("issuerDidHelp")}
+            />
+            <TextControl
+              name={convertAttributeNameToForm<ClientScopeDefaultOptionalType>(
+                "attributes.vc.expiry_in_seconds",
+              )}
+              label={t("credentialLifetime")}
+              labelIcon={t("credentialLifetimeHelp")}
+              type="number"
+              min={1}
+            />
+            <SelectControl
+              name={convertAttributeNameToForm<ClientScopeDefaultOptionalType>(
+                "attributes.vc.format",
+              )}
+              label={t("supportedFormats")}
+              labelIcon={t("supportedFormatsHelp")}
+              controller={{ defaultValue: "dc+sd-jwt" }}
+              options={[
+                { key: "dc+sd-jwt", value: "SD-JWT VC (dc+sd-jwt)" },
+                { key: "jwt_vc_json", value: "JWT VC (jwt_vc_json)" },
+              ]}
+            />
+          </>
+        )}
+        {isOid4vcProtocol && !isOid4vcEnabled && (
+          <Alert variant="info" title={t("oid4vcFeatureDisabled")} isInline>
+            {!isOid4vcFeatureEnabled
+              ? t("oid4vcGlobalFeatureDisabledHelp")
+              : t("oid4vcRealmFeatureDisabledHelp")}
+          </Alert>
+        )}
+
         <ActionGroup>
           <FormSubmitButton
             data-testid="save"
