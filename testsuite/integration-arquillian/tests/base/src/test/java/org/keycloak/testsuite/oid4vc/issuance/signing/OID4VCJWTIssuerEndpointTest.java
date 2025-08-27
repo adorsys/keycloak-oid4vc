@@ -906,35 +906,28 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
 
         testingClient.server(TEST_REALM_NAME).run(session -> {
             try {
-                // Setup authenticator
                 AppAuthManager.BearerTokenAuthenticator authenticator = new AppAuthManager.BearerTokenAuthenticator(session);
                 authenticator.setTokenString(token);
                 String issuer = OID4VCIssuerWellKnownProvider.getIssuer(session.getContext());
 
-                // Create two JWT proofs for different keys
                 String jwtProof1 = generateJwtProof(issuer, cNonce);
                 String jwtProof2 = generateJwtProof(issuer, cNonce);
                 Proofs proofs = new Proofs().setJwt(Arrays.asList(jwtProof1, jwtProof2));
 
-                // Get credential configuration ID
                 String configId = Optional.ofNullable(jwtTypeCredentialClientScope)
                         .map(scope -> scope.getAttributes().get(CredentialScopeModel.CONFIGURATION_ID))
                         .orElseThrow(() -> new IllegalStateException("jwtTypeCredentialClientScope is null"));
 
-                // Create credential request
                 CredentialRequest request = new CredentialRequest()
                         .setFormat(Format.JWT_VC)
                         .setCredentialConfigurationId(configId)
                         .setProofs(proofs);
 
-                // Prepare endpoint
                 OID4VCIssuerEndpoint endpoint = prepareIssuerEndpoint(session, authenticator);
 
-                // Execute request
                 Response response = endpoint.requestCredential(request);
                 assertEquals("Response status should be OK", Response.Status.OK.getStatusCode(), response.getStatus());
 
-                // Parse response
                 CredentialResponse credentialResponse = JsonSerialization.mapper
                         .convertValue(response.getEntity(), CredentialResponse.class);
                 assertNotNull("Credential response should not be null", credentialResponse);
@@ -973,7 +966,6 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
 
                 }
 
-                // Verify notification ID
                 assertNotNull("Notification ID should be present", credentialResponse.getNotificationId());
             } catch (Exception e) {
                 throw new RuntimeException("Test failed due to: " + e.getMessage(), e);
