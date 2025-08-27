@@ -914,13 +914,10 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
                 String jwtProof2 = generateJwtProof(issuer, cNonce);
                 Proofs proofs = new Proofs().setJwt(Arrays.asList(jwtProof1, jwtProof2));
 
-                String configId = Optional.ofNullable(jwtTypeCredentialClientScope)
-                        .map(scope -> scope.getAttributes().get(CredentialScopeModel.CONFIGURATION_ID))
-                        .orElseThrow(() -> new IllegalStateException("jwtTypeCredentialClientScope is null"));
 
                 CredentialRequest request = new CredentialRequest()
                         .setFormat(Format.JWT_VC)
-                        .setCredentialConfigurationId(configId)
+                        .setCredentialIdentifier(scopeName)
                         .setProofs(proofs);
 
                 OID4VCIssuerEndpoint endpoint = prepareIssuerEndpoint(session, authenticator);
