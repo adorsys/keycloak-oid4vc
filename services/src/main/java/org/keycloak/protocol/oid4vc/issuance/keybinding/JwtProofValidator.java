@@ -28,6 +28,7 @@ import org.keycloak.models.KeycloakSession;
 import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerWellKnownProvider;
 import org.keycloak.protocol.oid4vc.issuance.VCIssuanceContext;
 import org.keycloak.protocol.oid4vc.issuance.VCIssuerException;
+import org.keycloak.protocol.oid4vc.model.ErrorType;
 import org.keycloak.protocol.oid4vc.model.JwtProof;
 import org.keycloak.protocol.oid4vc.model.Proof;
 import org.keycloak.protocol.oid4vc.model.ProofType;
@@ -266,9 +267,15 @@ public class JwtProofValidator extends AbstractProofValidator {
 
         KeycloakContext keycloakContext = keycloakSession.getContext();
         CNonceHandler cNonceHandler = keycloakSession.getProvider(CNonceHandler.class);
-        cNonceHandler.verifyCNonce(proofPayload.getNonce(),
-                List.of(OID4VCIssuerWellKnownProvider.getCredentialsEndpoint(keycloakContext)),
-                Map.of(JwtCNonceHandler.SOURCE_ENDPOINT,
-                        OID4VCIssuerWellKnownProvider.getNonceEndpoint(keycloakContext)));
+
+        try {
+            cNonceHandler.verifyCNonce(proofPayload.getNonce(),
+                    List.of(OID4VCIssuerWellKnownProvider.getCredentialsEndpoint(keycloakContext)),
+                    Map.of(JwtCNonceHandler.SOURCE_ENDPOINT,
+                            OID4VCIssuerWellKnownProvider.getNonceEndpoint(keycloakContext)));
+        } catch (VerificationException e) {
+            throw new VCIssuerException(ErrorType.INVALID_NONCE,
+                    "The proofs parameter in the Credential Request uses an invalid nonce", e);
+        }
     }
 }
