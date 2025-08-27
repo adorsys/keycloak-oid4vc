@@ -404,11 +404,9 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
 
                     assertNotNull("The sd-jwt-credential can optionally provide a claims claim.",
                             credentialIssuer.getCredentialsSupported().get(credentialConfigurationId)
-                                    .getClaims());
-                                  credentialIssuer.getCredentialsSupported().get(credentialConfigurationId)
-                                          .getCredentialMetadata() != null ?
-                                          credentialIssuer.getCredentialsSupported().get(credentialConfigurationId)
-                                                  .getCredentialMetadata().getClaims() : null);
+                                    .getCredentialMetadata() != null ?
+                                    credentialIssuer.getCredentialsSupported().get(credentialConfigurationId)
+                                            .getCredentialMetadata().getClaims() : null);
 
                     Claims jwtVcClaims = jwtVcConfig.getCredentialMetadata() != null ? jwtVcConfig.getCredentialMetadata().getClaims() : null;
                     assertNotNull("The sd-jwt-credential can optionally provide a claims claim.",
@@ -489,14 +487,11 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
                     assertEquals("The sd-jwt-credential should display as Test Credential",
                             credentialConfigurationId,
                             credentialIssuer.getCredentialsSupported().get(credentialConfigurationId)
-                                    .getDisplay().get(0).getName());
-                                 credentialConfigurationId,
-                                 credentialIssuer.getCredentialsSupported().get(credentialConfigurationId)
-                                         .getCredentialMetadata() != null &&
-                                         credentialIssuer.getCredentialsSupported().get(credentialConfigurationId)
-                                                 .getCredentialMetadata().getDisplay() != null ?
-                                         credentialIssuer.getCredentialsSupported().get(credentialConfigurationId)
-                                                 .getCredentialMetadata().getDisplay().get(0).getName() : null);
+                                    .getCredentialMetadata() != null &&
+                                    credentialIssuer.getCredentialsSupported().get(credentialConfigurationId)
+                                            .getCredentialMetadata().getDisplay() != null ?
+                                    credentialIssuer.getCredentialsSupported().get(credentialConfigurationId)
+                                            .getCredentialMetadata().getDisplay().get(0).getName() : null);
                 }));
     }
 
