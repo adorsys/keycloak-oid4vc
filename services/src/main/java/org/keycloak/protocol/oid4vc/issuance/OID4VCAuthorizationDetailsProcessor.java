@@ -28,14 +28,13 @@ import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.UserSessionModel;
 import org.keycloak.protocol.oid4vc.model.AuthorizationDetail;
 import org.keycloak.protocol.oid4vc.model.AuthorizationDetailResponse;
-import org.keycloak.protocol.oid4vc.model.CredentialIssuer;
+import org.keycloak.protocol.oid4vc.model.ClaimsDescription;
+import org.keycloak.protocol.oid4vc.utils.ClaimsPathPointer;
 import org.keycloak.protocol.oid4vc.model.SupportedCredentialConfiguration;
 import org.keycloak.services.CorsErrorResponseException;
 import org.keycloak.services.cors.Cors;
 import org.keycloak.util.JsonSerialization;
-import org.keycloak.protocol.oid4vc.model.Format;
 
-import static org.keycloak.protocol.oid4vc.model.Format.SUPPORTED_FORMATS;
 import static org.keycloak.OAuth2Constants.AUTHORIZATION_DETAILS_PARAM;
 
 import java.util.ArrayList;
@@ -67,7 +66,12 @@ public class OID4VCAuthorizationDetailsProcessor implements AuthorizationDetails
         }
 
         List<AuthorizationDetail> authDetails = parseAuthorizationDetails(authorizationDetailsParam);
-        List<String> supportedFormats = new ArrayList<>(SUPPORTED_FORMATS);
+
+        if (authDetails.isEmpty()) {
+            logger.warnf("Empty authorization_details array is not allowed");
+            throw getInvalidRequestException("Invalid authorization_details: empty array is not allowed");
+        }
+
         Map<String, SupportedCredentialConfiguration> supportedCredentials = OID4VCIssuerWellKnownProvider.getSupportedCredentials(session);
         List<AuthorizationDetailResponse> authDetailsResponse = new ArrayList<>();
 
@@ -76,9 +80,14 @@ public class OID4VCAuthorizationDetailsProcessor implements AuthorizationDetails
         String issuerIdentifier = OID4VCIssuerWellKnownProvider.getIssuer(session.getContext());
 
         for (AuthorizationDetail detail : authDetails) {
-            validateAuthorizationDetail(detail, supportedFormats, supportedCredentials, authorizationServers, issuerIdentifier);
-            AuthorizationDetailResponse responseDetail = buildAuthorizationDetailResponse(detail, userSession, supportedCredentials, supportedFormats, clientSessionCtx);
+            validateAuthorizationDetail(detail, supportedCredentials, authorizationServers, issuerIdentifier);
+            AuthorizationDetailResponse responseDetail = buildAuthorizationDetailResponse(detail, userSession, supportedCredentials, clientSessionCtx);
             authDetailsResponse.add(responseDetail);
+        }
+
+        if (authDetailsResponse.isEmpty()) {
+            logger.warnf("No valid authorization_details found after validation");
+            throw getInvalidRequestException("Invalid authorization_details: no valid authorization details found");
         }
 
         return authDetailsResponse;
@@ -99,11 +108,10 @@ public class OID4VCAuthorizationDetailsProcessor implements AuthorizationDetails
         return new CorsErrorResponseException(cors, "invalid_request", errorDescription, Response.Status.BAD_REQUEST);
     }
 
-    private void validateAuthorizationDetail(AuthorizationDetail detail, List<String> supportedFormats, Map<String, SupportedCredentialConfiguration> supportedCredentials, List<String> authorizationServers, String issuerIdentifier) {
+    private void validateAuthorizationDetail(AuthorizationDetail detail, Map<String, SupportedCredentialConfiguration> supportedCredentials, List<String> authorizationServers, String issuerIdentifier) {
         String type = detail.getType();
         String credentialConfigurationId = detail.getCredentialConfigurationId();
-        String format = detail.getFormat();
-        Object vct = detail.getAdditionalFields().get("vct");
+        List<ClaimsDescription> claims = detail.getClaims();
 
         // If authorization_servers is present, locations must be set to issuer identifier
         if (authorizationServers != null && !authorizationServers.isEmpty() && OPENID_CREDENTIAL_TYPE.equals(type)) {
@@ -120,58 +128,56 @@ public class OID4VCAuthorizationDetailsProcessor implements AuthorizationDetails
             throw getInvalidRequestException("Invalid authorization_details type: " + type + ", expected=" + OPENID_CREDENTIAL_TYPE);
         }
 
-        // Ensure exactly one of credential_configuration_id or format is present
-        if ((credentialConfigurationId == null && format == null) || (credentialConfigurationId != null && format != null)) {
-            logger.warnf("Exactly one of credential_configuration_id or format must be present. credentialConfigurationId: %s, format: %s", credentialConfigurationId, format);
-            throw getInvalidRequestException("Invalid authorization_details: credentialConfigurationId=" + credentialConfigurationId + ", format=" + format + ". Exactly one must be present.");
+        // credential_configuration_id is REQUIRED
+        if (credentialConfigurationId == null) {
+            logger.warnf("Missing credential_configuration_id in authorization_details");
+            throw getInvalidRequestException("Invalid authorization_details: credential_configuration_id is required");
         }
 
-        if (credentialConfigurationId != null) {
-            // Validate credential_configuration_id
-            SupportedCredentialConfiguration config = supportedCredentials.get(credentialConfigurationId);
-            if (config == null) {
-                logger.warnf("Unsupported credential_configuration_id: %s", credentialConfigurationId);
-                throw getInvalidRequestException("Invalid credential configuration: unsupported credential_configuration_id=" + credentialConfigurationId);
-            }
-        } else {
-            // Validate format
-            if (!supportedFormats.contains(format)) {
-                logger.warnf("Unsupported format: %s", format);
-                throw getInvalidRequestException("Invalid credential format: unsupported format=" + format + ", supported=" + supportedFormats);
-            }
+        // Validate credential_configuration_id
+        SupportedCredentialConfiguration config = supportedCredentials.get(credentialConfigurationId);
+        if (config == null) {
+            logger.warnf("Unsupported credential_configuration_id: %s", credentialConfigurationId);
+            throw getInvalidRequestException("Invalid credential configuration: unsupported credential_configuration_id=" + credentialConfigurationId);
+        }
 
-            // SD-JWT VC: vct is REQUIRED and must match a supported credential configuration
-            if (Format.SD_JWT_VC.equals(format)) {
-                if (!(vct instanceof String) || ((String) vct).isEmpty()) {
-                    logger.warnf("Missing or invalid vct for format %s", Format.SD_JWT_VC);
-                    throw getInvalidRequestException(String.format("Missing or invalid vct for format=%s", Format.SD_JWT_VC));
-                }
-                boolean vctSupported = supportedCredentials.values().stream()
-                        .filter(config -> format.equals(config.getFormat()))
-                        .anyMatch(config -> vct.equals(config.getVct()));
-                if (!vctSupported) {
-                    logger.warnf("Unsupported vct for format %s: %s", format, vct);
-                    throw getInvalidRequestException("Invalid credential configuration: unsupported vct=" + vct + " for format=" + format);
-                }
-            } else {
-                // For other formats, do not require vct; allow for future format-specific fields in additionalFields
-                // No-op for now
-            }
+        // Validate claims if present
+        if (claims != null && !claims.isEmpty()) {
+            validateClaims(claims);
         }
     }
 
-    private AuthorizationDetailResponse buildAuthorizationDetailResponse(AuthorizationDetail detail, UserSessionModel userSession, Map<String, SupportedCredentialConfiguration> supportedCredentials, List<String> supportedFormats, ClientSessionContext clientSessionCtx) {
+    private void validateClaims(List<ClaimsDescription> claims) {
+        // Validate each claims description
+        for (ClaimsDescription claim : claims) {
+            if (claim.getPath() == null || claim.getPath().isEmpty()) {
+                logger.warnf("Invalid claims description: path is required");
+                throw getInvalidRequestException("Invalid claims description: path is required");
+            }
+
+            // Validate the claims path pointer
+            if (!ClaimsPathPointer.isValidPath(claim.getPath())) {
+                logger.warnf("Invalid claims path pointer: %s", claim.getPath());
+                throw getInvalidRequestException("Invalid claims path pointer: " + claim.getPath());
+            }
+        }
+
+        // Validate for conflicts and contradictions
+        if (!ClaimsPathPointer.validateClaimsDescriptions(claims)) {
+            logger.warnf("Conflicting or contradictory claims descriptions found");
+            throw getInvalidRequestException("Invalid claims descriptions: conflicting or contradictory claims found");
+        }
+    }
+
+    private AuthorizationDetailResponse buildAuthorizationDetailResponse(AuthorizationDetail detail, UserSessionModel userSession, Map<String, SupportedCredentialConfiguration> supportedCredentials, ClientSessionContext clientSessionCtx) {
         String credentialConfigurationId = detail.getCredentialConfigurationId();
-        String format = detail.getFormat();
-        Object vct = detail.getAdditionalFields().get("vct");
 
         // Try to reuse identifier from authorizationDetailsResponse in client session context
         List<AuthorizationDetailResponse> previousResponses = clientSessionCtx.getAttribute(AUTHORIZATION_DETAILS_RESPONSE_KEY, List.class);
         List<String> credentialIdentifiers = null;
         if (previousResponses != null) {
             for (AuthorizationDetailResponse prev : previousResponses) {
-                if ((credentialConfigurationId != null && credentialConfigurationId.equals(prev.getCredentialConfigurationId())) ||
-                        (credentialConfigurationId == null && format != null && format.equals(prev.getFormat()))) {
+                if (credentialConfigurationId.equals(prev.getCredentialConfigurationId())) {
                     credentialIdentifiers = prev.getCredentialIdentifiers();
                     break;
                 }
@@ -184,15 +190,14 @@ public class OID4VCAuthorizationDetailsProcessor implements AuthorizationDetails
 
         AuthorizationDetailResponse responseDetail = new AuthorizationDetailResponse();
         responseDetail.setType(OPENID_CREDENTIAL_TYPE);
+        responseDetail.setCredentialConfigurationId(credentialConfigurationId);
         responseDetail.setCredentialIdentifiers(credentialIdentifiers);
-        if (credentialConfigurationId != null) {
-            responseDetail.setCredentialConfigurationId(credentialConfigurationId);
-        } else {
-            responseDetail.setFormat(format);
-            if (Format.SD_JWT_VC.equals(format) && vct != null) {
-                responseDetail.getAdditionalFields().put("vct", vct);
-            }
+
+        // Include claims in response if present in request
+        if (detail.getClaims() != null) {
+            responseDetail.setClaims(detail.getClaims());
         }
+
         return responseDetail;
     }
 } 
