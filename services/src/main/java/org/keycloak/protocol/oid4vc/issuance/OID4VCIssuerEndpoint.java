@@ -37,12 +37,13 @@ import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.Response;
 import org.jboss.logging.Logger;
 import org.keycloak.common.util.SecretGenerator;
+import org.keycloak.constants.Oid4VciConstants;
 import org.keycloak.events.Errors;
 import org.keycloak.events.EventBuilder;
+import org.keycloak.jose.jwk.JWK;
 import org.keycloak.jose.jwe.JWE;
 import org.keycloak.jose.jwe.JWEException;
 import org.keycloak.jose.jwe.JWEHeader;
-import org.keycloak.jose.jwk.JWK;
 import org.keycloak.jose.jwk.JWKParser;
 import org.keycloak.models.AuthenticatedClientSessionModel;
 import org.keycloak.models.ClientModel;
@@ -124,8 +125,8 @@ public class OID4VCIssuerEndpoint {
     public static final String NONCE_PATH = "nonce";
     public static final String CREDENTIAL_PATH = "credential";
     public static final String CREDENTIAL_OFFER_PATH = "credential-offer/";
-    public static final String RESPONSE_TYPE_IMG_PNG = "image/png";
-    public static final String CREDENTIAL_OFFER_URI_CODE_SCOPE = "credential-offer";
+    public static final String RESPONSE_TYPE_IMG_PNG = Oid4VciConstants.RESPONSE_TYPE_IMG_PNG;
+    public static final String CREDENTIAL_OFFER_URI_CODE_SCOPE = Oid4VciConstants.CREDENTIAL_OFFER_URI_CODE_SCOPE;
     private final KeycloakSession session;
     private final AppAuthManager.BearerTokenAuthenticator bearerTokenAuthenticator;
     private final TimeProvider timeProvider;
@@ -789,10 +790,16 @@ public class OID4VCIssuerEndpoint {
             throw new BadRequestException(String.format("Unable to validate proofs of type %s", proofType));
         }
 
-        // Validate proof and bind public key to credential
+        // Validate proof and bind public key(s) to credential
         try {
-            Optional.ofNullable(proofValidator.validateProof(vcIssuanceContext))
-                    .ifPresent(jwk -> vcIssuanceContext.getCredentialBody().addKeyBinding(jwk));
+            List<JWK> jwks = proofValidator.validateProof(vcIssuanceContext);
+            if (jwks != null && !jwks.isEmpty()) {
+                if (jwks.size() > 1) {
+                    LOGGER.warnf("Multiple keys (%d) returned for proof validation—only the first will be used", jwks.size());
+                }
+                // Bind only the first key for VC compatibility
+                vcIssuanceContext.getCredentialBody().addKeyBinding(jwks.get(0));
+            }
         } catch (VCIssuerException e) {
             throw new BadRequestException("Could not validate provided proof", e);
         }
