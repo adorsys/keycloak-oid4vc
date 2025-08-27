@@ -86,7 +86,6 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
         Map<String, String> attributes = Optional.ofNullable(testRealm.getAttributes()).orElseGet(HashMap::new);
         attributes.put("credential_response_encryption.encryption_required", "true");
         attributes.put(Oid4VciConstants.BATCH_CREDENTIAL_ISSUANCE_BATCH_SIZE, "10");
-        attributes.put("signed_metadata", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJmb28iOiJiYXIifQ.XYZ123abc");
         attributes.put("batch_credential_issuance.batch_size", "10");
         attributes.put(ATTR_ENCRYPTION_REQUIRED, "true");
         testRealm.setAttributes(attributes);
@@ -205,12 +204,8 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
         RealmModel realm = session.getContext().getRealm();
 
         realm.setAttribute(ATTR_ENCRYPTION_REQUIRED, "true");
-<<<<<<< HEAD
         realm.setAttribute(Oid4VciConstants.BATCH_CREDENTIAL_ISSUANCE_BATCH_SIZE, "10");
-        realm.setAttribute("signed_metadata", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJmb28iOiJiYXIifQ.XYZ123abc");
-=======
         realm.setAttribute("batch_credential_issuance.batch_size", "10");
->>>>>>> 9d34a3e962 (Restructure credential_configurations_supported parsing to handle credential_metadata with display and claims && Update Credential Issuer Metadata structure)
 
         OID4VCIssuerWellKnownProvider provider = new OID4VCIssuerWellKnownProvider(session);
         return (CredentialIssuer) provider.getConfig();
