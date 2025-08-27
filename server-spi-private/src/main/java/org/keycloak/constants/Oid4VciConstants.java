@@ -28,7 +28,7 @@ public final class Oid4VciConstants {
     public static final String C_NONCE_LIFETIME_IN_SECONDS = "vc.c-nonce-lifetime-seconds";
 
     public static final String CREDENTIAL_SUBJECT = "credentialSubject";
-
+    
     // --- Endpoints/Well-Known ---
     public static final String WELL_KNOWN_OPENID_CREDENTIAL_ISSUER = "openid-credential-issuer";
     public static final String RESPONSE_TYPE_IMG_PNG = "image/png";
@@ -36,6 +36,7 @@ public final class Oid4VciConstants {
 
     // --- Keybinding/Credential Builder ---
     public static final String SOURCE_ENDPOINT = "source_endpoint";
+    public static final String BATCH_CREDENTIAL_ISSUANCE_BATCH_SIZE = "batch_credential_issuance.batch_size";
 
     private Oid4VciConstants() {
     }
