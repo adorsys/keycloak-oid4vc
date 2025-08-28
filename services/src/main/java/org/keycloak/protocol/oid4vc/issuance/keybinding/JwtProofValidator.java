@@ -69,8 +69,6 @@ public class JwtProofValidator extends AbstractProofValidator {
         this.keyResolver = keyResolver;
     }
 
-    // Removed old single-proof access; using Proofs with arrays instead.
-
     @Override
     public String getProofType() {
         return ProofType.JWT;

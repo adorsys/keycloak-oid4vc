@@ -47,10 +47,7 @@ public class CredentialRequest {
 
     @JsonProperty("proofs")
     private Proofs proofs;
-    
-    // legacy single-proof field removed in favor of Proofs aggregate structure
 
-    // See: https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#name-format-identifier-3
     @JsonProperty("credential_definition")
     private CredentialDefinition credentialDefinition;
 
