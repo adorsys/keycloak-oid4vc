@@ -16,9 +16,7 @@
  */
 package org.keycloak.services.resources;
 
-import org.apache.http.HttpHeaders;
 import org.jboss.logging.Logger;
-import org.jboss.resteasy.reactive.NoCache;
 import org.keycloak.http.HttpRequest;
 import org.keycloak.OAuthErrorException;
 import org.keycloak.authorization.AuthorizationProvider;
@@ -32,7 +30,6 @@ import org.keycloak.models.RealmModel;
 import org.keycloak.protocol.LoginProtocol;
 import org.keycloak.protocol.LoginProtocolFactory;
 import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerWellKnownProvider;
-import org.keycloak.protocol.oid4vc.model.CredentialIssuer;
 import org.keycloak.services.CorsErrorResponseException;
 import org.keycloak.services.clientregistration.ClientRegistrationService;
 import org.keycloak.services.cors.Cors;
@@ -54,7 +51,6 @@ import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
-import jakarta.ws.rs.core.Response.ResponseBuilder;
 import jakarta.ws.rs.core.UriBuilder;
 import jakarta.ws.rs.core.UriInfo;
 import jakarta.ws.rs.ext.Provider;
@@ -227,7 +223,6 @@ public class RealmsResource {
     @GET
     @Path("{realm}/.well-known/{alias}")
     @Produces({MediaType.APPLICATION_JSON, org.keycloak.utils.MediaType.APPLICATION_JWT})
-    @NoCache
     public Response getWellKnown(final @PathParam("realm") String name,
                                  final @PathParam("alias") String alias) {
         resolveRealmAndUpdateSession(name);
@@ -248,39 +243,13 @@ public class RealmsResource {
             throw new NotFoundException("Well-known provider not found for ID: " + wellKnownProviderFactoryFound.getId());
         }
 
-        Object config = wellKnown.getConfig();
-        RealmModel realm = session.getContext().getRealm();
-        ResponseBuilder responseBuilder;
-
-        // Check Accept header for content negotiation
-        String acceptHeader = session.getContext().getRequestHeaders().getHeaderString(HttpHeaders.ACCEPT);
-        boolean preferJwt = acceptHeader != null && acceptHeader.contains(org.keycloak.utils.MediaType.APPLICATION_JWT);
-
-        // Check if signed metadata is enabled for OID4VCI provider
-        boolean signedMetadataEnabled = Boolean.parseBoolean(realm.getAttribute(OID4VCIssuerWellKnownProvider.SIGNED_METADATA_ENABLED_ATTR));
-
-        if (preferJwt && wellKnown instanceof OID4VCIssuerWellKnownProvider && signedMetadataEnabled) {
-            // Generate signed JWT metadata
-            OID4VCIssuerWellKnownProvider oid4vcProvider = (OID4VCIssuerWellKnownProvider) wellKnown;
-            String signedJwt = null;
-            try {
-                signedJwt = oid4vcProvider.generateSignedMetadata((CredentialIssuer) config, session);
-            } catch (Exception e) {
-                logger.warnf(e, "Failed to generate signed metadata for realm: %s", realm.getName());
-            }
-            if (signedJwt != null) {
-                responseBuilder = Response.ok(signedJwt).type(org.keycloak.utils.MediaType.APPLICATION_JWT);
-            } else {
-                logger.debugf("Falling back to JSON response due to signed metadata failure for realm: %s", realm.getName());
-                responseBuilder = Response.ok(config).type(MediaType.APPLICATION_JSON);
-            }
-        } else {
-            // Default to JSON response
-            responseBuilder = Response.ok(config).type(MediaType.APPLICATION_JSON);
+        if (wellKnown instanceof OID4VCIssuerWellKnownProvider) {
+            return ((OID4VCIssuerWellKnownProvider) wellKnown).getMetadataResponse(session);
         }
 
+        Object config = wellKnown.getConfig();
         return Cors.builder().allowAllOrigins().auth()
-                .add(responseBuilder.cacheControl(CacheControlUtil.noCache()));
+                .add(Response.ok(config).type(MediaType.APPLICATION_JSON).cacheControl(CacheControlUtil.noCache()));
     }
 
     @Path("{realm}/authz")
