@@ -48,14 +48,7 @@ public class CredentialRequest {
     @JsonProperty("proofs")
     private Proofs proofs;
     
-    @JsonProperty("proof")
-    @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "proof_type")
-    @JsonSubTypes({
-            @JsonSubTypes.Type(value = JwtProof.class, name = ProofType.JWT),
-            @JsonSubTypes.Type(value = LdpVpProof.class, name = ProofType.LD_PROOF),
-            @JsonSubTypes.Type(value = AttestationProof.class, name = ProofType.ATTESTATION)
-    })
-    private Proof proof;
+    // legacy single-proof field removed in favor of Proofs aggregate structure
 
     // See: https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#name-format-identifier-3
     @JsonProperty("credential_definition")

@@ -29,8 +29,6 @@ import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerWellKnownProvider;
 import org.keycloak.protocol.oid4vc.issuance.VCIssuanceContext;
 import org.keycloak.protocol.oid4vc.issuance.VCIssuerException;
 import org.keycloak.protocol.oid4vc.model.ErrorType;
-import org.keycloak.protocol.oid4vc.model.JwtProof;
-import org.keycloak.protocol.oid4vc.model.Proof;
 import org.keycloak.protocol.oid4vc.model.ProofType;
 import org.keycloak.protocol.oid4vc.model.ProofTypesSupported;
 import org.keycloak.protocol.oid4vc.model.Proofs;
@@ -71,18 +69,7 @@ public class JwtProofValidator extends AbstractProofValidator {
         this.keyResolver = keyResolver;
     }
 
-    private static Proof getProof(VCIssuanceContext vcIssuanceContext) {
-        Proof proofObject = vcIssuanceContext.getCredentialRequest().getProof();
-        if (proofObject == null) {
-            throw new VCIssuerException("Credential configuration requires a proof of type: " + ProofType.JWT);
-        }
-
-        if (!(proofObject instanceof JwtProof)) {
-            throw new VCIssuerException("Wrong proof type. Expected JwtProof, but got: " + proofObject.getClass().getSimpleName());
-        }
-
-        return (JwtProof) proofObject;
-    }
+    // Removed old single-proof access; using Proofs with arrays instead.
 
     @Override
     public String getProofType() {
@@ -91,8 +78,8 @@ public class JwtProofValidator extends AbstractProofValidator {
 
     public List<JWK> validateProof(VCIssuanceContext vcIssuanceContext) throws VCIssuerException {
         try {
-            JWK jwk = validateJwtProof(vcIssuanceContext);
-            return Collections.singletonList(jwk);
+            List<JWK> jwks = validateJwtProof(vcIssuanceContext);
+            return jwks == null ? Collections.emptyList() : jwks;
         } catch (JWSInputException | VerificationException | IOException e) {
             throw new VCIssuerException("Could not validate JWT proof", e);
         } catch (GeneralSecurityException e) {

@@ -39,7 +39,7 @@ import org.keycloak.protocol.oid4vc.issuance.keybinding.ProofValidator;
 import org.keycloak.protocol.oid4vc.issuance.keybinding.StaticAttestationKeyResolver;
 import org.keycloak.protocol.oid4vc.model.AttestationProof;
 import org.keycloak.protocol.oid4vc.model.ISO18045ResistanceLevel;
-import org.keycloak.protocol.oid4vc.model.JwtProof;
+import org.keycloak.protocol.oid4vc.model.Proofs;
 import org.keycloak.protocol.oid4vc.model.KeyAttestationJwtBody;
 import org.keycloak.protocol.oid4vc.model.KeyAttestationsRequired;
 
@@ -244,7 +244,7 @@ public class OID4VCKeyAttestationTest extends OID4VCIssuerEndpointTest {
                     .get(JWT)
                     .setKeyAttestationsRequired(attestationRequirements);
 
-            vcIssuanceContext.getCredentialRequest().setProof(new AttestationProof(attestationJwt));
+            vcIssuanceContext.getCredentialRequest().setProofs(new Proofs().setAttestation(List.of(attestationJwt)));
 
             AttestationKeyResolver keyResolver = new StaticAttestationKeyResolver(
                     Map.of(attestationKey.getKid(), JWKBuilder.create().ec(attestationKey.getPublicKey()))
@@ -282,7 +282,7 @@ public class OID4VCKeyAttestationTest extends OID4VCIssuerEndpointTest {
             String attestationJwt = createValidAttestationJwt(session, attestationKey, proofJwk, cNonce);
             String jwtProof = generateJwtProofWithKeyAttestation(session, proofKey, attestationJwt, cNonce);
             VCIssuanceContext vcIssuanceContext = createVCIssuanceContext(session);
-            vcIssuanceContext.getCredentialRequest().setProof(new JwtProof(jwtProof));
+            vcIssuanceContext.getCredentialRequest().setProofs(new Proofs().setJwt(List.of(jwtProof)));
 
             JWK attestationJwk = JWKBuilder.create().ec(attestationKey.getPublicKey());
             attestationJwk.setKeyId(attestationKey.getKid());
@@ -311,7 +311,7 @@ public class OID4VCKeyAttestationTest extends OID4VCIssuerEndpointTest {
         String invalidAttestationJwt = "invalid.jwt.token";
 
         VCIssuanceContext vcIssuanceContext = createVCIssuanceContext(session);
-        vcIssuanceContext.getCredentialRequest().setProof(new AttestationProof(invalidAttestationJwt));
+        vcIssuanceContext.getCredentialRequest().setProofs(new Proofs().setAttestation(List.of(invalidAttestationJwt)));
 
         AttestationKeyResolver keyResolver = new StaticAttestationKeyResolver(Map.of(attestationKey.getKid(), JWKBuilder.create().ec(attestationKey.getPublicKey())));
         AttestationProofValidator validator = new AttestationProofValidator(session, keyResolver);
@@ -334,7 +334,7 @@ public class OID4VCKeyAttestationTest extends OID4VCIssuerEndpointTest {
             String jwtProof = generateJwtProofWithKeyAttestation(session, proofKey, attestationJwt, cNonce);
 
             VCIssuanceContext vcIssuanceContext = createVCIssuanceContext(session);
-            vcIssuanceContext.getCredentialRequest().setProof(new JwtProof(jwtProof));
+            vcIssuanceContext.getCredentialRequest().setProofs(new Proofs().setJwt(List.of(jwtProof)));
 
             AttestationKeyResolver keyResolver = new StaticAttestationKeyResolver(
                     Map.of(attestationKey.getKid(), JWKBuilder.create().ec(attestationKey.getPublicKey()))
@@ -355,7 +355,7 @@ public class OID4VCKeyAttestationTest extends OID4VCIssuerEndpointTest {
         String invalidJwtProof = "invalid.jwt.token";
 
         VCIssuanceContext vcIssuanceContext = createVCIssuanceContext(session);
-        vcIssuanceContext.getCredentialRequest().setProof(new JwtProof(invalidJwtProof));
+        vcIssuanceContext.getCredentialRequest().setProofs(new Proofs().setJwt(List.of(invalidJwtProof)));
 
         AttestationKeyResolver keyResolver = new StaticAttestationKeyResolver(Map.of(attestationKey.getKid(), JWKBuilder.create().ec(attestationKey.getPublicKey())));
         JwtProofValidator validator = new JwtProofValidator(session, keyResolver);
@@ -376,7 +376,7 @@ public class OID4VCKeyAttestationTest extends OID4VCIssuerEndpointTest {
                 .sign(new ECDSASignatureSignerContext(unrelatedKey));
 
         VCIssuanceContext vcIssuanceContext = createVCIssuanceContext(session);
-        vcIssuanceContext.getCredentialRequest().setProof(new AttestationProof(invalidAttestationJwt));
+        vcIssuanceContext.getCredentialRequest().setProofs(new Proofs().setAttestation(List.of(invalidAttestationJwt)));
 
         AttestationKeyResolver keyResolver = new StaticAttestationKeyResolver(Map.of(attestationKey.getKid(), JWKBuilder.create().ec(attestationKey.getPublicKey())));
         AttestationProofValidator validator = new AttestationProofValidator(session, keyResolver);
@@ -402,7 +402,7 @@ public class OID4VCKeyAttestationTest extends OID4VCIssuerEndpointTest {
                 .sign(new ECDSASignatureSignerContext(attestationKey));
 
         VCIssuanceContext vcIssuanceContext = createVCIssuanceContext(session);
-        vcIssuanceContext.getCredentialRequest().setProof(new AttestationProof(invalidAttestationJwt));
+        vcIssuanceContext.getCredentialRequest().setProofs(new Proofs().setAttestation(List.of(invalidAttestationJwt)));
 
         AttestationKeyResolver keyResolver = new StaticAttestationKeyResolver(Map.of(attestationKey.getKid(), JWKBuilder.create().ec(attestationKey.getPublicKey())));
         AttestationProofValidator validator = new AttestationProofValidator(session, keyResolver);
@@ -444,7 +444,7 @@ public class OID4VCKeyAttestationTest extends OID4VCIssuerEndpointTest {
                     .sign(new ECDSASignatureSignerContext(attestationKey));
 
             VCIssuanceContext vcIssuanceContext = createVCIssuanceContext(session);
-            vcIssuanceContext.getCredentialRequest().setProof(new AttestationProof(attestationJwt));
+            vcIssuanceContext.getCredentialRequest().setProofs(new Proofs().setAttestation(List.of(attestationJwt)));
 
             AttestationKeyResolver keyResolver = new StaticAttestationKeyResolver(
                     Map.of(attestationKey.getKid(), JWKBuilder.create().ec(attestationKey.getPublicKey()))
@@ -510,7 +510,7 @@ public class OID4VCKeyAttestationTest extends OID4VCIssuerEndpointTest {
             );
 
             VCIssuanceContext vcIssuanceContext = createVCIssuanceContext(session);
-            vcIssuanceContext.getCredentialRequest().setProof(new AttestationProof(attestationJwt));
+            vcIssuanceContext.getCredentialRequest().setProofs(new Proofs().setAttestation(List.of(attestationJwt)));
 
             AttestationProofValidator validator = new AttestationProofValidator(session, keyResolver);
             List<JWK> attestedKeys = validator.validateProof(vcIssuanceContext);
@@ -546,7 +546,7 @@ public class OID4VCKeyAttestationTest extends OID4VCIssuerEndpointTest {
                     .sign(new ECDSASignatureSignerContext(attestationKey));
 
             VCIssuanceContext vcIssuanceContext = createVCIssuanceContext(session);
-            vcIssuanceContext.getCredentialRequest().setProof(new AttestationProof(attestationJwt));
+            vcIssuanceContext.getCredentialRequest().setProofs(new Proofs().setAttestation(List.of(attestationJwt)));
 
             AttestationKeyResolver keyResolver = new StaticAttestationKeyResolver(
                     Map.of(attestationKey.getKid(), JWKBuilder.create().ec(attestationKey.getPublicKey()))
@@ -578,7 +578,7 @@ public class OID4VCKeyAttestationTest extends OID4VCIssuerEndpointTest {
                     .sign(new ECDSASignatureSignerContext(attestationKey));
 
             VCIssuanceContext context = createVCIssuanceContext(session);
-            context.getCredentialRequest().setProof(new AttestationProof(attestationJwt));
+            context.getCredentialRequest().setProofs(new Proofs().setAttestation(List.of(attestationJwt)));
 
             AttestationKeyResolver keyResolver = new StaticAttestationKeyResolver(
                     Map.of(attestationKey.getKid(), JWKBuilder.create().ec(attestationKey.getPublicKey()))
