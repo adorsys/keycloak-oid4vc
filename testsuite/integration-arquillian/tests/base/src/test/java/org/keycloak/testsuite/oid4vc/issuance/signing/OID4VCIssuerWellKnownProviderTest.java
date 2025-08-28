@@ -48,6 +48,7 @@ import org.keycloak.protocol.oid4vc.model.Claims;
 import org.keycloak.protocol.oid4vc.model.CredentialIssuer;
 import org.keycloak.protocol.oid4vc.model.CredentialRequestEncryptionMetadata;
 import org.keycloak.protocol.oid4vc.model.CredentialResponseEncryptionMetadata;
+import org.keycloak.protocol.oid4vc.model.CredentialRequestEncryptionMetadata;
 import org.keycloak.protocol.oid4vc.model.DisplayObject;
 import org.keycloak.protocol.oid4vc.model.Format;
 import org.keycloak.protocol.oid4vc.model.ProofTypesSupported;
@@ -84,6 +85,7 @@ import static org.keycloak.jose.jwe.JWEConstants.RSA_OAEP_256;
 import static org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerWellKnownProvider.ATTR_ENCRYPTION_REQUIRED;
 import static org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerWellKnownProvider.ATTR_REQUEST_ZIP_ALGS;
 import static org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerWellKnownProvider.DEFLATE_COMPRESSION;
+import org.keycloak.constants.Oid4VciConstants;
 
 
 public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest {
@@ -92,8 +94,8 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
     public void configureTestRealm(RealmRepresentation testRealm) {
         Map<String, String> attributes = Optional.ofNullable(testRealm.getAttributes()).orElseGet(HashMap::new);
         attributes.put("credential_response_encryption.encryption_required", "true");
+        attributes.put(Oid4VciConstants.BATCH_CREDENTIAL_ISSUANCE_BATCH_SIZE, "10");
         attributes.put("batch_credential_issuance.batch_size", "10");
-        attributes.put("signed_metadata", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJmb28iOiJiYXIifQ.XYZ123abc");
         attributes.put(ATTR_ENCRYPTION_REQUIRED, "true");
         attributes.put(ATTR_REQUEST_ZIP_ALGS, "DEF");
         testRealm.setAttributes(attributes);
@@ -165,6 +167,15 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
         assertTrue("Should include A256GCM", encryption.getEncValuesSupported().contains(A256GCM));
         assertTrue("encryption_required should be true", encryption.getEncryptionRequired());
 
+        // Check credential_request_encryption
+        CredentialRequestEncryptionMetadata requestEncryption = credentialIssuer.getCredentialRequestEncryption();
+        Assert.assertNotNull("credential_request_encryption should be present", requestEncryption);
+        Assert.assertEquals(List.of(A256GCM), requestEncryption.getEncValuesSupported());
+        Assert.assertNotNull("zip_values_supported should be present", requestEncryption.getZipValuesSupported());
+        Assert.assertTrue("encryption_required should be true", requestEncryption.getEncryptionRequired());
+        Assert.assertNotNull("JWKS should be present", requestEncryption.getJwks());
+        Assert.assertFalse("JWKS should not be empty when encryption keys are available", requestEncryption.getJwks().isEmpty());
+
         CredentialIssuer.BatchCredentialIssuance batch = credentialIssuer.getBatchCredentialIssuance();
         assertNotNull("batch_credential_issuance should be present", batch);
         assertEquals(Integer.valueOf(10), batch.getBatchSize());
@@ -189,6 +200,7 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
         CredentialIssuer credentialIssuer = getCredentialIssuerMetadata();
         SupportedCredentialConfiguration supportedConfig = credentialIssuer.getCredentialsSupported()
                 .get(clientScope.getName());
+
         assertNotNull(supportedConfig);
         assertEquals(Format.SD_JWT_VC, supportedConfig.getFormat());
         assertEquals(clientScope.getName(), supportedConfig.getScope());
@@ -199,7 +211,7 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
         Assert.assertNull(supportedConfig.getDisplay());
         assertEquals(clientScope.getName(), supportedConfig.getScope());
 
-        compareClaims(supportedConfig.getFormat(), supportedConfig.getClaims(), clientScope.getProtocolMappers());
+        compareClaims(supportedConfig.getFormat(), supportedConfig.getCredentialMetadata().getClaims(), clientScope.getProtocolMappers());
     }
 
     @Test
@@ -213,7 +225,6 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
 
                     CredentialResponseEncryptionMetadata encryption = issuer.getCredentialResponseEncryption();
                     assertNotNull(encryption);
-
                     assertTrue(encryption.getAlgValuesSupported().contains(RSA_OAEP));
                     assertTrue("Should include A256GCM",
                             encryption.getEncValuesSupported().contains(A256GCM));
@@ -230,7 +241,6 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
         realm.setAttribute(ATTR_ENCRYPTION_REQUIRED, "true");
         realm.setAttribute(ATTR_REQUEST_ZIP_ALGS, "DEF");
         realm.setAttribute("batch_credential_issuance.batch_size", "10");
-        realm.setAttribute("signed_metadata", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJmb28iOiJiYXIifQ.XYZ123abc");
 
         OID4VCIssuerWellKnownProvider provider = new OID4VCIssuerWellKnownProvider(session);
         return (CredentialIssuer) provider.getConfig();
@@ -334,13 +344,14 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
             throw new RuntimeException(e);
         }
 
-        compareClaims(expectedFormat, supportedConfig.getClaims(), clientScope.getProtocolMappers());
+        compareClaims(expectedFormat, supportedConfig.getCredentialMetadata().getClaims(), clientScope.getProtocolMappers());
+
     }
 
     private void compareDisplay(SupportedCredentialConfiguration supportedConfig, ClientScopeRepresentation clientScope) {
         String display = clientScope.getAttributes().get(CredentialScopeModel.VC_DISPLAY);
         if (StringUtil.isBlank(display)) {
-            Assert.assertNull(supportedConfig.getDisplay());
+            Assert.assertNull(supportedConfig.getCredentialMetadata() != null ? supportedConfig.getCredentialMetadata().getDisplay() : null);
             return;
         }
         List<DisplayObject> expectedDisplayObjectList;
@@ -353,7 +364,7 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
 
         assertEquals(expectedDisplayObjectList.size(), supportedConfig.getDisplay().size());
         MatcherAssert.assertThat("Must contain all expected display-objects",
-                supportedConfig.getDisplay(),
+                supportedConfig.getCredentialMetadata().getDisplay(),
                 Matchers.containsInAnyOrder(expectedDisplayObjectList.toArray()));
     }
 
@@ -442,8 +453,11 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
                 .run((session -> {
                     OID4VCIssuerWellKnownProvider oid4VCIssuerWellKnownProvider = new OID4VCIssuerWellKnownProvider(session);
                     Object issuerConfig = oid4VCIssuerWellKnownProvider.getConfig();
+
                     assertTrue("Valid credential-issuer metadata should be returned.", issuerConfig instanceof CredentialIssuer);
+                    
                     CredentialIssuer credentialIssuer = (CredentialIssuer) issuerConfig;
+
                     assertEquals("The correct issuer should be included.", expectedIssuer, credentialIssuer.getCredentialIssuer());
                     assertEquals("The correct credentials endpoint should be included.", expectedCredentialsEndpoint, credentialIssuer.getCredentialEndpoint());
                     assertEquals("The correct deferred_credential_endpoint should be included.", expectedDeferredEndpoint, credentialIssuer.getDeferredCredentialEndpoint());
@@ -454,6 +468,57 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
                     assertEquals("The test-credential should be offered in the jwt-vc format.", Format.JWT_VC, credentialIssuer.getCredentialsSupported().get("test-credential").getFormat());
                     assertNotNull("The test-credential can optionally provide a claims claim.", credentialIssuer.getCredentialsSupported().get("test-credential").getClaims());
                 }));
+    }
+
+    @Test
+    public void testBatchCredentialIssuanceValidation() {
+        KeycloakTestingClient testingClient = this.testingClient;
+
+        // Valid batch size (2 or greater) should be accepted
+        testBatchSizeValidation(testingClient, "5", true, 5);
+
+        // Invalid batch size (less than 2) should be rejected
+        testBatchSizeValidation(testingClient, "1", false, null);
+
+        // Edge case - batch size exactly 2 should be accepted
+        testBatchSizeValidation(testingClient, "2", true, 2);
+
+        // Zero batch size should be rejected
+        testBatchSizeValidation(testingClient, "0", false, null);
+
+        // Negative batch size should be rejected
+        testBatchSizeValidation(testingClient, "-1", false, null);
+
+        // Large valid batch size should be accepted
+        testBatchSizeValidation(testingClient, "1000", true, 1000);
+
+        // Non-numeric value should be rejected (parsing exception)
+        testBatchSizeValidation(testingClient, "invalid", false, null);
+    }
+
+    private void testBatchSizeValidation(KeycloakTestingClient testingClient, String batchSize, boolean shouldBePresent, Integer expectedValue) {
+        testingClient
+                .server(TEST_REALM_NAME)
+                .run(session -> {
+                    // Create a new isolated realm for testing
+                    RealmModel testRealm = session.realms().createRealm("test-batch-validation-" + batchSize);
+
+                    try {
+                        testRealm.setAttribute(Oid4VciConstants.BATCH_CREDENTIAL_ISSUANCE_BATCH_SIZE, batchSize);
+
+                        CredentialIssuer.BatchCredentialIssuance result = OID4VCIssuerWellKnownProvider.getBatchCredentialIssuance(testRealm);
+
+                        if (shouldBePresent) {
+                            Assert.assertNotNull("batch_credential_issuance should be present for batch size " + batchSize, result);
+                            Assert.assertEquals("batch_credential_issuance should have correct batch size for " + batchSize,
+                                    expectedValue, result.getBatchSize());
+                        } else {
+                            Assert.assertNull("batch_credential_issuance should be null for invalid batch size " + batchSize, result);
+                        }
+                    } finally {
+                        session.realms().removeRealm(testRealm.getId());
+                    }
+                });
     }
 
     public static void extendConfigureTestRealm(RealmRepresentation testRealm, ClientRepresentation clientRepresentation) {
