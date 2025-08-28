@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Red Hat, Inc. and/or its affiliates
+ * Copyright 2025 Red Hat, Inc. and/or its affiliates
  * and other contributors as indicated by the @author tags.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,14 +17,13 @@
 
 package org.keycloak.protocol.oid4vc.model;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonInclude;
 
 /**
- * Interface for proof types in OID4VCI Credential Request (Section 8.2.1.1).
+ * See: https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#name-di_vp-proof-type
  *
- * @see <a href="https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#name-credential-request">OID4VCI Credential Request</a>
+ * @author <a href="mailto:francis.pouatcha@adorsys.com">Francis Pouatcha</a>
  */
-public interface Proof {
-    @JsonProperty("proof_type")
-    String getProofType();
+@JsonInclude(JsonInclude.Include.NON_NULL)
+public class ProofTypeDiVp {
 }

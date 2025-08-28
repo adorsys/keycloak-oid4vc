@@ -21,11 +21,11 @@ import org.keycloak.jose.jwk.JWK;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.protocol.oid4vc.issuance.VCIssuanceContext;
 import org.keycloak.protocol.oid4vc.issuance.VCIssuerException;
-import org.keycloak.protocol.oid4vc.model.AttestationProof;
 import org.keycloak.protocol.oid4vc.model.KeyAttestationJwtBody;
-import org.keycloak.protocol.oid4vc.model.Proof;
 import org.keycloak.protocol.oid4vc.model.ProofType;
+import org.keycloak.protocol.oid4vc.model.ProofTypesSupported;
 import org.keycloak.protocol.oid4vc.model.SupportedCredentialConfiguration;
+import org.keycloak.protocol.oid4vc.model.Proofs;
 
 
 import java.util.List;
@@ -55,9 +55,7 @@ public class AttestationProofValidator extends AbstractProofValidator {
     @Override
     public List<JWK> validateProof(VCIssuanceContext vcIssuanceContext) throws VCIssuerException {
         try {
-            AttestationProof proof = extractAttestationProof(vcIssuanceContext);
-            String jwt = Optional.ofNullable(proof.getAttestation())
-                    .orElseThrow(() -> new VCIssuerException("Attestation JWT is missing"));
+            String jwt = extractAttestationJwt(vcIssuanceContext);
 
             KeyAttestationJwtBody attestationBody = AttestationValidatorUtil.validateAttestationJwt(
                     jwt, keycloakSession, vcIssuanceContext, keyResolver);
@@ -74,22 +72,25 @@ public class AttestationProofValidator extends AbstractProofValidator {
         }
     }
 
-    private AttestationProof extractAttestationProof(VCIssuanceContext vcIssuanceContext)
-            throws VCIssuerException {
-
+    private String extractAttestationJwt(VCIssuanceContext vcIssuanceContext) throws VCIssuerException {
         SupportedCredentialConfiguration config = Optional.ofNullable(vcIssuanceContext.getCredentialConfig())
                 .orElseThrow(() -> new VCIssuerException("Credential configuration is missing"));
 
-        if (config.getProofTypesSupported() == null || config.getProofTypesSupported().getSupportedProofTypes().get("attestation") == null) {
-            throw new VCIssuerException("Attestation proof type not supported");
-        }
+        // Validate proof type support
+        Optional.ofNullable(config.getProofTypesSupported())
+                .map(ProofTypesSupported::getSupportedProofTypes)
+                .map(m -> m.get("attestation"))
+                .orElseThrow(() -> new VCIssuerException("Attestation proof type not supported"));
 
-        Proof proof = vcIssuanceContext.getCredentialRequest().getProof();
-        if (!(proof instanceof AttestationProof attestationProof)) {
-            throw new VCIssuerException("Expected attestation proof type, found: " +
-                    (proof == null ? "null" : proof.getClass().getSimpleName()));
-        }
+        // Validate attestation proofs
+        Proofs proofs = Optional.ofNullable(vcIssuanceContext.getCredentialRequest().getProofs())
+                .orElseThrow(() -> new VCIssuerException("Proofs object is missing"));
 
-        return attestationProof;
+        List<String> attestations = Optional.ofNullable(proofs.getAttestation())
+                .filter(list -> !list.isEmpty())
+                .orElseThrow(() -> new VCIssuerException("Attestation proof is missing"));
+
+        // Currently, only the first attestation is supported
+        return attestations.get(0);
     }
 }

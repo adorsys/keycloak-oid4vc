@@ -29,7 +29,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
  * OID4VCI Attestation Proof Type</a>
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public class AttestationProof implements Proof {
+public class AttestationProof {
 
     @JsonProperty("proof_type")
     private final String proofType = ProofType.ATTESTATION;
@@ -43,10 +43,7 @@ public class AttestationProof implements Proof {
         this.attestation = attestation;
     }
 
-    @Override
-    public String getProofType() {
-        return proofType;
-    }
+    public String getProofType() { return proofType; }
 
     public String getAttestation() {
         return attestation;

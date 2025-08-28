@@ -29,10 +29,9 @@ import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerWellKnownProvider;
 import org.keycloak.protocol.oid4vc.issuance.VCIssuanceContext;
 import org.keycloak.protocol.oid4vc.issuance.VCIssuerException;
 import org.keycloak.protocol.oid4vc.model.ErrorType;
-import org.keycloak.protocol.oid4vc.model.JwtProof;
-import org.keycloak.protocol.oid4vc.model.Proof;
 import org.keycloak.protocol.oid4vc.model.ProofType;
 import org.keycloak.protocol.oid4vc.model.ProofTypesSupported;
+import org.keycloak.protocol.oid4vc.model.Proofs;
 import org.keycloak.protocol.oid4vc.model.SupportedCredentialConfiguration;
 import org.keycloak.protocol.oid4vc.model.SupportedProofTypeData;
 import org.keycloak.representations.AccessToken;
@@ -40,7 +39,9 @@ import org.keycloak.util.JsonSerialization;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.security.GeneralSecurityException;
+ 
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Collections;
@@ -48,6 +49,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import org.jboss.logging.Logger;
 
 /**
  * Validates the conformance and authenticity of presented JWT proofs.
@@ -58,25 +60,13 @@ public class JwtProofValidator extends AbstractProofValidator {
 
     public static final String PROOF_JWT_TYP = "openid4vci-proof+jwt";
     private static final String CRYPTOGRAPHIC_BINDING_METHOD_JWK = "jwk";
+    private static final Logger LOGGER = Logger.getLogger(JwtProofValidator.class);
     private static final String KEY_ATTESTATION_CLAIM = "key_attestation";
     private final AttestationKeyResolver keyResolver;
 
     public JwtProofValidator(KeycloakSession keycloakSession, AttestationKeyResolver keyResolver) {
         super(keycloakSession);
         this.keyResolver = keyResolver;
-    }
-
-    private static Proof getProof(VCIssuanceContext vcIssuanceContext) {
-        Proof proofObject = vcIssuanceContext.getCredentialRequest().getProof();
-        if (proofObject == null) {
-            throw new VCIssuerException("Credential configuration requires a proof of type: " + ProofType.JWT);
-        }
-
-        if (!(proofObject instanceof JwtProof)) {
-            throw new VCIssuerException("Wrong proof type. Expected JwtProof, but got: " + proofObject.getClass().getSimpleName());
-        }
-
-        return (JwtProof) proofObject;
     }
 
     @Override
@@ -86,8 +76,8 @@ public class JwtProofValidator extends AbstractProofValidator {
 
     public List<JWK> validateProof(VCIssuanceContext vcIssuanceContext) throws VCIssuerException {
         try {
-            JWK jwk = validateJwtProof(vcIssuanceContext);
-            return Collections.singletonList(jwk);
+            List<JWK> jwks = validateJwtProof(vcIssuanceContext);
+            return jwks == null ? Collections.emptyList() : jwks;
         } catch (JWSInputException | VerificationException | IOException e) {
             throw new VCIssuerException("Could not validate JWT proof", e);
         } catch (GeneralSecurityException e) {
@@ -110,19 +100,44 @@ public class JwtProofValidator extends AbstractProofValidator {
      * @throws IllegalStateException: is credential type badly configured
      * @throws IOException
      */
-    private JWK validateJwtProof(VCIssuanceContext vcIssuanceContext) throws VCIssuerException, JWSInputException,
-            VerificationException, IOException, GeneralSecurityException {
+    private List<JWK> validateJwtProof(VCIssuanceContext vcIssuanceContext) throws VCIssuerException, JWSInputException, VerificationException, IOException, GeneralSecurityException {
+ 
 
-        Optional<Proof> optionalProof = getProofFromContext(vcIssuanceContext);
-
-        if (optionalProof.isEmpty() || !(optionalProof.get() instanceof JwtProof)) {
-            return null;
+        Optional<List<String>> optionalProof = getProofFromContext(vcIssuanceContext);
+        if (optionalProof.isEmpty() || optionalProof.get().isEmpty()) {
+            return null; // No proof support
         }
 
-        JwtProof proof = (JwtProof) optionalProof.get();
+        List<String> jwtProofs = optionalProof.get();
+
+        // Check key binding config for jwt. Only type supported.
         checkCryptographicKeyBinding(vcIssuanceContext);
 
-        JWSInput jwsInput = getJwsInput(proof);
+        // Validate all JWT proofs in the array
+        List<JWK> validJwks = new ArrayList<>();
+
+        for (int i = 0; i < jwtProofs.size(); i++) {
+            String jwt = jwtProofs.get(i);
+            try {
+                JWK jwk = validateSingleJwtProof(vcIssuanceContext, jwt);
+                validJwks.add(jwk);
+                LOGGER.debugf("Successfully validated JWT proof at index %d", i);
+            } catch (VCIssuerException e) {
+                // If any proof fails validation, throw the exception
+                throw new VCIssuerException(String.format("Failed to validate JWT proof at index %d: %s", i, e.getMessage()), e);
+            }
+        }
+
+        if (validJwks.isEmpty()) {
+            throw new VCIssuerException("No valid JWT proof found in the proofs array");
+        }
+
+        LOGGER.debugf("Successfully validated %d JWT proofs", validJwks.size());
+        return validJwks;
+    }
+
+    private JWK validateSingleJwtProof(VCIssuanceContext vcIssuanceContext, String jwt) throws VCIssuerException, JWSInputException, VerificationException, IOException {
+        JWSInput jwsInput = getJwsInput(jwt);
         JWSHeader jwsHeader = jwsInput.getHeader();
         validateJwsHeader(vcIssuanceContext, jwsHeader);
 
@@ -132,7 +147,7 @@ public class JwtProofValidator extends AbstractProofValidator {
             jwk = jwsHeader.getKey();
         } else if (jwsHeader.getKeyId() != null) {
             // For kid case, we need to parse the raw header to check for key_attestation
-            String[] parts = proof.getJwt().split("\\.");
+            String[] parts = jwt.split("\\.");
             if (parts.length < 2) {
                 throw new VCIssuerException("Invalid JWT format");
             }
@@ -188,24 +203,24 @@ public class JwtProofValidator extends AbstractProofValidator {
         }
     }
 
-    private Optional<Proof> getProofFromContext(VCIssuanceContext vcIssuanceContext) throws VCIssuerException {
+    private Optional<List<String>> getProofFromContext(VCIssuanceContext vcIssuanceContext) throws VCIssuerException {
         return Optional.ofNullable(vcIssuanceContext.getCredentialConfig())
                 .map(SupportedCredentialConfiguration::getProofTypesSupported)
                 .flatMap(proofTypesSupported -> {
                     Optional.ofNullable(proofTypesSupported.getSupportedProofTypes().get("jwt"))
                             .orElseThrow(() -> new VCIssuerException("SD-JWT supports only jwt proof type."));
 
-                    Proof proof = getProof(vcIssuanceContext);
-                    if (!Objects.equals(proof.getProofType(), ProofType.JWT)) {
-                        throw new VCIssuerException("Wrong proof type");
+                    Proofs proofs = vcIssuanceContext.getCredentialRequest().getProofs();
+                    if (proofs == null || proofs.getJwt() == null || proofs.getJwt().isEmpty()) {
+                        throw new VCIssuerException("Credential configuration requires a proof of type: " + ProofType.JWT);
                     }
 
-                    return Optional.of(proof);
+                    return Optional.of(proofs.getJwt());
                 });
     }
 
-    private JWSInput getJwsInput(JwtProof proof) throws JWSInputException {
-        return new JWSInput(proof.getJwt());
+    private JWSInput getJwsInput(String jwt) throws JWSInputException {
+        return new JWSInput(jwt);
     }
 
     /**

@@ -34,9 +34,6 @@ import org.keycloak.OAuth2Constants;
 import org.keycloak.TokenVerifier;
 import org.keycloak.common.VerificationException;
 import org.keycloak.common.util.Base64Url;
-import org.keycloak.crypto.KeyWrapper;
-import org.keycloak.jose.jwk.JWK;
-import org.keycloak.jose.jwk.JWKBuilder;
 import org.keycloak.models.ClientScopeModel;
 import org.keycloak.models.oid4vci.CredentialScopeModel;
 import org.keycloak.models.KeycloakSession;
@@ -44,25 +41,20 @@ import org.keycloak.models.RealmModel;
 import org.keycloak.constants.Oid4VciConstants;
 import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerEndpoint;
 import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerWellKnownProvider;
-import org.keycloak.protocol.oid4vc.issuance.VCIssuanceContext;
 import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.JwtCredentialBuilder;
 import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.SdJwtCredentialBuilder;
-import org.keycloak.protocol.oid4vc.issuance.keybinding.AttestationKeyResolver;
 import org.keycloak.protocol.oid4vc.issuance.keybinding.CNonceHandler;
 import org.keycloak.protocol.oid4vc.issuance.keybinding.JwtCNonceHandler;
-import org.keycloak.protocol.oid4vc.issuance.keybinding.JwtProofValidator;
-import org.keycloak.protocol.oid4vc.issuance.keybinding.StaticAttestationKeyResolver;
 import org.keycloak.protocol.oid4vc.issuance.mappers.OID4VCGeneratedIdMapper;
 import org.keycloak.protocol.oid4vc.model.Claim;
 import org.keycloak.protocol.oid4vc.model.Claims;
 import org.keycloak.protocol.oid4vc.model.CredentialIssuer;
 import org.keycloak.protocol.oid4vc.model.CredentialOfferURI;
-import org.keycloak.protocol.oid4vc.model.CredentialRequest;
 import org.keycloak.protocol.oid4vc.model.CredentialResponse;
 import org.keycloak.protocol.oid4vc.model.CredentialsOffer;
 import org.keycloak.protocol.oid4vc.model.Format;
-import org.keycloak.protocol.oid4vc.model.JwtProof;
-import org.keycloak.protocol.oid4vc.model.Proof;
+import org.keycloak.protocol.oid4vc.model.Proofs;
+import org.keycloak.protocol.oid4vc.model.CredentialRequest;
 import org.keycloak.protocol.oid4vc.model.SupportedCredentialConfiguration;
 import org.keycloak.protocol.oidc.grants.PreAuthorizedCodeGrantTypeFactory;
 import org.keycloak.protocol.oidc.representations.OIDCConfigurationRepresentation;
@@ -71,7 +63,6 @@ import org.keycloak.representations.idm.ClientScopeRepresentation;
 import org.keycloak.representations.idm.ComponentExportRepresentation;
 import org.keycloak.representations.idm.ProtocolMapperRepresentation;
 import org.keycloak.sdjwt.vp.SdJwtVP;
-import org.keycloak.services.ErrorResponseException;
 import org.keycloak.services.managers.AppAuthManager;
 import org.keycloak.testsuite.util.oauth.AccessTokenResponse;
 import org.keycloak.util.JsonSerialization;
@@ -123,8 +114,8 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
         testingClient
                 .server(TEST_REALM_NAME)
                 .run((session -> {
-                    JwtProof proof = new JwtProof()
-                            .setJwt(generateJwtProof(getCredentialIssuer(session), cNonce));
+                    Proofs proof = new Proofs()
+                            .setJwt(List.of(generateJwtProof(getCredentialIssuer(session), cNonce)));
 
                     ClientScopeRepresentation clientScope = fromJsonString(clientScopeString,
                             ClientScopeRepresentation.class);
@@ -144,8 +135,8 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
         try {
             withCausePropagation(() -> {
                 testingClient.server(TEST_REALM_NAME).run((session -> {
-                    JwtProof proof = new JwtProof()
-                            .setJwt(generateInvalidJwtProof(getCredentialIssuer(session), cNonce));
+                    Proofs proof = new Proofs()
+                            .setJwt(List.of(generateInvalidJwtProof(getCredentialIssuer(session), cNonce)));
 
                     ClientScopeRepresentation clientScope = fromJsonString(clientScopeString,
                             ClientScopeRepresentation.class);
@@ -174,15 +165,15 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
                         String cNonce = cNonceHandler.buildCNonce(null,
                                 Map.of(JwtCNonceHandler.SOURCE_ENDPOINT,
                                         nonceEndpoint));
-                        Proof proof = new JwtProof().setJwt(generateJwtProof(getCredentialIssuer(session), cNonce));
+                        Proofs proof = new Proofs().setJwt(List.of(generateJwtProof(getCredentialIssuer(session), cNonce)));
 
                         ClientScopeRepresentation clientScope = fromJsonString(clientScopeString,
                                 ClientScopeRepresentation.class);
                         testRequestTestCredential(session, clientScope, token, proof);
                     })));
             Assert.fail("Should have thrown an exception");
-        } catch (ErrorResponseException ex) {
-            Assert.assertEquals("invalid_nonce", ex.getMessage());
+        } catch (BadRequestException ex) {
+            Assert.assertEquals("Could not validate provided proof", ex.getMessage());
         }
     }
 
@@ -200,15 +191,15 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
                                 OID4VCIssuerWellKnownProvider.getCredentialsEndpoint(session.getContext());
                         // creates a cNonce with missing data
                         String cNonce = cNonceHandler.buildCNonce(List.of(credentialsEndpoint), null);
-                        Proof proof = new JwtProof().setJwt(generateJwtProof(getCredentialIssuer(session), cNonce));
+                        Proofs proof = new Proofs().setJwt(List.of(generateJwtProof(getCredentialIssuer(session), cNonce)));
 
                         ClientScopeRepresentation clientScope = fromJsonString(clientScopeString,
                                 ClientScopeRepresentation.class);
                         testRequestTestCredential(session, clientScope, token, proof);
                     })));
             Assert.fail("Should have thrown an exception");
-        } catch (ErrorResponseException ex) {
-            Assert.assertEquals("invalid_nonce", ex.getMessage());
+        } catch (BadRequestException ex) {
+            Assert.assertEquals("Could not validate provided proof", ex.getMessage());
         }
     }
 
@@ -230,7 +221,7 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
                             session.getContext().getRealm().setAttribute(Oid4VciConstants.C_NONCE_LIFETIME_IN_SECONDS, -1);
                             String cNonce = cNonceHandler.buildCNonce(List.of(credentialsEndpoint),
                                     Map.of(JwtCNonceHandler.SOURCE_ENDPOINT, nonceEndpoint));
-                            Proof proof = new JwtProof().setJwt(generateJwtProof(getCredentialIssuer(session), cNonce));
+                            Proofs proof = new Proofs().setJwt(List.of(generateJwtProof(getCredentialIssuer(session), cNonce)));
 
                             ClientScopeRepresentation clientScope = fromJsonString(clientScopeString,
                                     ClientScopeRepresentation.class);
@@ -241,8 +232,8 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
                         }
                     })));
             Assert.fail("Should have thrown an exception");
-        } catch (ErrorResponseException ex) {
-            Assert.assertEquals("invalid_nonce", ex.getMessage());
+        } catch (BadRequestException ex) {
+            Assert.assertEquals("Could not validate provided proof", ex.getMessage());
         }
     }
 
@@ -251,7 +242,7 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
     }
 
     private static SdJwtVP testRequestTestCredential(KeycloakSession session, ClientScopeRepresentation clientScope,
-                                                     String token, Proof proof)
+                                                     String token, Proofs proof)
             throws VerificationException {
 
         AppAuthManager.BearerTokenAuthenticator authenticator = new AppAuthManager.BearerTokenAuthenticator(session);
@@ -261,7 +252,7 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
         final String credentialConfigurationId = clientScope.getAttributes().get(CredentialScopeModel.CONFIGURATION_ID);
         CredentialRequest credentialRequest = new CredentialRequest()
                 .setCredentialConfigurationId(credentialConfigurationId)
-                .setProof(proof);
+                .setProofs(proof);
 
         Response credentialResponse = issuerEndpoint.requestCredential(credentialRequest);
         assertEquals("The credential request should be answered successfully.",
