@@ -37,12 +37,13 @@ import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.Response;
 import org.jboss.logging.Logger;
 import org.keycloak.common.util.SecretGenerator;
+import org.keycloak.constants.Oid4VciConstants;
 import org.keycloak.events.Errors;
 import org.keycloak.events.EventBuilder;
+import org.keycloak.jose.jwk.JWK;
 import org.keycloak.jose.jwe.JWE;
 import org.keycloak.jose.jwe.JWEException;
 import org.keycloak.jose.jwe.JWEHeader;
-import org.keycloak.jose.jwk.JWK;
 import org.keycloak.jose.jwk.JWKParser;
 import org.keycloak.models.AuthenticatedClientSessionModel;
 import org.keycloak.models.ClientModel;
@@ -68,6 +69,7 @@ import org.keycloak.protocol.oid4vc.model.CredentialResponse;
 import org.keycloak.protocol.oid4vc.model.CredentialResponseEncryption;
 import org.keycloak.protocol.oid4vc.model.CredentialResponseEncryptionMetadata;
 import org.keycloak.protocol.oid4vc.model.CredentialsOffer;
+import org.keycloak.services.ErrorResponseException;
 import org.keycloak.protocol.oid4vc.model.ErrorResponse;
 import org.keycloak.protocol.oid4vc.model.ErrorType;
 import org.keycloak.protocol.oid4vc.model.Format;
@@ -125,8 +127,8 @@ public class OID4VCIssuerEndpoint {
     public static final String NONCE_PATH = "nonce";
     public static final String CREDENTIAL_PATH = "credential";
     public static final String CREDENTIAL_OFFER_PATH = "credential-offer/";
-    public static final String RESPONSE_TYPE_IMG_PNG = "image/png";
-    public static final String CREDENTIAL_OFFER_URI_CODE_SCOPE = "credential-offer";
+    public static final String RESPONSE_TYPE_IMG_PNG = Oid4VciConstants.RESPONSE_TYPE_IMG_PNG;
+    public static final String CREDENTIAL_OFFER_URI_CODE_SCOPE = Oid4VciConstants.CREDENTIAL_OFFER_URI_CODE_SCOPE;
     private final KeycloakSession session;
     private final AppAuthManager.BearerTokenAuthenticator bearerTokenAuthenticator;
     private final TimeProvider timeProvider;
@@ -357,7 +359,7 @@ public class OID4VCIssuerEndpoint {
                                 "scope in access token = %s.",
                         requestedCredential.getName(), accessToken.getScope());
                 throw new CorsErrorResponseException(cors,
-                        ErrorType.UNSUPPORTED_CREDENTIAL_TYPE.toString(),
+                        ErrorType.UNKNOWN_CREDENTIAL_CONFIGURATION.toString(),
                         "Scope check failure",
                         Response.Status.BAD_REQUEST);
             } else {
@@ -437,7 +439,16 @@ public class OID4VCIssuerEndpoint {
         // Find the requested credential scope
         CredentialScopeModel requestedCredential = credentialRequestVO.findCredentialScope(session).orElseThrow(() -> {
             LOGGER.debugf("Credential for request '%s' not found.", credentialRequestVO.toString());
-            return new BadRequestException(getErrorResponse(ErrorType.UNSUPPORTED_CREDENTIAL_TYPE));
+            
+            // Determine the appropriate error type based on what was requested
+            ErrorType errorType;
+            if (credentialRequestVO.getCredentialConfigurationId() != null) {
+                errorType = ErrorType.UNKNOWN_CREDENTIAL_CONFIGURATION;
+            } else {
+                errorType = ErrorType.UNKNOWN_CREDENTIAL_IDENTIFIER;
+            }
+            
+            return new BadRequestException(getErrorResponse(errorType));
         });
 
         checkScope(requestedCredential);
@@ -663,9 +674,13 @@ public class OID4VCIssuerEndpoint {
                         vcIssuanceContext.getCredentialBody(),
                         credentialConfig.getCredentialBuildConfig()
                 ))
-                .orElseThrow(() -> new BadRequestException(
-                        String.format("No signer found for format '%s'.", credentialConfig.getFormat())
-                ));
+                .orElseThrow(() -> {
+                    String message = String.format("No signer found for format '%s'.", credentialConfig.getFormat());
+                    return new BadRequestException(
+                            message,
+                            getErrorResponse(ErrorType.UNKNOWN_CREDENTIAL_CONFIGURATION, message)
+                    );
+                });
     }
 
     private CredentialScopeModel getClientScopeModel(SupportedCredentialConfiguration credentialConfig) {
@@ -782,15 +797,25 @@ public class OID4VCIssuerEndpoint {
             throw new BadRequestException(String.format("Unable to validate proofs of type %s", proofType));
         }
 
-        // Validate proof and bind public keys to credential
+        // Validate proof and bind public key(s) to credential
         try {
             List<JWK> jwks = proofValidator.validateProof(vcIssuanceContext);
             if (jwks != null && !jwks.isEmpty()) {
-                // Bind the first JWK to the credential
+                if (jwks.size() > 1) {
+                    LOGGER.warnf("Multiple keys (%d) returned for proof validation—only the first will be used", jwks.size());
+                }
+                // Bind only the first key for VC compatibility
                 vcIssuanceContext.getCredentialBody().addKeyBinding(jwks.get(0));
             }
         } catch (VCIssuerException e) {
-            throw new BadRequestException(String.format("Could not validate provided %s proof", proofType), e);
+            if (e.getErrorType() == ErrorType.INVALID_NONCE) {
+                throw new ErrorResponseException(
+                        ErrorType.INVALID_NONCE.getValue(),
+                        "The proofs parameter in the Credential Request uses an invalid nonce",
+                        Response.Status.BAD_REQUEST
+                );
+            }
+            throw new BadRequestException("Could not validate provided proof", e);
         }
     }
 
@@ -799,7 +824,8 @@ public class OID4VCIssuerEndpoint {
         CredentialBuilder credentialBuilder = credentialBuilders.get(format);
 
         if (credentialBuilder == null) {
-            throw new BadRequestException(String.format("No credential builder found for format %s", format));
+            String message = String.format("No credential builder found for format %s", format);
+            throw new BadRequestException(message, getErrorResponse(ErrorType.UNKNOWN_CREDENTIAL_CONFIGURATION, message));
         }
 
         return credentialBuilder;
