@@ -27,6 +27,5 @@ public final class ProofType {
 
     public static final String JWT = "jwt";
     public static final String DI_PROOF = "di_vp";
-    public static final String LD_PROOF = "ldp_vp";
     public static final String ATTESTATION = "attestation";
 }
