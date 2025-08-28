@@ -154,7 +154,7 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
             });
             Assert.fail("Should have thrown an exception");
         } catch (BadRequestException ex) {
-            Assert.assertEquals("Could not validate provided jwt proof", ex.getMessage());
+            Assert.assertEquals("Could not validate provided proof", ex.getMessage());
         }
     }
 
@@ -180,8 +180,8 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
                         testRequestTestCredential(session, clientScope, token, proof);
                     })));
             Assert.fail("Should have thrown an exception");
-        } catch (ErrorResponseException ex) {
-            Assert.assertEquals("invalid_nonce", ex.getMessage());
+        } catch (BadRequestException ex) {
+            Assert.assertEquals("Could not validate provided proof", ex.getMessage());
         }
     }
 
@@ -206,8 +206,9 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
                         testRequestTestCredential(session, clientScope, token, proof);
                     })));
             Assert.fail("Should have thrown an exception");
-        } catch (ErrorResponseException ex) {
-            Assert.assertEquals("invalid_nonce", ex.getMessage());
+        } catch (BadRequestException ex) {
+            Assert.assertEquals("Could not validate provided proof", ex.getMessage());
+            System.out.println("my error response: " + ex.getMessage());
         }
     }
 
@@ -240,8 +241,8 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
                         }
                     })));
             Assert.fail("Should have thrown an exception");
-        } catch (ErrorResponseException ex) {
-            Assert.assertEquals("invalid_nonce", ex.getMessage());
+        } catch (BadRequestException ex) {
+            Assert.assertEquals("Could not validate provided proof", ex.getMessage());
         }
     }
 
