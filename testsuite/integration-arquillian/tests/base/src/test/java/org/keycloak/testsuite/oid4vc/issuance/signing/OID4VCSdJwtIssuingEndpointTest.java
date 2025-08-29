@@ -242,7 +242,7 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
     }
 
     private static SdJwtVP testRequestTestCredential(KeycloakSession session, ClientScopeRepresentation clientScope,
-                                                     String token, Proof proof)
+                                                     String token, Proofs proofs)
             throws VerificationException, IOException {
 
         AppAuthManager.BearerTokenAuthenticator authenticator = new AppAuthManager.BearerTokenAuthenticator(session);
@@ -252,7 +252,7 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
         final String credentialConfigurationId = clientScope.getAttributes().get(CredentialScopeModel.CONFIGURATION_ID);
         CredentialRequest credentialRequest = new CredentialRequest()
                 .setCredentialConfigurationId(credentialConfigurationId)
-                .setProofs(proof);
+                .setProofs(proofs);
 
         String requestPayload = JsonSerialization.writeValueAsString(credentialRequest);
 

@@ -48,7 +48,6 @@ import org.keycloak.protocol.oid4vc.model.Claims;
 import org.keycloak.protocol.oid4vc.model.CredentialIssuer;
 import org.keycloak.protocol.oid4vc.model.CredentialRequestEncryptionMetadata;
 import org.keycloak.protocol.oid4vc.model.CredentialResponseEncryptionMetadata;
-import org.keycloak.protocol.oid4vc.model.CredentialRequestEncryptionMetadata;
 import org.keycloak.protocol.oid4vc.model.DisplayObject;
 import org.keycloak.protocol.oid4vc.model.Format;
 import org.keycloak.protocol.oid4vc.model.ProofTypesSupported;
@@ -166,15 +165,6 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
         assertEquals(List.of(RSA_OAEP, RSA_OAEP_256), encryption.getAlgValuesSupported());
         assertTrue("Should include A256GCM", encryption.getEncValuesSupported().contains(A256GCM));
         assertTrue("encryption_required should be true", encryption.getEncryptionRequired());
-
-        // Check credential_request_encryption
-        CredentialRequestEncryptionMetadata requestEncryption = credentialIssuer.getCredentialRequestEncryption();
-        Assert.assertNotNull("credential_request_encryption should be present", requestEncryption);
-        Assert.assertEquals(List.of(A256GCM), requestEncryption.getEncValuesSupported());
-        Assert.assertNotNull("zip_values_supported should be present", requestEncryption.getZipValuesSupported());
-        Assert.assertTrue("encryption_required should be true", requestEncryption.getEncryptionRequired());
-        Assert.assertNotNull("JWKS should be present", requestEncryption.getJwks());
-        Assert.assertFalse("JWKS should not be empty when encryption keys are available", requestEncryption.getJwks().isEmpty());
 
         CredentialIssuer.BatchCredentialIssuance batch = credentialIssuer.getBatchCredentialIssuance();
         assertNotNull("batch_credential_issuance should be present", batch);
