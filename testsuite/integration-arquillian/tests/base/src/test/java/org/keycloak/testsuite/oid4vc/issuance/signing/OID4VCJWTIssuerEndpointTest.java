@@ -373,8 +373,8 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
     }
 
     @Test
-    public void testRequestCredentialWithEncryption() {
-        final String scopeName = jwtTypeCredentialClientScope.getName();
+    public void testRequestCredentialWithConfigurationIdNotSet() {
+        final String scopeName = minimalJwtTypeCredentialClientScope.getName();
         String token = getBearerToken(oauth, client, scopeName);
         testingClient.server(TEST_REALM_NAME).run(session -> {
             AppAuthManager.BearerTokenAuthenticator authenticator = new AppAuthManager.BearerTokenAuthenticator(session);

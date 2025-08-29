@@ -138,6 +138,8 @@ public class SupportedCredentialConfiguration {
         String bindingMethodsSupported = CredentialScopeModel.CRYPTOGRAPHIC_BINDING_METHODS_DEFAULT;
         credentialConfiguration.setCryptographicBindingMethodsSupported(List.of(bindingMethodsSupported));
 
+        credentialConfiguration.setDisplay(DisplayObject.parse(credentialScope));
+
         // Parse credential metadata (includes display and claims)
         CredentialMetadata credentialMetadata = CredentialMetadata.parse(keycloakSession, credentialScope);
         credentialConfiguration.setCredentialMetadata(credentialMetadata);
@@ -146,6 +148,9 @@ public class SupportedCredentialConfiguration {
                                                                                   credentialConfiguration,
                                                                                   credentialScope);
         credentialConfiguration.setCredentialBuildConfig(credentialBuildConfig);
+
+        Claims claims = Claims.parse(keycloakSession, credentialScope);
+        credentialConfiguration.setClaims(claims);
 
         return credentialConfiguration;
     }

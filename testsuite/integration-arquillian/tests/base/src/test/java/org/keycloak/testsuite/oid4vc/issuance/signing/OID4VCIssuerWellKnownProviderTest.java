@@ -94,7 +94,7 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
         Map<String, String> attributes = Optional.ofNullable(testRealm.getAttributes()).orElseGet(HashMap::new);
         attributes.put("credential_response_encryption.encryption_required", "true");
         attributes.put(Oid4VciConstants.BATCH_CREDENTIAL_ISSUANCE_BATCH_SIZE, "10");
-        attributes.put("batch_credential_issuance.batch_size", "10");
+        attributes.put("signed_metadata", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJmb28iOiJiYXIifQ.XYZ123abc");
         attributes.put(ATTR_ENCRYPTION_REQUIRED, "true");
         attributes.put(ATTR_REQUEST_ZIP_ALGS, "DEF");
         testRealm.setAttributes(attributes);
