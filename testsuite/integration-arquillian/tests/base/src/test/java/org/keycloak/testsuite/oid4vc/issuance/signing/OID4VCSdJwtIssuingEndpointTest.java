@@ -242,8 +242,8 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
     }
 
     private static SdJwtVP testRequestTestCredential(KeycloakSession session, ClientScopeRepresentation clientScope,
-                                                     String token, Proofs proof)
-            throws VerificationException {
+                                                     String token, Proofs proofs)
+            throws VerificationException, IOException {
 
         AppAuthManager.BearerTokenAuthenticator authenticator = new AppAuthManager.BearerTokenAuthenticator(session);
         authenticator.setTokenString(token);
@@ -252,12 +252,14 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
         final String credentialConfigurationId = clientScope.getAttributes().get(CredentialScopeModel.CONFIGURATION_ID);
         CredentialRequest credentialRequest = new CredentialRequest()
                 .setCredentialConfigurationId(credentialConfigurationId)
-                .setProofs(proof);
+                .setProofs(proofs);
 
-        Response credentialResponse = issuerEndpoint.requestCredential(credentialRequest);
+        String requestPayload = JsonSerialization.writeValueAsString(credentialRequest);
+
+        Response credentialResponse = issuerEndpoint.requestCredential(requestPayload);
         assertEquals("The credential request should be answered successfully.",
-                HttpStatus.SC_OK,
-                credentialResponse.getStatus());
+                HttpStatus.SC_OK, credentialResponse.getStatus());
+
         assertNotNull("A credential should be responded.", credentialResponse.getEntity());
         CredentialResponse credentialResponseVO = JsonSerialization.mapper.convertValue(credentialResponse.getEntity(),
                 CredentialResponse.class);
