@@ -123,7 +123,7 @@ public class PreAuthorizedCodeGrantType extends OAuth2GrantTypeBase {
             }
 
             // If authorization_details is present, add it to otherClaims
-            if (authorizationDetailsResponse != null) {
+            if (authorizationDetailsResponse != null && !authorizationDetailsResponse.isEmpty()) {
                 tokenResponse.setOtherClaims(AUTHORIZATION_DETAILS_PARAM, authorizationDetailsResponse);
                 event.success();
                 return cors.allowAllOrigins().add(Response.ok(tokenResponse).type(MediaType.APPLICATION_JSON_TYPE));
