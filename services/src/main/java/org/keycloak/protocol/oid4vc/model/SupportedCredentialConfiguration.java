@@ -46,11 +46,7 @@ public class SupportedCredentialConfiguration {
     @JsonIgnore
     private static final String CREDENTIAL_SIGNING_ALG_VALUES_SUPPORTED_KEY = "credential_signing_alg_values_supported";
     @JsonIgnore
-    private static final String DISPLAY_KEY = "display";
-    @JsonIgnore
     private static final String PROOF_TYPES_SUPPORTED_KEY = "proof_types_supported";
-    @JsonIgnore
-    private static final String CLAIMS_KEY = "claims";
     @JsonIgnore
     public static final String VERIFIABLE_CREDENTIAL_TYPE_KEY = "vct";
     @JsonIgnore
@@ -74,9 +70,6 @@ public class SupportedCredentialConfiguration {
     @JsonProperty(CREDENTIAL_SIGNING_ALG_VALUES_SUPPORTED_KEY)
     private List<String> credentialSigningAlgValuesSupported;
 
-    @JsonProperty(DISPLAY_KEY)
-    private List<DisplayObject> display;
-
     @JsonProperty(VERIFIABLE_CREDENTIAL_TYPE_KEY)
     private String vct;
 
@@ -88,9 +81,6 @@ public class SupportedCredentialConfiguration {
 
     @JsonProperty(CREDENTIAL_METADATA_KEY)
     private CredentialMetadata credentialMetadata;
-
-    @JsonProperty(CLAIMS_KEY)
-    private Claims claims;
 
     // This is not a normative field for supported credential metadata,
     // but will allow configuring the issuance of the credential internally.
@@ -138,8 +128,6 @@ public class SupportedCredentialConfiguration {
         String bindingMethodsSupported = CredentialScopeModel.CRYPTOGRAPHIC_BINDING_METHODS_DEFAULT;
         credentialConfiguration.setCryptographicBindingMethodsSupported(List.of(bindingMethodsSupported));
 
-        credentialConfiguration.setDisplay(DisplayObject.parse(credentialScope));
-
         // Parse credential metadata (includes display and claims)
         CredentialMetadata credentialMetadata = CredentialMetadata.parse(keycloakSession, credentialScope);
         credentialConfiguration.setCredentialMetadata(credentialMetadata);
@@ -148,9 +136,6 @@ public class SupportedCredentialConfiguration {
                                                                                   credentialConfiguration,
                                                                                   credentialScope);
         credentialConfiguration.setCredentialBuildConfig(credentialBuildConfig);
-
-        Claims claims = Claims.parse(keycloakSession, credentialScope);
-        credentialConfiguration.setClaims(claims);
 
         return credentialConfiguration;
     }
@@ -205,15 +190,6 @@ public class SupportedCredentialConfiguration {
         return this;
     }
 
-    public List<DisplayObject> getDisplay() {
-        return display;
-    }
-
-    public SupportedCredentialConfiguration setDisplay(List<DisplayObject> display) {
-        this.display = display;
-        return this;
-    }
-
     public String getId() {
         return id;
     }
@@ -229,15 +205,6 @@ public class SupportedCredentialConfiguration {
 
     public SupportedCredentialConfiguration setCredentialSigningAlgValuesSupported(List<String> credentialSigningAlgValuesSupported) {
         this.credentialSigningAlgValuesSupported = Collections.unmodifiableList(credentialSigningAlgValuesSupported);
-        return this;
-    }
-
-    public Claims getClaims() {
-        return claims;
-    }
-
-    public SupportedCredentialConfiguration setClaims(Claims claims) {
-        this.claims = claims;
         return this;
     }
 

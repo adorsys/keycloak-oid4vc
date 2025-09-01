@@ -198,7 +198,7 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
         assertEquals(clientScope.getName(), supportedConfig.getCredentialDefinition().getType().get(0));
         assertEquals(1, supportedConfig.getCredentialDefinition().getContext().size());
         assertEquals(clientScope.getName(), supportedConfig.getCredentialDefinition().getContext().get(0));
-        Assert.assertNull(supportedConfig.getDisplay());
+        Assert.assertNotNull(supportedConfig.getCredentialMetadata());
         assertEquals(clientScope.getName(), supportedConfig.getScope());
 
         compareClaims(supportedConfig.getFormat(), supportedConfig.getCredentialMetadata().getClaims(), clientScope.getProtocolMappers());
@@ -352,7 +352,8 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
             throw new RuntimeException(e);
         }
 
-        assertEquals(expectedDisplayObjectList.size(), supportedConfig.getDisplay().size());
+        assertNotNull("Credential metadata should exist when display is configured", supportedConfig.getCredentialMetadata());
+        assertEquals(expectedDisplayObjectList.size(), supportedConfig.getCredentialMetadata().getDisplay().size());
         MatcherAssert.assertThat("Must contain all expected display-objects",
                 supportedConfig.getCredentialMetadata().getDisplay(),
                 Matchers.containsInAnyOrder(expectedDisplayObjectList.toArray()));
@@ -445,7 +446,7 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
                     Object issuerConfig = oid4VCIssuerWellKnownProvider.getConfig();
 
                     assertTrue("Valid credential-issuer metadata should be returned.", issuerConfig instanceof CredentialIssuer);
-                    
+
                     CredentialIssuer credentialIssuer = (CredentialIssuer) issuerConfig;
 
                     assertEquals("The correct issuer should be included.", expectedIssuer, credentialIssuer.getCredentialIssuer());
@@ -456,7 +457,9 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
                     assertTrue("The test-credential should be supported.", credentialIssuer.getCredentialsSupported().containsKey("test-credential"));
                     assertEquals("The test-credential should offer type VerifiableCredential", "VerifiableCredential", credentialIssuer.getCredentialsSupported().get("test-credential").getScope());
                     assertEquals("The test-credential should be offered in the jwt-vc format.", Format.JWT_VC, credentialIssuer.getCredentialsSupported().get("test-credential").getFormat());
-                    assertNotNull("The test-credential can optionally provide a claims claim.", credentialIssuer.getCredentialsSupported().get("test-credential").getClaims());
+                    assertNotNull("The test-credential can optionally provide a claims claim.",
+                            credentialIssuer.getCredentialsSupported().get("test-credential").getCredentialMetadata() != null ?
+                                    credentialIssuer.getCredentialsSupported().get("test-credential").getCredentialMetadata().getClaims() : null);
                 }));
     }
 
