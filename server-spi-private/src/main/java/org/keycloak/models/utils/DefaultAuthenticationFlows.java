@@ -57,6 +57,8 @@ public class DefaultAuthenticationFlows {
     public static final String IDP_REVIEW_PROFILE_CONFIG_ALIAS = "review profile config";
     public static final String IDP_CREATE_UNIQUE_USER_CONFIG_ALIAS = "create unique user config";
 
+    public static final String OID4VP_AUTH_FLOW = "oid4vp auth";
+
     public static void addFlows(RealmModel realm) {
         if (realm.getFlowByAlias(BROWSER_FLOW) == null) browserFlow(realm);
         if (realm.getFlowByAlias(DIRECT_GRANT_FLOW) == null) directGrantFlow(realm, false);
@@ -66,6 +68,7 @@ public class DefaultAuthenticationFlows {
         if (realm.getFlowByAlias(FIRST_BROKER_LOGIN_FLOW) == null) firstBrokerLoginFlow(realm, false);
         if (realm.getFlowByAlias(SAML_ECP_FLOW) == null) samlEcpProfile(realm);
         if (realm.getFlowByAlias(DOCKER_AUTH) == null) dockerAuthenticationFlow(realm);
+        if (realm.getFlowByAlias(OID4VP_AUTH_FLOW) == null) oid4vpAuthenticationFlow(realm);
     }
 
     public static void migrateFlows(RealmModel realm) {
@@ -77,6 +80,7 @@ public class DefaultAuthenticationFlows {
         if (realm.getFlowByAlias(FIRST_BROKER_LOGIN_FLOW) == null) firstBrokerLoginFlow(realm, true);
         if (realm.getFlowByAlias(SAML_ECP_FLOW) == null) samlEcpProfile(realm);
         if (realm.getFlowByAlias(DOCKER_AUTH) == null) dockerAuthenticationFlow(realm);
+        if (realm.getFlowByAlias(OID4VP_AUTH_FLOW) == null) oid4vpAuthenticationFlow(realm);
     }
 
     public static void registrationFlow(RealmModel realm, boolean migrate) {
@@ -375,19 +379,21 @@ public class DefaultAuthenticationFlows {
         execution.setAuthenticatorFlow(false);
         realm.addAuthenticatorExecution(execution);
 
-        AuthenticatorConfigModel configModel = new AuthenticatorConfigModel();
-        configModel.setAlias("browser-conditional-credential");
-        configModel.setConfig(Map.of("credentials", WebAuthnCredentialModel.TYPE_PASSWORDLESS));
-        configModel = realm.addAuthenticatorConfig(configModel);
+        if (Profile.isFeatureEnabled(Profile.Feature.PASSKEYS)) {
+            AuthenticatorConfigModel configModel = new AuthenticatorConfigModel();
+            configModel.setAlias("browser-conditional-credential");
+            configModel.setConfig(Map.of("credentials", WebAuthnCredentialModel.TYPE_PASSWORDLESS));
+            configModel = realm.addAuthenticatorConfig(configModel);
 
-        execution = new AuthenticationExecutionModel();
-        execution.setParentFlow(conditionalOTP.getId());
-        execution.setRequirement(AuthenticationExecutionModel.Requirement.REQUIRED);
-        execution.setAuthenticator("conditional-credential");
-        execution.setPriority(20);
-        execution.setAuthenticatorFlow(false);
-        execution.setAuthenticatorConfig(configModel.getId());
-        realm.addAuthenticatorExecution(execution);
+            execution = new AuthenticationExecutionModel();
+            execution.setParentFlow(conditionalOTP.getId());
+            execution.setRequirement(AuthenticationExecutionModel.Requirement.REQUIRED);
+            execution.setAuthenticator("conditional-credential");
+            execution.setPriority(20);
+            execution.setAuthenticatorFlow(false);
+            execution.setAuthenticatorConfig(configModel.getId());
+            realm.addAuthenticatorExecution(execution);
+        }
 
         // otp processing
         execution = new AuthenticationExecutionModel();
@@ -676,19 +682,21 @@ public class DefaultAuthenticationFlows {
         execution.setAuthenticatorFlow(false);
         realm.addAuthenticatorExecution(execution);
 
-        AuthenticatorConfigModel configModel = new AuthenticatorConfigModel();
-        configModel.setAlias("first-broker-login-conditional-credential");
-        configModel.setConfig(Map.of("credentials", WebAuthnCredentialModel.TYPE_PASSWORDLESS));
-        configModel = realm.addAuthenticatorConfig(configModel);
+        if (Profile.isFeatureEnabled(Profile.Feature.PASSKEYS)) {
+            AuthenticatorConfigModel configModel = new AuthenticatorConfigModel();
+            configModel.setAlias("first-broker-login-conditional-credential");
+            configModel.setConfig(Map.of("credentials", WebAuthnCredentialModel.TYPE_PASSWORDLESS));
+            configModel = realm.addAuthenticatorConfig(configModel);
 
-        execution = new AuthenticationExecutionModel();
-        execution.setParentFlow(conditionalOTP.getId());
-        execution.setRequirement(AuthenticationExecutionModel.Requirement.REQUIRED);
-        execution.setAuthenticator("conditional-credential");
-        execution.setPriority(20);
-        execution.setAuthenticatorFlow(false);
-        execution.setAuthenticatorConfig(configModel.getId());
-        realm.addAuthenticatorExecution(execution);
+            execution = new AuthenticationExecutionModel();
+            execution.setParentFlow(conditionalOTP.getId());
+            execution.setRequirement(AuthenticationExecutionModel.Requirement.REQUIRED);
+            execution.setAuthenticator("conditional-credential");
+            execution.setPriority(20);
+            execution.setAuthenticatorFlow(false);
+            execution.setAuthenticatorConfig(configModel.getId());
+            realm.addAuthenticatorExecution(execution);
+        }
 
         execution = new AuthenticationExecutionModel();
         execution.setParentFlow(conditionalOTP.getId());
@@ -763,6 +771,32 @@ public class DefaultAuthenticationFlows {
         execution.setParentFlow(dockerAuthFlow.getId());
         execution.setRequirement(AuthenticationExecutionModel.Requirement.REQUIRED);
         execution.setAuthenticator("docker-http-basic-authenticator");
+        execution.setPriority(10);
+        execution.setAuthenticatorFlow(false);
+
+        realm.addAuthenticatorExecution(execution);
+    }
+
+    public static void oid4vpAuthenticationFlow(final RealmModel realm) {
+        if (!Profile.isFeatureEnabled(Feature.OID4VC_VPAUTH)) {
+            return;
+        }
+
+        AuthenticationFlowModel oid4vpAuthFlow = new AuthenticationFlowModel();
+
+        oid4vpAuthFlow.setAlias(OID4VP_AUTH_FLOW);
+        oid4vpAuthFlow.setDescription("Authenticate via OpenID4VP presentations of self-issued identity credentials");
+        oid4vpAuthFlow.setProviderId("basic-flow");
+        oid4vpAuthFlow.setTopLevel(true);
+        oid4vpAuthFlow.setBuiltIn(true);
+        oid4vpAuthFlow = realm.addAuthenticationFlow(oid4vpAuthFlow);
+        // TODO: realm.setOid4vpAuthFlow(oid4vpAuthFlow);
+
+        AuthenticationExecutionModel execution = new AuthenticationExecutionModel();
+
+        execution.setParentFlow(oid4vpAuthFlow.getId());
+        execution.setRequirement(AuthenticationExecutionModel.Requirement.REQUIRED);
+        execution.setAuthenticator("sd-jwt-authenticator");
         execution.setPriority(10);
         execution.setAuthenticatorFlow(false);
 
