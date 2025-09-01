@@ -62,11 +62,12 @@ export const ScopeForm = ({ clientScope, save }: ScopeFormProps) => {
     defaultValue: clientScope?.protocol ?? providers[0],
   });
 
-  const isOid4vcProtocol = selectedProtocol === "oid4vc";
-  const isOid4vcFeatureEnabled = isFeatureEnabled(Feature.OpenId4VCI);
-  const isOid4vcRealmEnabled =
+  const isOid4vcProtocol = () => selectedProtocol === "oid4vc";
+  const isOid4vcFeatureEnabled = () => isFeatureEnabled(Feature.OpenId4VCI);
+  const isOid4vcRealmEnabled = () =>
     realmRepresentation?.verifiableCredentialsEnabled === true;
-  const isOid4vcEnabled = isOid4vcFeatureEnabled && isOid4vcRealmEnabled;
+  const isOid4vcEnabled = () =>
+    isOid4vcFeatureEnabled() && isOid4vcRealmEnabled();
 
   const setDynamicRegex = (value: string, append: boolean) =>
     setValue(
@@ -199,7 +200,7 @@ export const ScopeForm = ({ clientScope, save }: ScopeFormProps) => {
         />
 
         {/* OID4VCI Credential Configuration Section */}
-        {isOid4vcProtocol && isOid4vcEnabled && (
+        {isOid4vcProtocol() && isOid4vcEnabled() && (
           <>
             <TextControl
               name={convertAttributeNameToForm<ClientScopeDefaultOptionalType>(
@@ -246,9 +247,9 @@ export const ScopeForm = ({ clientScope, save }: ScopeFormProps) => {
             />
           </>
         )}
-        {isOid4vcProtocol && !isOid4vcEnabled && (
+        {isOid4vcProtocol() && !isOid4vcEnabled() && (
           <Alert variant="info" title={t("oid4vcFeatureDisabled")} isInline>
-            {!isOid4vcFeatureEnabled
+            {!isOid4vcFeatureEnabled()
               ? t("oid4vcGlobalFeatureDisabledHelp")
               : t("oid4vcRealmFeatureDisabledHelp")}
           </Alert>
