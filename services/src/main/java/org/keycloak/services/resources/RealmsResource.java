@@ -29,7 +29,6 @@ import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
 import org.keycloak.protocol.LoginProtocol;
 import org.keycloak.protocol.LoginProtocolFactory;
-import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerWellKnownProvider;
 import org.keycloak.services.CorsErrorResponseException;
 import org.keycloak.services.clientregistration.ClientRegistrationService;
 import org.keycloak.services.cors.Cors;
@@ -57,6 +56,8 @@ import jakarta.ws.rs.ext.Provider;
 
 import java.net.URI;
 import java.util.Comparator;
+
+import static org.keycloak.utils.MediaType.APPLICATION_JWT;
 
 /**
  * @author <a href="mailto:bill@burkecentral.com">Bill Burke</a>
@@ -222,34 +223,28 @@ public class RealmsResource {
 
     @GET
     @Path("{realm}/.well-known/{alias}")
-    @Produces({MediaType.APPLICATION_JSON, org.keycloak.utils.MediaType.APPLICATION_JWT})
+    @Produces({MediaType.APPLICATION_JSON, APPLICATION_JWT})
     public Response getWellKnown(final @PathParam("realm") String name,
                                  final @PathParam("alias") String alias) {
         resolveRealmAndUpdateSession(name);
         checkSsl(session.getContext().getRealm());
 
-        WellKnownProviderFactory wellKnownProviderFactoryFound = session.getKeycloakSessionFactory()
-                .getProviderFactoriesStream(WellKnownProvider.class)
+        WellKnownProviderFactory wellKnownProviderFactoryFound = session.getKeycloakSessionFactory().getProviderFactoriesStream(WellKnownProvider.class)
                 .map(providerFactory -> (WellKnownProviderFactory) providerFactory)
                 .filter(wellKnownProviderFactory -> alias.equals(wellKnownProviderFactory.getAlias()))
                 .sorted(Comparator.comparingInt(WellKnownProviderFactory::getPriority))
-                .findFirst()
-                .orElseThrow(() -> new NotFoundException("Well-known provider not found for alias: " + alias));
+                .findFirst().orElseThrow(NotFoundException::new);
 
         logger.tracef("Use provider with ID '%s' for well-known alias '%s'", wellKnownProviderFactoryFound.getId(), alias);
 
         WellKnownProvider wellKnown = session.getProvider(WellKnownProvider.class, wellKnownProviderFactoryFound.getId());
-        if (wellKnown == null) {
-            throw new NotFoundException("Well-known provider not found for ID: " + wellKnownProviderFactoryFound.getId());
+
+        if (wellKnown != null) {
+            Response.ResponseBuilder responseBuilder = Response.ok(wellKnown.getConfig()).cacheControl(CacheControlUtil.noCache());
+            return Cors.builder().allowAllOrigins().auth().add(responseBuilder);
         }
 
-        if (wellKnown instanceof OID4VCIssuerWellKnownProvider) {
-            return ((OID4VCIssuerWellKnownProvider) wellKnown).getMetadataResponse(session);
-        }
-
-        Object config = wellKnown.getConfig();
-        return Cors.builder().allowAllOrigins().auth()
-                .add(Response.ok(config).type(MediaType.APPLICATION_JSON).cacheControl(CacheControlUtil.noCache()));
+        throw new NotFoundException();
     }
 
     @Path("{realm}/authz")

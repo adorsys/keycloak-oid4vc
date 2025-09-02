@@ -17,7 +17,6 @@
 
 package org.keycloak.protocol.oid4vc.issuance;
 
-import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriInfo;
 import org.apache.http.HttpHeaders;
 import org.keycloak.common.util.Time;
@@ -43,7 +42,6 @@ import org.keycloak.representations.JsonWebToken;
 import org.keycloak.services.Urls;
 import org.keycloak.urls.UrlType;
 import org.keycloak.util.JsonSerialization;
-import org.keycloak.utils.MediaType;
 import org.keycloak.wellknown.WellKnownProvider;
 import org.jboss.logging.Logger;
 
@@ -113,11 +111,10 @@ public class OID4VCIssuerWellKnownProvider implements WellKnownProvider {
                 .setAuthorizationServers(List.of(getIssuer(context)))
                 .setCredentialResponseEncryption(getCredentialResponseEncryption(keycloakSession))
                 .setBatchCredentialIssuance(getBatchCredentialIssuance(keycloakSession));
-        return issuer;
+        return getMetadataResponse(issuer, keycloakSession);
     }
 
-    public Response getMetadataResponse(KeycloakSession session) {
-        Object config = getConfig();
+    public Object getMetadataResponse(CredentialIssuer issuer, KeycloakSession session) {
         RealmModel realm = session.getContext().getRealm();
         String acceptHeader = session.getContext().getRequestHeaders().getHeaderString(HttpHeaders.ACCEPT);
         boolean preferJwt = acceptHeader != null && acceptHeader.contains(org.keycloak.utils.MediaType.APPLICATION_JWT);
@@ -126,17 +123,17 @@ public class OID4VCIssuerWellKnownProvider implements WellKnownProvider {
         if (preferJwt && signedMetadataEnabled) {
             String signedJwt = null;
             try {
-                signedJwt = generateSignedMetadata((CredentialIssuer) config, session);
+                signedJwt = generateSignedMetadata(issuer, session);
             } catch (Exception e) {
                 LOGGER.warnf(e, "Failed to generate signed metadata for realm: %s", realm.getName());
             }
             if (signedJwt != null) {
-                return Response.ok(signedJwt).type(org.keycloak.utils.MediaType.APPLICATION_JWT).build();
+                return signedJwt;
             } else {
                 LOGGER.debugf("Falling back to JSON response due to signed metadata failure for realm: %s", realm.getName());
             }
         }
-        return Response.ok(config).type(MediaType.APPLICATION_JSON).build();
+        return issuer;
     }
 
     private static String getDeferredCredentialEndpoint(KeycloakContext context) {
@@ -238,8 +235,12 @@ public class OID4VCIssuerWellKnownProvider implements WellKnownProvider {
         }
 
         String configuredAlg = realm.getAttribute(SIGNED_METADATA_ALG_ATTR);
-        if (configuredAlg != null && !supportedAlgorithms.contains(configuredAlg)) {
-            throw new IllegalStateException("Configured signing algorithm '" + configuredAlg + "' is not supported for realm: " + realm.getName());
+        if (configuredAlg != null) {
+            if (!supportedAlgorithms.contains(configuredAlg)) {
+                throw new IllegalStateException("Configured signing algorithm '" + configuredAlg + "' is not supported for realm: " + realm.getName());
+            }
+            // Use the configured algorithm if present and supported
+            return configuredAlg;
         }
 
         // Prefer RS256 if available, otherwise use the first supported asymmetric algorithm
