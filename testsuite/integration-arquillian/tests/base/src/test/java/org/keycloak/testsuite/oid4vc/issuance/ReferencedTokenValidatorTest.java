@@ -1,163 +1,153 @@
 package org.keycloak.testsuite.oid4vc.issuance;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
-import org.keycloak.sdjwt.consumer.HttpDataFetcher;
+import org.keycloak.sdjwt.consumer.StatusListJwtFetcher;
 import org.keycloak.protocol.oid4vc.tokenstatus.ReferencedTokenValidator;
 import org.keycloak.protocol.oid4vc.tokenstatus.ReferencedTokenValidator.ReferencedTokenValidationException;
-import org.keycloak.testsuite.oid4vc.issuance.signing.OID4VCTest;
-import org.keycloak.representations.idm.RealmRepresentation;
+import org.keycloak.util.JsonSerialization;
 
-import java.io.IOException;
+import java.util.Base64;
+import java.util.List;
 
 /**
  * Test for ReferencedTokenValidator using the official IETF specification test vectors.
+ *
+ * @author <a href="mailto:Forkim.Akwichek@adorsys.com">Forkim Akwichek</a>
  */
-public class ReferencedTokenValidatorTest extends OID4VCTest {
+public class ReferencedTokenValidatorTest {
+
+    // IETF Test Vector Constants
+    private static final String IETF_1BIT_TEST_VECTOR = "eNrt3AENwCAMAEGogklACtKQPg9LugC9k_ACvreiogEAAKkeCQAAAAAAAAAAAAAAAAAAAIBylgQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAXG9IAAAAAAAAAPwsJAAAAAAAAAAAAAAAvhsSAAAAAAAAAAAA7KpLAAAAAAAAAAAAAAAAAAAAAJsLCQAAAAAAAAAAADjelAAAAAAAAAAAKjDMAQAAAACAZC8L2AEb";
+
+    private static final String IETF_2BIT_TEST_VECTOR = "eNrt2zENACEQAEEuoaBABP5VIO01fCjIHTMStt9ovGVIAAAAAABAbiEBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEB5WwIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAID0ugQAAAAAAAAAAAAAAAAAQG12SgAAAAAAAAAAAAAAAAAAAAAAAAAAAOCSIQEAAAAAAAAAAAAAAAAAAAAAAAD8ExIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwJEuAQAAAAAAAAAAAAAAAAAAAAAAAMB9SwIAAAAAAAAAAAAAAAAAAACoYUoAAAAAAAAAAAAAAEBqH81gAQw";
+
+    private static final String IETF_1BIT_SMALL_TEST_VECTOR = "eNrbuRgAAhcBXQ";
+
+    private static final String IETF_2BIT_SMALL_TEST_VECTOR = "eNo76fITAAPfAgc";
 
     private ReferencedTokenValidator validator;
-    private ObjectMapper objectMapper;
 
     @Before
     public void setUp() {
-        objectMapper = new ObjectMapper();
 
-        // Create a mock HTTP data fetcher that returns the IETF test vectors
-        HttpDataFetcher mockHttpDataFetcher = new HttpDataFetcher() {
-            @Override
-            public JsonNode fetchJsonData(String uri) throws IOException {
-                // Return the official IETF spec 1-bit test vector used in the specification
-                String mockStatusListToken = """
-                        {
-                            "status_list": {
-                                "bits": 1,
-                                "lst": "eNrt3AENwCAMAEGogklACtKQPg9LugC9k_ACvreiogEAAKkeCQAAAAAAAAAAAAAAAAAAAIBylgQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAXG9IAAAAAAAAAPwsJAAAAAAAAAAAAAAAvhsSAAAAAAAAAAA7KpLAAAAAAAAAAAAAAAAAAAAAJsLCQAAAAAAAAAAADjelAAAAAAAAAAAKjDMAQAAAACAZC8L2AEb"
-                            }
+        // Create a mock Status List JWT fetcher
+        StatusListJwtFetcher mockStatusListJwtFetcher = uri -> {
+            // Return a mock JWT token that contains the status list data
+            // In a real scenario, this would be a signed JWT with the status_list claim
+            String mockJwtPayload = """
+                    {
+                        "status_list": {
+                            "bits": 1,
+                            "lst": "%s"
                         }
-                        """;
-                try {
-                    return objectMapper.readTree(mockStatusListToken);
-                } catch (JsonProcessingException e) {
-                    throw new IOException("Failed to parse mock status list token", e);
-                }
-            }
+                    }
+                    """.formatted(IETF_1BIT_TEST_VECTOR);
+
+            // Create a simple JWT structure (header.payload.signature)
+            String header = "eyJ0eXAiOiJzdGF0dXNsaXN0K2p3dCJ9"; // {"typ":"statuslist+jwt"}
+            String payload = Base64.getUrlEncoder().withoutPadding().encodeToString(mockJwtPayload.getBytes());
+            String signature = "mock_signature";
+
+            return header + "." + payload + "." + signature;
         };
 
-        validator = new ReferencedTokenValidator(mockHttpDataFetcher);
+        validator = new ReferencedTokenValidator(mockStatusListJwtFetcher);
     }
 
     @Test
     public void testIETFSpecVectorSize_1Bit() throws Exception {
         // Test to understand the actual size of the IETF 1-bit test vector
-        String lst = "eNrt3AENwCAMAEGogklACtKQPg9LugC9k_ACvreiogEAAKkeCQAAAAAAAAAAAAAAAAAAAIBylgQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAXG9IAAAAAAAAAPwsJAAAAAAAAAAAAAAAvhsSAAAAAAAAAAA7KpLAAAAAAAAAAAAAAAAAAAAAJsLCQAAAAAAAAAAADjelAAAAAAAAAAAKjDMAQAAAACAZC8L2AEb";
+        String lst = IETF_1BIT_TEST_VECTOR;
         int bits = 1;
 
-        // Try to read the maximum possible index to determine the actual size
+        // Try to read beyond the valid range - should throw exception
         try {
-            // Start with a reasonable upper bound
-            int maxIndex = 20000;
-            readStatusValue(lst, maxIndex, bits);
-            System.out.println("1-bit test vector supports at least " + maxIndex + " entries");
+            int maxIndex = 1048576; // Known size from IETF spec (2^20)
+            ReferencedTokenValidator.readStatusValue(lst, maxIndex, bits);
+            Assert.fail("Expected test vector to fail for index " + maxIndex + " but it succeeded.");
         } catch (ReferencedTokenValidationException e) {
-            if (e.getMessage().contains("out of range")) {
-                // Extract the range from the error message
-                String message = e.getMessage();
-                int start = message.indexOf("(0-") + 3;
-                int end = message.indexOf(")");
-                if (start > 2 && end > start) {
-                    int maxEntries = Integer.parseInt(message.substring(start, end)) + 1;
-                    System.out.println("1-bit test vector contains " + maxEntries + " entries (not 2^20 as claimed in spec)");
-
-                    // Assert the actual size for test validation
-                    Assert.assertEquals("1-bit test vector should contain 15440 entries", 15440, maxEntries);
-                }
-            }
+            // Assert the exact expected error message
+            Assert.assertEquals("Index 1048576 out of range (0-1048575)", e.getMessage());
         }
     }
 
     @Test
     public void testIETFSpecVectorSize_2Bit() throws Exception {
         // Test to understand the actual size of the IETF 2-bit test vector
-        String lst = "eNrt2zENACEQAEEuoaBABP5VIO01fCjIHTMStt9ovGVIAAAAAABAbiEBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEB5WwIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAID0ugQAAAAAAAAAAAAAAAAAQG12SgAAAAAAAAAAAAAAAAAAAAAAAOCSIQEAAAAAAAAAAAAAAAAAAAAAAAD8ExIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwJEuAQAAAAAAAAAAAAAAAAAAAAAAAMB9SwIAAAAAAAAAAAAAAAAAAACoYUoAAAAAAAAAAAAAAEBqH81gAQw";
+        String lst = IETF_2BIT_TEST_VECTOR;
         int bits = 2;
 
-        // Try to read the maximum possible index to determine the actual size
+        // Try to read beyond the valid range - should throw exception
         try {
-            // Start with a reasonable upper bound
-            int maxIndex = 20000;
-            readStatusValue(lst, maxIndex, bits);
-            System.out.println("2-bit test vector supports at least " + maxIndex + " entries");
+            int maxIndex = 1048576; // Known size from IETF spec (2^20)
+            ReferencedTokenValidator.readStatusValue(lst, maxIndex, bits);
+            Assert.fail("Expected test vector to fail for index " + maxIndex + " but it succeeded.");
         } catch (ReferencedTokenValidationException e) {
-            if (e.getMessage().contains("out of range")) {
-                // Extract the range from the error message
-                String message = e.getMessage();
-                int start = message.indexOf("(0-") + 3;
-                int end = message.indexOf(")");
-                if (start > 2 && end > start) {
-                    int maxEntries = Integer.parseInt(message.substring(start, end)) + 1;
-                    System.out.println("2-bit test vector contains " + maxEntries + " entries (not 2^20 as claimed in spec)");
-
-                    // Assert the actual size for test validation
-                    Assert.assertEquals("2-bit test vector should contain 12840 entries", 12840, maxEntries);
-                }
-            }
+            // Assert the exact expected error message
+            Assert.assertEquals("Index 1048576 out of range (0-1048575)", e.getMessage());
         }
     }
 
     @Test
     public void testIETF_1Bit_OfficialTestVector() throws Exception {
         // Test the official IETF 1-bit test vector from the specification
-        // This test vector has 15,440 entries (range 0-15439)
+        // This test vector has 2^20 = 1,048,576 entries (range 0-1048575)
         // Only specific indices have status=1, all others should be 0
 
-        String lst = "eNrt3AENwCAMAEGogklACtKQPg9LugC9k_ACvreiogEAAKkeCQAAAAAAAAAAAAAAAAAAAIBylgQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAXG9IAAAAAAAAAPwsJAAAAAAAAAAAAAAAvhsSAAAAAAAAAAA7KpLAAAAAAAAAAAAAAAAAAAAAJsLCQAAAAAAAAAAADjelAAAAAAAAAAAKjDMAQAAAACAZC8L2AEb";
+        String lst = IETF_1BIT_TEST_VECTOR;
         int bits = 1;
 
         // Test the specific indices that should have status = 1 according to the IETF spec
-        // Only test indices within the valid range (0-15439)
-        Assert.assertEquals("status[0] should be 1", 1, readStatusValue(lst, 0, bits));
-        Assert.assertEquals("status[1993] should be 1", 1, readStatusValue(lst, 1993, bits));
+        // Only test indices within the valid range (0-1048575 for 2^20 entries)
+        int[] indicesWithStatus1 = {0, 1993, 25460, 159495, 495669, 554353, 645645, 723232, 854545, 934534, 1000345};
+        for (int idx : indicesWithStatus1) {
+            Assert.assertEquals("status[" + idx + "] should be 1", 1, ReferencedTokenValidator.readStatusValue(lst, idx, bits));
+        }
 
         // Test some indices that should have status = 0 (VALID) - not mentioned in spec
-        Assert.assertEquals("status[1] should be 0 (not mentioned in spec)", 0, readStatusValue(lst, 1, bits));
-        Assert.assertEquals("status[100] should be 0 (not mentioned in spec)", 0, readStatusValue(lst, 100, bits));
-        Assert.assertEquals("status[1000] should be 0 (not mentioned in spec)", 0, readStatusValue(lst, 1000, bits));
-        Assert.assertEquals("status[5000] should be 0 (not mentioned in spec)", 0, readStatusValue(lst, 5000, bits));
-        Assert.assertEquals("status[10000] should be 0 (not mentioned in spec)", 0, readStatusValue(lst, 10000, bits));
-        Assert.assertEquals("status[15000] should be 0 (not mentioned in spec)", 0, readStatusValue(lst, 15000, bits));
+        for (int idx : List.of(1, 100, 1000, 5000, 10000, 15000)) {
+            Assert.assertEquals("status[" + idx + "] should be 0 (not mentioned in spec)", 0, ReferencedTokenValidator.readStatusValue(lst, idx, bits));
+        }
 
         // Test boundary conditions
-        Assert.assertEquals("status[15439] should be 0 (last valid index)", 0, readStatusValue(lst, 15439, bits));
+        Assert.assertEquals("status[1048575] should be 0 (last valid index)", 0, ReferencedTokenValidator.readStatusValue(lst, 1048575, bits));
     }
 
     @Test
     public void testIETF_2Bit_OfficialTestVector() throws Exception {
         // Test the official IETF 2-bit test vector from the specification
-        // This test vector has 12,840 entries (range 0-12839)
+        // This test vector has 2^20 = 1,048,576 entries (range 0-1048575)
         // Only specific indices have non-zero status values, all others should be 0
 
-        String lst = "eNrt2zENACEQAEEuoaBABP5VIO01fCjIHTMStt9ovGVIAAAAAABAbiEBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEB5WwIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAID0ugQAAAAAAAAAAAAAAAAAQG12SgAAAAAAAAAAAAAAAAAAAAAAAOCSIQEAAAAAAAAAAAAAAAAAAAAAAAD8ExIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwJEuAQAAAAAAAAAAAAAAAAAAAAAAAMB9SwIAAAAAAAAAAAAAAAAAAACoYUoAAAAAAAAAAAAAAEBqH81gAQw";
+        String lst = IETF_2BIT_TEST_VECTOR;
         int bits = 2;
 
         // Test the specific indices that should have specific status values according to the IETF spec
-        // Only test indices within the valid range (0-12839)
-        Assert.assertEquals("status[0] should be 1", 1, readStatusValue(lst, 0, bits));
-        Assert.assertEquals("status[1993] should be 2", 2, readStatusValue(lst, 1993, bits));
+        // Only test indices within the valid range (0-1048575 for 2^20 entries)
+        int[] indicesWithStatus1 = {0, 25460, 495669, 554353, 723232, 854545};
+        int[] indicesWithStatus2 = {1993, 645645, 934534};
+        int[] indicesWithStatus3 = {159495, 1000345};
+
+        for (int idx : indicesWithStatus1) {
+            Assert.assertEquals("status[" + idx + "] should be 1", 1, ReferencedTokenValidator.readStatusValue(lst, idx, bits));
+        }
+        for (int idx : indicesWithStatus2) {
+            Assert.assertEquals("status[" + idx + "] should be 2", 2, ReferencedTokenValidator.readStatusValue(lst, idx, bits));
+        }
+        for (int idx : indicesWithStatus3) {
+            Assert.assertEquals("status[" + idx + "] should be 3", 3, ReferencedTokenValidator.readStatusValue(lst, idx, bits));
+        }
 
         // Test some indices that should have status = 0 (VALID) - not mentioned in spec
-        Assert.assertEquals("status[1] should be 0 (not mentioned in spec)", 0, readStatusValue(lst, 1, bits));
-        Assert.assertEquals("status[100] should be 0 (not mentioned in spec)", 0, readStatusValue(lst, 100, bits));
-        Assert.assertEquals("status[1000] should be 0 (not mentioned in spec)", 0, readStatusValue(lst, 1000, bits));
-        Assert.assertEquals("status[5000] should be 0 (not mentioned in spec)", 0, readStatusValue(lst, 5000, bits));
-        Assert.assertEquals("status[10000] should be 0 (not mentioned in spec)", 0, readStatusValue(lst, 10000, bits));
-        Assert.assertEquals("status[12000] should be 0 (not mentioned in spec)", 0, readStatusValue(lst, 12000, bits));
+        for (int idx : List.of(1, 100, 1000, 5000, 10000, 12000)) {
+            Assert.assertEquals("status[" + idx + "] should be 0 (not mentioned in spec)", 0, ReferencedTokenValidator.readStatusValue(lst, idx, bits));
+        }
 
         // Test boundary conditions
-        Assert.assertEquals("status[12839] should be 0 (last valid index)", 0, readStatusValue(lst, 12839, bits));
+        Assert.assertEquals("status[1048575] should be 0 (last valid index)", 0, ReferencedTokenValidator.readStatusValue(lst, 1048575, bits));
     }
 
     @Test
@@ -168,26 +158,18 @@ public class ReferencedTokenValidatorTest extends OID4VCTest {
 
         // The compressed and encoded string for the example
         // Original bytes: [0xC9, 0x44, 0xF9] (3 bytes, 24 bits, 12 status values)
-        String lst = "eNo76fITAAPfAgc";
+        String lst = IETF_2BIT_SMALL_TEST_VECTOR;
         int bits = 2;
 
         // Test all 12 status values according to the IETF spec example
-        Assert.assertEquals("status[0] should be 1", 1, readStatusValue(lst, 0, bits));
-        Assert.assertEquals("status[1] should be 2", 2, readStatusValue(lst, 1, bits));
-        Assert.assertEquals("status[2] should be 0", 0, readStatusValue(lst, 2, bits));
-        Assert.assertEquals("status[3] should be 3", 3, readStatusValue(lst, 3, bits));
-        Assert.assertEquals("status[4] should be 0", 0, readStatusValue(lst, 4, bits));
-        Assert.assertEquals("status[5] should be 1", 1, readStatusValue(lst, 5, bits));
-        Assert.assertEquals("status[6] should be 0", 0, readStatusValue(lst, 6, bits));
-        Assert.assertEquals("status[7] should be 1", 1, readStatusValue(lst, 7, bits));
-        Assert.assertEquals("status[8] should be 1", 1, readStatusValue(lst, 8, bits));
-        Assert.assertEquals("status[9] should be 2", 2, readStatusValue(lst, 9, bits));
-        Assert.assertEquals("status[10] should be 3", 3, readStatusValue(lst, 10, bits));
-        Assert.assertEquals("status[11] should be 3", 3, readStatusValue(lst, 11, bits));
+        int[] expectedValues = {1, 2, 0, 3, 0, 1, 0, 1, 1, 2, 3, 3};
+        for (int i = 0; i < expectedValues.length; i++) {
+            Assert.assertEquals("status[" + i + "] should be " + expectedValues[i], expectedValues[i], ReferencedTokenValidator.readStatusValue(lst, i, bits));
+        }
 
         // Test that accessing beyond the valid range throws an exception
         try {
-            readStatusValue(lst, 12, bits);
+            ReferencedTokenValidator.readStatusValue(lst, 12, bits);
             Assert.fail("Should throw exception for index 12 (beyond valid range 0-11)");
         } catch (ReferencedTokenValidationException e) {
             Assert.assertTrue("Exception should mention out of range",
@@ -203,30 +185,18 @@ public class ReferencedTokenValidatorTest extends OID4VCTest {
 
         // The compressed and encoded string for the example
         // Original bytes: [0xB9, 0xA3] (2 bytes, 16 bits, 16 status values)
-        String lst = "eNrbuRgAAhcBXQ";
+        String lst = IETF_1BIT_SMALL_TEST_VECTOR;
         int bits = 1;
 
         // Test all 16 status values
-        Assert.assertEquals("status[0] should be 1", 1, readStatusValue(lst, 0, bits));
-        Assert.assertEquals("status[1] should be 0", 0, readStatusValue(lst, 1, bits));
-        Assert.assertEquals("status[2] should be 0", 0, readStatusValue(lst, 2, bits));
-        Assert.assertEquals("status[3] should be 1", 1, readStatusValue(lst, 3, bits));
-        Assert.assertEquals("status[4] should be 1", 1, readStatusValue(lst, 4, bits));
-        Assert.assertEquals("status[5] should be 1", 1, readStatusValue(lst, 5, bits));
-        Assert.assertEquals("status[6] should be 0", 0, readStatusValue(lst, 6, bits));
-        Assert.assertEquals("status[7] should be 1", 1, readStatusValue(lst, 7, bits));
-        Assert.assertEquals("status[8] should be 1", 1, readStatusValue(lst, 8, bits));
-        Assert.assertEquals("status[9] should be 1", 1, readStatusValue(lst, 9, bits));
-        Assert.assertEquals("status[10] should be 0", 0, readStatusValue(lst, 10, bits));
-        Assert.assertEquals("status[11] should be 0", 0, readStatusValue(lst, 11, bits));
-        Assert.assertEquals("status[12] should be 0", 0, readStatusValue(lst, 12, bits));
-        Assert.assertEquals("status[13] should be 1", 1, readStatusValue(lst, 13, bits));
-        Assert.assertEquals("status[14] should be 0", 0, readStatusValue(lst, 14, bits));
-        Assert.assertEquals("status[15] should be 1", 1, readStatusValue(lst, 15, bits));
+        int[] expectedValues = {1, 0, 0, 1, 1, 1, 0, 1, 1, 1, 0, 0, 0, 1, 0, 1};
+        for (int i = 0; i < expectedValues.length; i++) {
+            Assert.assertEquals("status[" + i + "] should be " + expectedValues[i], expectedValues[i], ReferencedTokenValidator.readStatusValue(lst, i, bits));
+        }
 
         // Test that accessing beyond the valid range throws an exception
         try {
-            readStatusValue(lst, 16, bits);
+            ReferencedTokenValidator.readStatusValue(lst, 16, bits);
             Assert.fail("Should throw exception for index 16 (beyond valid range 0-15)");
         } catch (ReferencedTokenValidationException e) {
             Assert.assertTrue("Exception should mention out of range",
@@ -238,10 +208,8 @@ public class ReferencedTokenValidatorTest extends OID4VCTest {
     public void testIETF_1Bit_OfficialTestVector_WithMock() throws Exception {
         // Test the official IETF 1-bit test vector using the mock HTTP fetcher
 
-        ObjectMapper mapper = new ObjectMapper();
-
         // Test with status[0] = 1 (INVALID) - should throw exception
-        JsonNode invalidTokenPayload = mapper.readTree("""
+        JsonNode invalidTokenPayload = JsonSerialization.mapper.readTree("""
                 {
                     "status": {
                         "status_list": {
@@ -261,7 +229,7 @@ public class ReferencedTokenValidatorTest extends OID4VCTest {
                 exception.getMessage().contains("Token status is not valid"));
 
         // Test with status[1] = 0 (VALID) - should pass
-        JsonNode validTokenPayload = mapper.readTree("""
+        JsonNode validTokenPayload = JsonSerialization.mapper.readTree("""
                 {
                     "status": {
                         "status_list": {
@@ -280,10 +248,8 @@ public class ReferencedTokenValidatorTest extends OID4VCTest {
     public void testIETF_2Bit_OfficialTestVector_WithMock() throws Exception {
         // Test the official IETF 2-bit test vector using the mock HTTP fetcher
 
-        ObjectMapper mapper = new ObjectMapper();
-
         // Test with status[0] = 1 (INVALID)
-        JsonNode invalidTokenPayload = mapper.readTree("""
+        JsonNode invalidTokenPayload = JsonSerialization.mapper.readTree("""
                 {
                     "status": {
                         "status_list": {
@@ -303,7 +269,7 @@ public class ReferencedTokenValidatorTest extends OID4VCTest {
                 exception1.getMessage().contains("Token status is not valid"));
 
         // Test with status[1993] = 2 (SUSPENDED)
-        JsonNode suspendedTokenPayload = mapper.readTree("""
+        JsonNode suspendedTokenPayload = JsonSerialization.mapper.readTree("""
                 {
                     "status": {
                         "status_list": {
@@ -323,7 +289,7 @@ public class ReferencedTokenValidatorTest extends OID4VCTest {
                 exception2.getMessage().contains("Token status is not valid"));
 
         // Test with a valid status (any index not mentioned in spec should be 0)
-        JsonNode validTokenPayload = mapper.readTree("""
+        JsonNode validTokenPayload = JsonSerialization.mapper.readTree("""
                 {
                     "status": {
                         "status_list": {
@@ -343,8 +309,7 @@ public class ReferencedTokenValidatorTest extends OID4VCTest {
     public void testRequiredFieldsEnforcement() throws Exception {
 
         try {
-            ObjectMapper mapper = new ObjectMapper();
-            JsonNode tokenPayload = mapper.readTree("{}");
+            JsonNode tokenPayload = JsonSerialization.mapper.readTree("{}");
             validator.validate(tokenPayload);
             Assert.fail("Should throw exception for missing 'status' claim");
         } catch (ReferencedTokenValidationException e) {
@@ -353,8 +318,7 @@ public class ReferencedTokenValidatorTest extends OID4VCTest {
         }
 
         try {
-            ObjectMapper mapper = new ObjectMapper();
-            JsonNode tokenPayload = mapper.readTree("{\"status\": {}}");
+            JsonNode tokenPayload = JsonSerialization.mapper.readTree("{\"status\": {}}");
             validator.validate(tokenPayload);
             Assert.fail("Should throw exception for missing 'status_list'");
         } catch (ReferencedTokenValidationException e) {
@@ -363,28 +327,7 @@ public class ReferencedTokenValidatorTest extends OID4VCTest {
         }
 
         try {
-            ObjectMapper mapper = new ObjectMapper();
-            JsonNode tokenPayload = mapper.readTree("{\"status\": {\"status_list\": {\"uri\": \"https://example.com\"}}}");
-            validator.validate(tokenPayload);
-            Assert.fail("Should throw exception for missing 'idx' field");
-        } catch (ReferencedTokenValidationException e) {
-            Assert.assertTrue("Exception should mention missing idx field",
-                    e.getMessage().contains("Missing required 'idx' field"));
-        }
-
-        try {
-            ObjectMapper mapper = new ObjectMapper();
-            JsonNode tokenPayload = mapper.readTree("{\"status\": {\"status_list\": {\"idx\": 123}}}");
-            validator.validate(tokenPayload);
-            Assert.fail("Should throw exception for missing 'uri' field");
-        } catch (ReferencedTokenValidationException e) {
-            Assert.assertTrue("Exception should mention missing uri field",
-                    e.getMessage().contains("Missing required 'uri' field"));
-        }
-
-        try {
-            ObjectMapper mapper = new ObjectMapper();
-            JsonNode tokenPayload = mapper.readTree("{\"status\": {\"status_list\": {\"idx\": -1, \"uri\": \"https://example.com\"}}}");
+            JsonNode tokenPayload = JsonSerialization.mapper.readTree("{\"status\": {\"status_list\": {\"idx\": -1, \"uri\": \"https://example.com\"}}}");
             validator.validate(tokenPayload);
             Assert.fail("Should throw exception for negative 'idx' value");
         } catch (ReferencedTokenValidationException e) {
@@ -393,18 +336,57 @@ public class ReferencedTokenValidatorTest extends OID4VCTest {
         }
 
         try {
-            ObjectMapper mapper = new ObjectMapper();
-            JsonNode tokenPayload = mapper.readTree("{\"status\": {\"status_list\": {\"idx\": 123, \"uri\": \"\"}}}");
+            JsonNode tokenPayload = JsonSerialization.mapper.readTree("{\"status\": {\"status_list\": {\"idx\": 999999999, \"uri\": \"https://example.com\"}}}");
+            validator.validate(tokenPayload);
+            Assert.fail("Should throw exception for very large 'idx' value");
+        } catch (ReferencedTokenValidationException e) {
+            Assert.assertTrue("Exception should mention out of range",
+                    e.getMessage().contains("out of range"));
+        }
+
+        // Test missing idx field
+        try {
+            JsonNode tokenPayload = JsonSerialization.mapper.readTree("{\"status\": {\"status_list\": {\"uri\": \"https://example.com\"}}}");
+            validator.validate(tokenPayload);
+            Assert.fail("Should throw exception for missing 'idx' field");
+        } catch (ReferencedTokenValidationException e) {
+            Assert.assertTrue("Exception should mention missing idx field",
+                    e.getMessage().contains("Missing required 'idx' field"));
+        }
+
+        // Test missing uri field
+        try {
+            JsonNode tokenPayload = JsonSerialization.mapper.readTree("{\"status\": {\"status_list\": {\"idx\": 123}}}");
+            validator.validate(tokenPayload);
+            Assert.fail("Should throw exception for missing 'uri' field");
+        } catch (ReferencedTokenValidationException e) {
+            Assert.assertTrue("Exception should mention missing uri field",
+                    e.getMessage().contains("Missing required 'uri' field"));
+        }
+
+        // Test null uri value
+        try {
+            JsonNode tokenPayload = JsonSerialization.mapper.readTree("{\"status\": {\"status_list\": {\"idx\": 123, \"uri\": null}}}");
+            validator.validate(tokenPayload);
+            Assert.fail("Should throw exception for null 'uri' value");
+        } catch (ReferencedTokenValidationException e) {
+            Assert.assertTrue("Exception should mention uri cannot be null",
+                    e.getMessage().contains("cannot be null"));
+        }
+
+        // Test empty uri string
+        try {
+            JsonNode tokenPayload = JsonSerialization.mapper.readTree("{\"status\": {\"status_list\": {\"idx\": 123, \"uri\": \"\"}}}");
             validator.validate(tokenPayload);
             Assert.fail("Should throw exception for empty 'uri' value");
         } catch (ReferencedTokenValidationException e) {
-            Assert.assertTrue("Exception should mention empty uri",
+            Assert.assertTrue("Exception should mention uri cannot be empty",
                     e.getMessage().contains("cannot be empty"));
         }
 
+        // Test wrong idx data type
         try {
-            ObjectMapper mapper = new ObjectMapper();
-            JsonNode tokenPayload = mapper.readTree("{\"status\": {\"status_list\": {\"idx\": \"not-a-number\", \"uri\": \"https://example.com\"}}}");
+            JsonNode tokenPayload = JsonSerialization.mapper.readTree("{\"status\": {\"status_list\": {\"idx\": \"not-a-number\", \"uri\": \"https://example.com\"}}}");
             validator.validate(tokenPayload);
             Assert.fail("Should throw exception for wrong 'idx' data type");
         } catch (ReferencedTokenValidationException e) {
@@ -412,9 +394,9 @@ public class ReferencedTokenValidatorTest extends OID4VCTest {
                     e.getMessage().contains("must be a number"));
         }
 
+        // Test wrong uri data type
         try {
-            ObjectMapper mapper = new ObjectMapper();
-            JsonNode tokenPayload = mapper.readTree("{\"status\": {\"status_list\": {\"idx\": 123, \"uri\": 456}}}");
+            JsonNode tokenPayload = JsonSerialization.mapper.readTree("{\"status\": {\"status_list\": {\"idx\": 123, \"uri\": 456}}}");
             validator.validate(tokenPayload);
             Assert.fail("Should throw exception for wrong 'uri' data type");
         } catch (ReferencedTokenValidationException e) {
@@ -422,18 +404,4 @@ public class ReferencedTokenValidatorTest extends OID4VCTest {
                     e.getMessage().contains("must be a string"));
         }
     }
-
-    /**
-     * Helper method to test the status value reading
-     */
-    private int readStatusValue(String lst, int idx, int bits) throws ReferencedTokenValidationException {
-        byte[] bytes = ReferencedTokenValidator.decodeAndDecompress(lst);
-        return ReferencedTokenValidator.readStatusValueFromBytes(bytes, idx, bits);
-    }
-
-    @Override
-    public void configureTestRealm(RealmRepresentation testRealm) {
-        // No special configuration needed for this test
-    }
-
 }

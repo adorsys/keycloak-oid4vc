@@ -17,28 +17,46 @@
 
 package org.keycloak.protocol.oid4vc.tokenstatus;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import org.keycloak.sdjwt.consumer.HttpDataFetcher;
+import org.keycloak.jose.JOSE;
+import org.keycloak.jose.JOSEParser;
+import org.keycloak.jose.jws.JWSInput;
+import org.keycloak.jose.jws.JWSInputException;
+import org.keycloak.sdjwt.consumer.StatusListJwtFetcher;
+import org.keycloak.util.JsonSerialization;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.Base64;
+import java.util.List;
 import java.util.zip.DataFormatException;
 import java.util.zip.Inflater;
 
 /**
  * Validator for Referenced Token payloads
  *
+ * @author <a href="mailto:Forkim.Akwichek@adorsys.com">Forkim Akwichek</a>
  * @see <a href="https://www.ietf.org/archive/id/draft-ietf-oauth-status-list-11.html">Token Status List</a>
  */
 public class ReferencedTokenValidator {
 
-    private final HttpDataFetcher httpDataFetcher;
-    private final ObjectMapper objectMapper;
+    private static final String STATUS_FIELD = "status";
+    private static final String STATUS_LIST_FIELD = "status_list";
+    private static final String IDX_FIELD = "idx";
+    private static final String URI_FIELD = "uri";
+    private static final String BITS_FIELD = "bits";
+    private static final String LST_FIELD = "lst";
+    private static final String EXP_FIELD = "exp";
 
-    public ReferencedTokenValidator(HttpDataFetcher httpDataFetcher) {
-        this.httpDataFetcher = httpDataFetcher;
-        this.objectMapper = new ObjectMapper();
+    private static final String JWT_TYPE_STATUS_LIST = "statuslist+jwt";
+
+    private final StatusListJwtFetcher statusListJwtFetcher;
+
+    public ReferencedTokenValidator(StatusListJwtFetcher statusListJwtFetcher) {
+        this.statusListJwtFetcher = statusListJwtFetcher;
     }
 
     /**
@@ -50,25 +68,36 @@ public class ReferencedTokenValidator {
      */
     public void validate(JsonNode tokenPayload) throws ReferencedTokenValidationException {
         try {
+            // Validate basic token properties (expiration, etc.)
             validateBasicTokenProperties(tokenPayload);
 
+            // Extract and validate status information
             StatusInfo statusInfo = extractStatusInfo(tokenPayload);
 
+            // Fetch and validate status list token
             JsonNode statusListToken = fetchStatusListToken(statusInfo.uri);
 
+            // Extract and validate status list data
             StatusList statusList = extractStatusList(statusListToken);
 
-            int statusValue = readStatusValue(statusList.lst, statusInfo.idx, statusList.bits);
+            // Read and validate the actual status value
+            int statusValue = ReferencedTokenValidator.readStatusValue(statusList.lst, statusInfo.idx, statusList.bits);
+            TokenStatus tokenStatus = TokenStatus.fromValue(statusValue);
 
-            if (statusValue != 0) { // 0 = VALID, 1 = INVALID, 2 = SUSPENDED, etc.
+            if (tokenStatus == null) {
+                throw new ReferencedTokenValidationException("Unknown token status value: " + statusValue);
+            }
+
+            if (!tokenStatus.isValid()) {
                 throw new ReferencedTokenValidationException(
-                        "Token status is not valid. Status value: " + statusValue);
+                        "Token status is not valid. Status: " + tokenStatus.name() + " (value: " + statusValue + ")");
             }
 
+        } catch (ReferencedTokenValidationException e) {
+            // Re-throw validation exceptions as-is
+            throw e;
         } catch (Exception e) {
-            if (e instanceof ReferencedTokenValidationException) {
-                throw e;
-            }
+            // Wrap other exceptions with context
             throw new ReferencedTokenValidationException("Failed to validate referenced token", e);
         }
     }
@@ -81,8 +110,7 @@ public class ReferencedTokenValidator {
      * @throws ReferencedTokenValidationException if basic validation fails
      */
     private void validateBasicTokenProperties(JsonNode tokenPayload) throws ReferencedTokenValidationException {
-        // Check for expiration time
-        JsonNode exp = tokenPayload.get("exp");
+        JsonNode exp = tokenPayload.get(EXP_FIELD);
         if (exp != null && exp.isNumber()) {
             long expirationTime = exp.asLong();
             long currentTime = System.currentTimeMillis() / 1000;
@@ -92,8 +120,7 @@ public class ReferencedTokenValidator {
                         "Token has expired. Expiration time: " + expirationTime + ", Current time: " + currentTime);
             }
         }
-        // other validations can be added here
-
+        // Additional basic validations can be added here as needed
     }
 
     /**
@@ -105,58 +132,69 @@ public class ReferencedTokenValidator {
      * @throws ReferencedTokenValidationException if status information is missing or malformed
      */
     private StatusInfo extractStatusInfo(JsonNode tokenPayload) throws ReferencedTokenValidationException {
-        JsonNode status = tokenPayload.get("status");
+        JsonNode status = tokenPayload.get(STATUS_FIELD);
         if (status == null) {
-            throw new ReferencedTokenValidationException("Missing required 'status' claim in token payload");
+            throw new ReferencedTokenValidationException("Missing required '" + STATUS_FIELD + "' claim");
         }
 
         if (!status.isObject()) {
-            throw new ReferencedTokenValidationException("'status' claim must be a JSON object");
+            throw new ReferencedTokenValidationException("'" + STATUS_FIELD + "' claim must be a JSON object");
         }
 
-        JsonNode statusList = status.get("status_list");
+        JsonNode statusList = status.get(STATUS_LIST_FIELD);
         if (statusList == null) {
-            throw new ReferencedTokenValidationException("Missing required 'status_list' in status claim");
+            throw new ReferencedTokenValidationException("Missing required '" + STATUS_LIST_FIELD + "' claim");
         }
 
         if (!statusList.isObject()) {
-            throw new ReferencedTokenValidationException("'status_list' must be a JSON object");
+            throw new ReferencedTokenValidationException("'" + STATUS_LIST_FIELD + "' claim must be a JSON object");
         }
 
-        JsonNode idx = statusList.get("idx");
-        JsonNode uri = statusList.get("uri");
-
-        if (idx == null) {
-            throw new ReferencedTokenValidationException("Missing required 'idx' field in status_list");
+        // Check for missing required fields before Jackson deserialization
+        if (!statusList.has(IDX_FIELD)) {
+            throw new ReferencedTokenValidationException("Missing required '" + IDX_FIELD + "' field");
+        }
+        if (!statusList.has(URI_FIELD)) {
+            throw new ReferencedTokenValidationException("Missing required '" + URI_FIELD + "' field");
         }
 
-        if (uri == null) {
-            throw new ReferencedTokenValidationException("Missing required 'uri' field in status_list");
+        JsonNode idxNode = statusList.get(IDX_FIELD);
+        JsonNode uriNode = statusList.get(URI_FIELD);
+
+        // Check for null values
+        if (uriNode.isNull()) {
+            throw new ReferencedTokenValidationException("'" + URI_FIELD + "' cannot be null");
         }
 
-        if (!idx.isNumber()) {
-            throw new ReferencedTokenValidationException("'idx' field must be a number");
+        // Check data types
+        if (!idxNode.isNumber()) {
+            throw new ReferencedTokenValidationException("'" + IDX_FIELD + "' must be a number");
+        }
+        if (!uriNode.isTextual()) {
+            throw new ReferencedTokenValidationException("'" + URI_FIELD + "' must be a string");
         }
 
-        if (!uri.isTextual()) {
-            throw new ReferencedTokenValidationException("'uri' field must be a string");
+        // Check for empty string
+        if (uriNode.asText().trim().isEmpty()) {
+            throw new ReferencedTokenValidationException("'" + URI_FIELD + "' cannot be empty");
         }
 
-        int index = idx.asInt();
-        if (index < 0) {
-            throw new ReferencedTokenValidationException("'idx' value must be non-negative (got: " + index + ")");
+        // Check for negative index
+        if (idxNode.asInt() < 0) {
+            throw new ReferencedTokenValidationException("'" + IDX_FIELD + "' value must be non-negative");
         }
 
-        String uriString = uri.asText();
-        if (uriString.trim().isEmpty()) {
-            throw new ReferencedTokenValidationException("'uri' value cannot be empty");
+        try {
+            StatusInfo statusInfo = JsonSerialization.mapper.treeToValue(statusList, StatusInfo.class);
+            return statusInfo;
+        } catch (JsonProcessingException e) {
+            throw new ReferencedTokenValidationException("Failed to parse status information: " + e.getMessage(), e);
         }
-
-        return new StatusInfo(index, uriString);
     }
 
     /**
      * Fetches the status list token from the specified URI.
+     * The status list server returns a JWT token, not raw JSON.
      *
      * @param uri The URI to fetch the status list token from
      * @return The status list token as JsonNode
@@ -164,7 +202,29 @@ public class ReferencedTokenValidator {
      */
     private JsonNode fetchStatusListToken(String uri) throws ReferencedTokenValidationException {
         try {
-            return httpDataFetcher.fetchJsonData(uri);
+            String jwtToken = statusListJwtFetcher.fetchStatusListJwt(uri);
+
+            JOSE joseToken = JOSEParser.parse(jwtToken);
+
+            if (!(joseToken instanceof JWSInput)) {
+                throw new ReferencedTokenValidationException("Status List Token must be a signed JWS (JWT), got: " + joseToken.getClass().getSimpleName());
+            }
+
+            JWSInput jws = (JWSInput) joseToken;
+
+            // Validate the JWT header type
+            String typ = jws.getHeader().getType();
+            if (typ == null || !typ.equals(JWT_TYPE_STATUS_LIST)) {
+                throw new ReferencedTokenValidationException("Status List Token must have type 'statuslist+jwt', got: " + typ);
+            }
+
+            // Extract the payload and parse as JSON
+            return jws.readJsonContent(JsonNode.class);
+
+        } catch (JsonProcessingException e) {
+            throw new ReferencedTokenValidationException("Failed to parse JWT payload JSON from: " + uri, e);
+        } catch (JWSInputException e) {
+            throw new ReferencedTokenValidationException("Failed to parse Status List JWT from: " + uri, e);
         } catch (IOException e) {
             throw new ReferencedTokenValidationException("Failed to fetch status list token from: " + uri, e);
         }
@@ -178,23 +238,52 @@ public class ReferencedTokenValidator {
      * @throws ReferencedTokenValidationException if extraction fails
      */
     private StatusList extractStatusList(JsonNode statusListToken) throws ReferencedTokenValidationException {
-        JsonNode statusList = statusListToken.get("status_list");
+        JsonNode statusList = statusListToken.get(STATUS_LIST_FIELD);
         if (statusList == null) {
-            throw new ReferencedTokenValidationException("Missing status_list in status list token");
+            throw new ReferencedTokenValidationException("Missing '" + STATUS_LIST_FIELD + "' claim in status list token");
         }
 
-        JsonNode bits = statusList.get("bits");
-        JsonNode lst = statusList.get("lst");
-
-        if (bits == null || lst == null) {
-            throw new ReferencedTokenValidationException("Missing required status_list fields (bits, lst)");
+        // Check for missing required fields before Jackson deserialization
+        if (!statusList.has(BITS_FIELD)) {
+            throw new ReferencedTokenValidationException("Missing required '" + BITS_FIELD + "' field");
+        }
+        if (!statusList.has(LST_FIELD)) {
+            throw new ReferencedTokenValidationException("Missing required '" + LST_FIELD + "' field");
         }
 
-        if (!bits.isNumber() || !lst.isTextual()) {
-            throw new ReferencedTokenValidationException("Invalid status_list field types (bits must be number, lst must be string)");
+        JsonNode bitsNode = statusList.get(BITS_FIELD);
+        JsonNode lstNode = statusList.get(LST_FIELD);
+
+        // Check for null values
+        if (lstNode.isNull()) {
+            throw new ReferencedTokenValidationException("'" + LST_FIELD + "' cannot be null");
         }
 
-        return new StatusList(bits.asInt(), lst.asText());
+        // Check data types
+        if (!bitsNode.isNumber()) {
+            throw new ReferencedTokenValidationException("'" + BITS_FIELD + "' field must be a number");
+        }
+        if (!lstNode.isTextual()) {
+            throw new ReferencedTokenValidationException("'" + LST_FIELD + "' field must be a string");
+        }
+
+        // Check for empty string
+        if (lstNode.asText().trim().isEmpty()) {
+            throw new ReferencedTokenValidationException("'" + LST_FIELD + "' cannot be empty");
+        }
+
+        // Check for valid bits value
+        int bitsValue = bitsNode.asInt();
+        if (!List.of(1, 2, 4, 8).contains(bitsValue)) {
+            throw new ReferencedTokenValidationException("'" + BITS_FIELD + "' must be 1, 2, 4, or 8");
+        }
+
+        try {
+            StatusList statusListObj = JsonSerialization.mapper.treeToValue(statusList, StatusList.class);
+            return statusListObj;
+        } catch (JsonProcessingException e) {
+            throw new ReferencedTokenValidationException("Failed to parse status list information: " + e.getMessage(), e);
+        }
     }
 
     /**
@@ -205,37 +294,35 @@ public class ReferencedTokenValidator {
      * @throws ReferencedTokenValidationException if decoding/decompression fails
      */
     public static byte[] decodeAndDecompress(String lst) throws ReferencedTokenValidationException {
+        byte[] compressed;
+
         try {
-            // Add padding if necessary for base64url decoding
-            String paddedLst = lst;
-            while (paddedLst.length() % 4 != 0) {
-                paddedLst += "=";
-            }
-
-            // Replace URL-safe characters with standard base64 characters
-            paddedLst = paddedLst.replace('-', '+').replace('_', '/');
-
-            // Decode base64
-            byte[] compressed = Base64.getDecoder().decode(paddedLst);
-
-            // Decompress using DEFLATE with ZLIB wrapper
-            Inflater inflater = new Inflater();
-            inflater.setInput(compressed);
-
-            byte[] decompressed = new byte[compressed.length * 10]; // Initial buffer size
-            int decompressedLength = inflater.inflate(decompressed);
-            inflater.end();
-
-            // Create a new array with the exact size
-            byte[] result = new byte[decompressedLength];
-            System.arraycopy(decompressed, 0, result, 0, decompressedLength);
-
-            return result;
-
+            compressed = Base64.getUrlDecoder().decode(lst);
         } catch (IllegalArgumentException e) {
             throw new ReferencedTokenValidationException("Failed to decode base64url status list", e);
-        } catch (DataFormatException e) {
+        }
+
+        // Decompress using DEFLATE with ZLIB wrapper
+        Inflater inflater = new Inflater();
+        inflater.setInput(compressed);
+
+        try (ByteArrayOutputStream outputStream = new ByteArrayOutputStream(compressed.length)) {
+            byte[] buffer = new byte[1024];
+
+            while (!inflater.finished()) {
+                int count = inflater.inflate(buffer);
+                if (count == 0 && inflater.needsInput()) {
+                    throw new DataFormatException("Unexpected end of input");
+                }
+
+                outputStream.write(buffer, 0, count);
+            }
+
+            return outputStream.toByteArray();
+        } catch (DataFormatException | IOException e) {
             throw new ReferencedTokenValidationException("Failed to decompress status list", e);
+        } finally {
+            inflater.end();
         }
     }
 
@@ -248,7 +335,7 @@ public class ReferencedTokenValidator {
      * @return The status value at the given index
      * @throws ReferencedTokenValidationException if the operation fails
      */
-    private int readStatusValue(String lst, int idx, int bits) throws ReferencedTokenValidationException {
+    public static int readStatusValue(String lst, int idx, int bits) throws ReferencedTokenValidationException {
         byte[] bytes = decodeAndDecompress(lst);
         return readStatusValueFromBytes(bytes, idx, bits);
     }
@@ -263,7 +350,7 @@ public class ReferencedTokenValidator {
      * @throws ReferencedTokenValidationException if the operation fails
      */
     public static int readStatusValueFromBytes(byte[] bytes, int idx, int bits) throws ReferencedTokenValidationException {
-        if (bits != 1 && bits != 2 && bits != 4 && bits != 8) {
+        if (!List.of(1, 2, 4, 8).contains(bits)) {
             throw new ReferencedTokenValidationException("Unsupported bits value: " + bits);
         }
 
@@ -289,31 +376,15 @@ public class ReferencedTokenValidator {
         int mask = (1 << bits) - 1;
 
         // Read the status value
-        int statusValue;
-
-        if (bitPosInByte + bits <= 8) {
-            // The entire status value fits within one byte
-            statusValue = (bytes[byteIdx] >> bitPosInByte) & mask;
-        } else {
-            // The status value spans across two bytes
-            int bitsInFirstByte = 8 - bitPosInByte;
-            int bitsInSecondByte = bits - bitsInFirstByte;
-
-            // Read bits from the first byte
-            int firstByteValue = (bytes[byteIdx] >> bitPosInByte) & ((1 << bitsInFirstByte) - 1);
-
-            // Read bits from the second byte
-            int secondByteValue = (bytes[byteIdx + 1] & ((1 << bitsInSecondByte) - 1)) << bitsInFirstByte;
-
-            // Combine the values
-            statusValue = firstByteValue | secondByteValue;
-        }
+        // With bits values of 1, 2, 4, or 8, status values never span across byte boundaries
+        int statusValue = (bytes[byteIdx] >> bitPosInByte) & mask;
 
         return statusValue;
     }
 
     /**
-     * Exception thrown when validation fails.
+     * Exception thrown when Referenced Token validation fails.
+     * This exception provides detailed information about what validation rule was violated.
      */
     public static class ReferencedTokenValidationException extends Exception {
         public ReferencedTokenValidationException(String message) {
@@ -326,28 +397,34 @@ public class ReferencedTokenValidator {
     }
 
     /**
-     * Internal class to hold status information.
+     * Record to hold status information from the Referenced Token.
+     *
+     * @param idx The token index in the status list (must be non-negative)
+     * @param uri The URI of the status list token (must not be null or empty)
      */
-    private static class StatusInfo {
-        final int idx;
-        final String uri;
-
-        StatusInfo(int idx, String uri) {
-            this.idx = idx;
-            this.uri = uri;
+    public static record StatusInfo(
+            @JsonProperty(IDX_FIELD) int idx,
+            @JsonProperty(URI_FIELD) String uri
+    ) {
+        @JsonCreator
+        public StatusInfo {
+            // Validation handled in extractStatusInfo method
         }
     }
 
     /**
-     * Internal class to hold status list information.
+     * Record to hold status list information from the Status List Token.
+     *
+     * @param bits The number of bits per status value (must be 1, 2, 4, or 8)
+     * @param lst  The base64url-encoded, DEFLATE-compressed status list (must not be null or empty)
      */
-    private static class StatusList {
-        final int bits;
-        final String lst;
-
-        StatusList(int bits, String lst) {
-            this.bits = bits;
-            this.lst = lst;
+    public static record StatusList(
+            @JsonProperty(BITS_FIELD) int bits,
+            @JsonProperty(LST_FIELD) String lst
+    ) {
+        @JsonCreator
+        public StatusList {
+            // Validation handled in extractStatusList method
         }
     }
 }

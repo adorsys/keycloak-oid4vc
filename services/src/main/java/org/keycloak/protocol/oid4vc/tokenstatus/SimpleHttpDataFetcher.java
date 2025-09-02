@@ -17,17 +17,18 @@
 
 package org.keycloak.protocol.oid4vc.tokenstatus;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import org.keycloak.models.KeycloakSession;
-import org.keycloak.sdjwt.consumer.HttpDataFetcher;
+import org.keycloak.sdjwt.consumer.StatusListJwtFetcher;
 import org.keycloak.broker.provider.util.SimpleHttp;
 
 import java.io.IOException;
 
 /**
- * Simple implementation of HttpDataFetcher for token status list validation.
+ * Simple implementation of StatusListJwtFetcher for token status list validation.
+ *
+ * @author <a href="mailto:Forkim.Akwichek@adorsys.com">Forkim Akwichek</a>
  */
-public class SimpleHttpDataFetcher implements HttpDataFetcher {
+public class SimpleHttpDataFetcher implements StatusListJwtFetcher {
 
     /**
      * Accept header value for Status List JWT format.
@@ -42,9 +43,9 @@ public class SimpleHttpDataFetcher implements HttpDataFetcher {
     }
 
     @Override
-    public JsonNode fetchJsonData(String uri) throws IOException {
+    public String fetchStatusListJwt(String uri) throws IOException {
         return SimpleHttp.doGet(uri, session)
                 .header("Accept", STATUS_LIST_JWT_ACCEPT_HEADER)
-                .asJson();
+                .asString();
     }
 }
