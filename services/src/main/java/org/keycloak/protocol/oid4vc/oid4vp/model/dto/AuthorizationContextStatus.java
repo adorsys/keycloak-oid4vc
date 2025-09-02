@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Red Hat, Inc. and/or its affiliates
+ * Copyright 2025 Red Hat, Inc. and/or its affiliates
  * and other contributors as indicated by the @author tags.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,16 +15,29 @@
  * limitations under the License.
  */
 
-package org.keycloak.protocol.oid4vc.model;
+package org.keycloak.protocol.oid4vc.oid4vp.model.dto;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonValue;
 
 /**
- * Interface for proof types in OID4VCI Credential Request (Section 8.2.1.1).
+ * Statuses of an OpenID4VP authorization context, either OPEN or CLOSED.
  *
- * @see <a href="https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#name-credential-request">OID4VCI Credential Request</a>
+ * @author <a href="mailto:Ingrid.Kamga@adorsys.com">Ingrid Kamga</a>
  */
-public interface Proof {
-    @JsonProperty("proof_type")
-    String getProofType();
+public enum AuthorizationContextStatus {
+
+    PENDING("pending"),
+    SUCCESS("success"),
+    ERROR("error");
+
+    private final String status;
+
+    AuthorizationContextStatus(String status) {
+        this.status = status;
+    }
+
+    @JsonValue
+    public String getStatus() {
+        return status;
+    }
 }

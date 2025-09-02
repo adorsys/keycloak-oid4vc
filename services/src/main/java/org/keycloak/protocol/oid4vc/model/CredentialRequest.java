@@ -27,8 +27,6 @@ import org.keycloak.util.JsonSerialization;
 
 import java.util.Map;
 import java.util.Optional;
-import com.fasterxml.jackson.annotation.JsonSubTypes;
-import com.fasterxml.jackson.annotation.JsonTypeInfo;
 
 /**
  * Represents a CredentialRequest according to OID4VCI
@@ -44,14 +42,6 @@ public class CredentialRequest {
 
     @JsonProperty("credential_identifier")
     private String credentialIdentifier;
-
-    @JsonProperty("proof")
-    @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "proof_type")
-    @JsonSubTypes({
-            @JsonSubTypes.Type(value = JwtProof.class, name = ProofType.JWT),
-            @JsonSubTypes.Type(value = LdpVpProof.class, name = ProofType.LD_PROOF)
-    })
-    private Proof proof;
 
     @JsonProperty("proofs")
     private Proofs proofs;
@@ -79,15 +69,6 @@ public class CredentialRequest {
 
     public CredentialRequest setCredentialConfigurationId(String credentialConfigurationId) {
         this.credentialConfigurationId = credentialConfigurationId;
-        return this;
-    }
-
-    public Proof getProof() {
-        return proof;
-    }
-
-    public CredentialRequest setProof(Proof proof) {
-        this.proof = proof;
         return this;
     }
 

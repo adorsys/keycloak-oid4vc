@@ -23,18 +23,33 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.List;
 
 /**
- * Represents the proofs parameter structure
- * {@see https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#name-credential-request}
+ * Proofs object for Credential Request in OID4VCI (Section 8.2).
+ * Contains arrays of different proof types (jwt, di_vp, attestation).
+ *
+ * @see <a href="https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0-16.html#name-credential-request">OID4VCI Credential Request</a>
  *
  * @author Bertrand Ogen
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class Proofs {
-    @JsonProperty(ProofType.JWT)
+
+    @JsonProperty("jwt")
     private List<String> jwt;
 
-    @JsonProperty(ProofType.LD_PROOF)
-    private List<ProofTypeLdpVp> ldpVp;
+    @JsonProperty("di_vp")
+    private List<DiVpProof> diVp;
+
+    @JsonProperty("attestation")
+    private List<String> attestation;
+
+    public Proofs() {
+    }
+
+    public Proofs(List<String> jwt, List<DiVpProof> diVp, List<String> attestation) {
+        this.jwt = jwt;
+        this.diVp = diVp;
+        this.attestation = attestation;
+    }
 
     public List<String> getJwt() {
         return jwt;
@@ -45,17 +60,21 @@ public class Proofs {
         return this;
     }
 
-    public List<ProofTypeLdpVp> getLdpVp() {
-        return ldpVp;
+    public List<DiVpProof> getDiVp() {
+        return diVp;
     }
 
-    public Proofs setLdpVp(List<ProofTypeLdpVp> ldpVp) {
-        this.ldpVp = ldpVp;
+    public Proofs setDiVp(List<DiVpProof> diVp) {
+        this.diVp = diVp;
         return this;
     }
 
-    @Override
-    public String toString() {
-        return "Proofs [jwt=" + jwt + ", ldpVp=" + ldpVp + "]";
+    public List<String> getAttestation() {
+        return attestation;
+    }
+
+    public Proofs setAttestation(List<String> attestation) {
+        this.attestation = attestation;
+        return this;
     }
 }

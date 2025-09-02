@@ -29,6 +29,7 @@ public class VCIssuerException extends RuntimeException {
 
     public VCIssuerException(String message) {
         super(message);
+        this.errorType = null;
     }
 
     public VCIssuerException(String message, ErrorType errorType) {
@@ -43,6 +44,12 @@ public class VCIssuerException extends RuntimeException {
 
     public VCIssuerException(String message, Throwable cause) {
         super(message, cause);
+        this.errorType = null;
+    }
+
+    public VCIssuerException(ErrorType errorType, String message, Throwable cause) {
+        super(message, cause);
+        this.errorType = errorType;
     }
 
     public ErrorType getErrorType() {
