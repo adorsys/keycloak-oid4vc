@@ -20,7 +20,9 @@ package org.keycloak.protocol.oid4vc.model;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
 /**
- * See: https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#name-di_vp-proof-type
+ * See:
+ * <a href="https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#name-di_vp-proof-type">
+ * di_vp Proof Type</a>
  *
  * @author <a href="mailto:francis.pouatcha@adorsys.com">Francis Pouatcha</a>
  */
