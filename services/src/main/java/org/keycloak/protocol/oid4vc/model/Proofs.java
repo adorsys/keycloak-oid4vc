@@ -27,6 +27,8 @@ import java.util.List;
  * Contains arrays of different proof types (jwt, di_vp, attestation).
  *
  * @see <a href="https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0-16.html#name-credential-request">OID4VCI Credential Request</a>
+ *
+ * @author Bertrand Ogen
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class Proofs {
@@ -75,4 +77,4 @@ public class Proofs {
         this.attestation = attestation;
         return this;
     }
-} 
+}

@@ -66,6 +66,7 @@ import org.keycloak.sdjwt.vp.SdJwtVP;
 import org.keycloak.services.managers.AppAuthManager;
 import org.keycloak.testsuite.util.oauth.AccessTokenResponse;
 import org.keycloak.util.JsonSerialization;
+import org.testcontainers.shaded.org.apache.commons.lang3.exception.ExceptionUtils;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -165,7 +166,7 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
                         String cNonce = cNonceHandler.buildCNonce(null,
                                 Map.of(JwtCNonceHandler.SOURCE_ENDPOINT,
                                         nonceEndpoint));
-                        Proofs proof = new Proofs().setJwt(List.of(generateJwtProof(getCredentialIssuer(session), cNonce)));
+             Proofs proof = new Proofs().setJwt(List.of(generateJwtProof(getCredentialIssuer(session), cNonce)));
 
                         ClientScopeRepresentation clientScope = fromJsonString(clientScopeString,
                                 ClientScopeRepresentation.class);
@@ -173,6 +174,11 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
                     })));
             Assert.fail("Should have thrown an exception");
         } catch (BadRequestException ex) {
+            Assert.assertEquals("""
+                                        c_nonce: expected 'aud' to be equal to \
+                                        '[https://localhost:8543/auth/realms/test/protocol/oid4vc/credential]' but \
+                                        actual value was '[]'""",
+                    ExceptionUtils.getRootCause(ex).getMessage());
             Assert.assertEquals("Could not validate provided proof", ex.getMessage());
         }
     }
@@ -199,6 +205,11 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
                     })));
             Assert.fail("Should have thrown an exception");
         } catch (BadRequestException ex) {
+            Assert.assertEquals("""
+                                        c_nonce: expected 'source_endpoint' to be equal to \
+                                        'https://localhost:8543/auth/realms/test/protocol/oid4vc/nonce' but \
+                                        actual value was 'null'""",
+                    ExceptionUtils.getRootCause(ex).getMessage());
             Assert.assertEquals("Could not validate provided proof", ex.getMessage());
         }
     }
@@ -221,7 +232,7 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
                             session.getContext().getRealm().setAttribute(Oid4VciConstants.C_NONCE_LIFETIME_IN_SECONDS, -1);
                             String cNonce = cNonceHandler.buildCNonce(List.of(credentialsEndpoint),
                                     Map.of(JwtCNonceHandler.SOURCE_ENDPOINT, nonceEndpoint));
-                            Proofs proof = new Proofs().setJwt(List.of(generateJwtProof(getCredentialIssuer(session), cNonce)));
+            Proofs proof = new Proofs().setJwt(List.of(generateJwtProof(getCredentialIssuer(session), cNonce)));
 
                             ClientScopeRepresentation clientScope = fromJsonString(clientScopeString,
                                     ClientScopeRepresentation.class);
@@ -233,6 +244,9 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
                     })));
             Assert.fail("Should have thrown an exception");
         } catch (BadRequestException ex) {
+            String message = ExceptionUtils.getRootCause(ex).getMessage();
+            Assert.assertTrue(String.format("Message '%s' should match regular expression", message),
+                    message.matches("c_nonce not valid: \\d+\\(exp\\) < \\d+\\(now\\)"));
             Assert.assertEquals("Could not validate provided proof", ex.getMessage());
         }
     }
@@ -258,6 +272,7 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
 
         Response credentialResponse = issuerEndpoint.requestCredential(requestPayload);
         assertEquals("The credential request should be answered successfully.",
+
                 HttpStatus.SC_OK, credentialResponse.getStatus());
 
         assertNotNull("A credential should be responded.", credentialResponse.getEntity());
@@ -397,6 +412,7 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
 
                     assertNotNull("The sd-jwt-credential can optionally provide a claims claim.",
                             credentialIssuer.getCredentialsSupported().get(credentialConfigurationId)
+
                                     .getCredentialMetadata() != null ?
                                     credentialIssuer.getCredentialsSupported().get(credentialConfigurationId)
                                             .getCredentialMetadata().getClaims() : null);
@@ -480,7 +496,7 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
                     assertEquals("The sd-jwt-credential should display as Test Credential",
                             credentialConfigurationId,
                             credentialIssuer.getCredentialsSupported().get(credentialConfigurationId)
-                                    .getCredentialMetadata() != null &&
+                    .getCredentialMetadata() != null &&
                                     credentialIssuer.getCredentialsSupported().get(credentialConfigurationId)
                                             .getCredentialMetadata().getDisplay() != null ?
                                     credentialIssuer.getCredentialsSupported().get(credentialConfigurationId)

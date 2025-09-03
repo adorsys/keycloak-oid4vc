@@ -18,6 +18,7 @@
 package org.keycloak.protocol.oid4vc.issuance;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.zxing.BarcodeFormat;
 import com.google.zxing.WriterException;
 import com.google.zxing.client.j2se.MatrixToImageWriter;
@@ -36,6 +37,7 @@ import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.Response;
 import org.jboss.logging.Logger;
+import org.keycloak.common.util.Base64Url;
 import org.keycloak.common.util.SecretGenerator;
 import org.keycloak.crypto.KeyUse;
 import org.keycloak.crypto.KeyWrapper;
@@ -409,8 +411,7 @@ public class OID4VCIssuerEndpoint {
         if (contentType != null) {
             contentType = contentType.split(";")[0].trim(); // Handle parameters like charset
         }
-        boolean isJwe = MediaType.APPLICATION_JWT.equalsIgnoreCase(contentType)
-                || looksLikeCompactJwe(requestPayload);
+        boolean isJwe = looksLikeCompactJwe(requestPayload) && joseHeaderIndicatesJwe(requestPayload);
 
         if (isRequestEncryptionRequired && !isJwe) {
             String errorMessage = "Encryption is required by the Credential Issuer, but the request is not a JWE.";
@@ -526,15 +527,29 @@ public class OID4VCIssuerEndpoint {
         SupportedCredentialConfiguration supportedCredential =
                 OID4VCIssuerWellKnownProvider.toSupportedCredentialConfiguration(session, requestedCredential);
 
-        Object theCredential = getCredential(authResult, supportedCredential, credentialRequestVO);
+        // Get the list of all proofs
+        List<String> allProofs = getAllProofs(credentialRequestVO);
+        if (allProofs.isEmpty()) {
+            allProofs.add(null); // Placeholder for single issuance without proof
+        }
 
-        // Generate credential response
-        CredentialResponse responseVO = new CredentialResponse()
-                .addCredential(theCredential)
-                .setNotificationId(generateNotificationId());
+        CredentialResponse responseVO = new CredentialResponse();
+        responseVO.setNotificationId(generateNotificationId());
 
-        // Encrypt all responses if encryption parameters are provided, except for error credential responses
-        if (encryptionParams != null && !(theCredential instanceof ErrorResponse)) {
+        // Issue credentials for each proof
+        Proofs originalProofs = credentialRequestVO.getProofs();
+        for (String currentProof : allProofs) {
+            if (currentProof != null) {
+                credentialRequestVO.setProofs(new Proofs().setJwt(List.of(currentProof)));
+            } else {
+                credentialRequestVO.setProofs(null);
+            }
+            Object theCredential = getCredential(authResult, supportedCredential, credentialRequestVO);
+            responseVO.addCredential(theCredential);
+            credentialRequestVO.setProofs(originalProofs);
+        }
+
+        if (encryptionParams != null && responseVO.getCredentials().stream().noneMatch(c -> c.getCredential() instanceof ErrorResponse)) {
             String jwe = encryptCredentialResponse(responseVO, encryptionParams);
             return Response.ok()
                     .type(MediaType.APPLICATION_JWT)
@@ -544,6 +559,25 @@ public class OID4VCIssuerEndpoint {
 
         return Response.ok().entity(responseVO).build();
     }
+
+    private List<String> getAllProofs(CredentialRequest credentialRequestVO) {
+        List<String> allProofs = new ArrayList<>();
+        Proofs proofs = credentialRequestVO.getProofs();
+
+        if (proofs != null) {
+            int typeCount = 0;
+            if (proofs.getJwt() != null && !proofs.getJwt().isEmpty()) {
+                typeCount++;
+                allProofs.addAll(proofs.getJwt());
+            }
+            if (typeCount != 1) {
+                throw new BadRequestException(getErrorResponse(ErrorType.INVALID_PROOF,
+                        "The 'proofs' object must contain exactly one proof type with non-empty array."));
+            }
+        }
+        return allProofs;
+    }
+
 
     /**
      * Decrypts a JWE-encoded Credential Request and validates it against metadata.
@@ -655,6 +689,22 @@ public class OID4VCIssuerEndpoint {
         // Compact JWE serialization consists of 5 dot-separated base64url parts
         int parts = payload.split("\\.").length;
         return parts == 5;
+    }
+
+    private boolean joseHeaderIndicatesJwe(String payload) {
+        if (payload == null) return false;
+        try {
+            String[] parts = payload.split("\\.");
+            if (parts.length != 5) return false;
+            // First part is protected header (base64url-encoded JSON)
+            String headerJson = new String(Base64Url.decode(parts[0]), StandardCharsets.UTF_8);
+            JsonNode node = JsonSerialization.mapper.readTree(headerJson);
+            String enc = node.has("enc") ? node.get("enc").asText(null) : null;
+            // JWE must have an 'enc' header parameter per RFC7516
+            return enc != null && !enc.isBlank();
+        } catch (Exception ignore) {
+            return false;
+        }
     }
 
     private String selectKeyManagementAlg(CredentialResponseEncryptionMetadata metadata, JWK jwk) {
@@ -865,7 +915,8 @@ public class OID4VCIssuerEndpoint {
      */
     private Object getCredential(AuthenticationManager.AuthResult authResult,
                                  SupportedCredentialConfiguration credentialConfig,
-                                 CredentialRequest credentialRequestVO) {
+                                 CredentialRequest credentialRequestVO
+    ) {
 
         // Get the client scope model from the credential configuration
         CredentialScopeModel credentialScopeModel = getClientScopeModel(credentialConfig);

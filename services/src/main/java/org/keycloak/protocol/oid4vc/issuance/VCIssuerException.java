@@ -25,12 +25,21 @@ import org.keycloak.protocol.oid4vc.model.ErrorType;
  * @author <a href="https://github.com/wistefan">Stefan Wiedemann</a>
  */
 public class VCIssuerException extends RuntimeException {
-
-    private final ErrorType errorType;
+    private ErrorType errorType;
 
     public VCIssuerException(String message) {
         super(message);
         this.errorType = null;
+    }
+
+    public VCIssuerException(String message, ErrorType errorType) {
+        super(message);
+        this.errorType = errorType;
+    }
+
+    public VCIssuerException(String message, ErrorType errorType, Throwable cause) {
+        super(message, cause);
+        this.errorType = errorType;
     }
 
     public VCIssuerException(String message, Throwable cause) {
