@@ -18,6 +18,7 @@
 package org.keycloak.protocol.oid4vc.issuance;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.zxing.BarcodeFormat;
 import com.google.zxing.WriterException;
 import com.google.zxing.client.j2se.MatrixToImageWriter;
@@ -36,6 +37,7 @@ import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.Response;
 import org.jboss.logging.Logger;
+import org.keycloak.common.util.Base64Url;
 import org.keycloak.common.util.SecretGenerator;
 import org.keycloak.crypto.KeyUse;
 import org.keycloak.crypto.KeyWrapper;
@@ -74,7 +76,6 @@ import org.keycloak.protocol.oid4vc.model.CredentialResponse;
 import org.keycloak.protocol.oid4vc.model.CredentialResponseEncryption;
 import org.keycloak.protocol.oid4vc.model.CredentialResponseEncryptionMetadata;
 import org.keycloak.protocol.oid4vc.model.CredentialsOffer;
-import org.keycloak.protocol.oid4vc.model.DiVpProof;
 import org.keycloak.services.ErrorResponseException;
 import org.keycloak.protocol.oid4vc.model.ErrorResponse;
 import org.keycloak.protocol.oid4vc.model.ErrorType;
@@ -410,8 +411,7 @@ public class OID4VCIssuerEndpoint {
         if (contentType != null) {
             contentType = contentType.split(";")[0].trim(); // Handle parameters like charset
         }
-        boolean isJwe = MediaType.APPLICATION_JWT.equalsIgnoreCase(contentType)
-                || looksLikeCompactJwe(requestPayload);
+        boolean isJwe = looksLikeCompactJwe(requestPayload) && joseHeaderIndicatesJwe(requestPayload);
 
         if (isRequestEncryptionRequired && !isJwe) {
             String errorMessage = "Encryption is required by the Credential Issuer, but the request is not a JWE.";
@@ -689,6 +689,22 @@ public class OID4VCIssuerEndpoint {
         // Compact JWE serialization consists of 5 dot-separated base64url parts
         int parts = payload.split("\\.").length;
         return parts == 5;
+    }
+
+    private boolean joseHeaderIndicatesJwe(String payload) {
+        if (payload == null) return false;
+        try {
+            String[] parts = payload.split("\\.");
+            if (parts.length != 5) return false;
+            // First part is protected header (base64url-encoded JSON)
+            String headerJson = new String(Base64Url.decode(parts[0]), StandardCharsets.UTF_8);
+            JsonNode node = JsonSerialization.mapper.readTree(headerJson);
+            String enc = node.has("enc") ? node.get("enc").asText(null) : null;
+            // JWE must have an 'enc' header parameter per RFC7516
+            return enc != null && !enc.isBlank();
+        } catch (Exception ignore) {
+            return false;
+        }
     }
 
     private String selectKeyManagementAlg(CredentialResponseEncryptionMetadata metadata, JWK jwk) {

@@ -634,10 +634,11 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
                 String jwtProof2 = generateJwtProof(issuer, cNonce);
                 Proofs proofs = new Proofs().setJwt(Arrays.asList(jwtProof1, jwtProof2));
 
-
+                String credentialConfigurationId = jwtTypeCredentialClientScope.getAttributes()
+                        .get(CredentialScopeModel.CONFIGURATION_ID);
                 CredentialRequest request = new CredentialRequest()
                         .setFormat(Format.JWT_VC)
-                        .setCredentialConfigurationId(scopeName)
+                        .setCredentialConfigurationId(credentialConfigurationId)
                         .setProofs(proofs);
 
                 String requestPayload = JsonSerialization.writeValueAsString(request);
