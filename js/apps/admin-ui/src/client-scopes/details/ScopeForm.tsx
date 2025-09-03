@@ -1,6 +1,12 @@
 import type ClientScopeRepresentation from "@keycloak/keycloak-admin-client/lib/defs/clientScopeRepresentation";
-import { ActionGroup, Alert, Button } from "@patternfly/react-core";
-import { useEffect } from "react";
+import {
+  ActionGroup,
+  Alert,
+  Button,
+  Modal,
+  ModalVariant,
+} from "@patternfly/react-core";
+import { useEffect, useState, useCallback } from "react";
 import { FormProvider, useForm, useWatch } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
@@ -66,8 +72,10 @@ export const ScopeForm = ({ clientScope, save }: ScopeFormProps) => {
   const isOid4vcFeatureEnabled = () => isFeatureEnabled(Feature.OpenId4VCI);
   const isOid4vcRealmEnabled = () =>
     realmRepresentation?.verifiableCredentialsEnabled === true;
-  const isOid4vcEnabled = () =>
-    isOid4vcFeatureEnabled() && isOid4vcRealmEnabled();
+  const isOid4vcEnabled = useCallback(
+    () => isOid4vcFeatureEnabled() && isOid4vcRealmEnabled(),
+    [isOid4vcFeatureEnabled, isOid4vcRealmEnabled],
+  );
 
   const setDynamicRegex = (value: string, append: boolean) =>
     setValue(
@@ -81,6 +89,24 @@ export const ScopeForm = ({ clientScope, save }: ScopeFormProps) => {
   useEffect(() => {
     convertToFormValues(clientScope ?? {}, setValue);
   }, [clientScope, setValue]);
+
+  const [oid4vcInfoModalOpen, setOid4vcInfoModalOpen] = useState(false);
+  const [hasDismissedModal, setHasDismissedModal] = useState(false);
+
+  // Auto-open OID4VC info modal when protocol is selected (only if not dismissed)
+  useEffect(() => {
+    if (
+      selectedProtocol === "oid4vc" &&
+      isOid4vcEnabled() &&
+      !hasDismissedModal
+    ) {
+      setOid4vcInfoModalOpen(true);
+    } else if (selectedProtocol !== "oid4vc") {
+      // Reset dismissed flag when protocol changes away from oid4vc
+      setHasDismissedModal(false);
+    }
+  }, [selectedProtocol, isOid4vcEnabled, hasDismissedModal]);
+
   return (
     <FormAccess
       role="manage-clients"
@@ -88,6 +114,20 @@ export const ScopeForm = ({ clientScope, save }: ScopeFormProps) => {
       isHorizontal
     >
       <FormProvider {...form}>
+        {/* OID4VC Feature Disabled Alert */}
+        {isOid4vcProtocol() && !isOid4vcEnabled() && (
+          <Alert
+            variant="warning"
+            title={t("oid4vcFeatureDisabled")}
+            isInline
+            component="h2"
+          >
+            {!isOid4vcFeatureEnabled()
+              ? t("oid4vcGlobalFeatureDisabledHelp")
+              : t("oid4vcRealmFeatureDisabledHelp")}
+          </Alert>
+        )}
+
         <TextControl
           name="name"
           label={t("name")}
@@ -247,13 +287,6 @@ export const ScopeForm = ({ clientScope, save }: ScopeFormProps) => {
             />
           </>
         )}
-        {isOid4vcProtocol() && !isOid4vcEnabled() && (
-          <Alert variant="info" title={t("oid4vcFeatureDisabled")} isInline>
-            {!isOid4vcFeatureEnabled()
-              ? t("oid4vcGlobalFeatureDisabledHelp")
-              : t("oid4vcRealmFeatureDisabledHelp")}
-          </Alert>
-        )}
 
         <ActionGroup>
           <FormSubmitButton
@@ -273,6 +306,28 @@ export const ScopeForm = ({ clientScope, save }: ScopeFormProps) => {
           </Button>
         </ActionGroup>
       </FormProvider>
+
+      {/* OID4VC Configuration Info Modal */}
+      <Modal
+        variant={ModalVariant.medium}
+        title={t("oid4vcConfigurationNote")}
+        isOpen={oid4vcInfoModalOpen}
+        onClose={() => setOid4vcInfoModalOpen(false)}
+        actions={[
+          <Button
+            key="gotIt"
+            variant="primary"
+            onClick={() => {
+              setOid4vcInfoModalOpen(false);
+              setHasDismissedModal(true);
+            }}
+          >
+            {t("gotIt")}
+          </Button>,
+        ]}
+      >
+        <div className="pf-v5-u-mb-md">{t("oid4vcConfigurationNoteHelp")}</div>
+      </Modal>
     </FormAccess>
   );
 };
