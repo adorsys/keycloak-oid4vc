@@ -18,6 +18,7 @@
 package org.keycloak.protocol.oid4vc.issuance;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.google.zxing.BarcodeFormat;
 import com.google.zxing.WriterException;
 import com.google.zxing.client.j2se.MatrixToImageWriter;
@@ -81,6 +82,8 @@ import org.keycloak.protocol.oid4vc.model.ProofType;
 import org.keycloak.protocol.oid4vc.model.Proofs;
 import org.keycloak.protocol.oid4vc.model.SupportedCredentialConfiguration;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
+import org.keycloak.protocol.oid4vc.model.ClaimsDescription;
+import org.keycloak.protocol.oid4vc.utils.ClaimsPathPointer;
 import org.keycloak.protocol.oidc.grants.PreAuthorizedCodeGrantType;
 import org.keycloak.protocol.oidc.grants.PreAuthorizedCodeGrantTypeFactory;
 import org.keycloak.protocol.oidc.utils.OAuth2Code;
@@ -96,6 +99,7 @@ import org.keycloak.utils.MediaType;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.URLEncoder;
+import java.util.stream.Collectors;
 import java.nio.charset.StandardCharsets;
 import java.security.PublicKey;
 import java.time.Instant;
@@ -436,20 +440,62 @@ public class OID4VCIssuerEndpoint {
             throw new BadRequestException(getErrorResponse(ErrorType.MISSING_CREDENTIAL_IDENTIFIER_AND_CONFIGURATION_ID));
         }
 
-        // Find the requested credential scope
-        CredentialScopeModel requestedCredential = credentialRequestVO.findCredentialScope(session).orElseThrow(() -> {
-            LOGGER.debugf("Credential for request '%s' not found.", credentialRequestVO.toString());
-            
-            // Determine the appropriate error type based on what was requested
-            ErrorType errorType;
-            if (credentialRequestVO.getCredentialConfigurationId() != null) {
-                errorType = ErrorType.UNKNOWN_CREDENTIAL_CONFIGURATION;
+        CredentialScopeModel requestedCredential;
+
+        // If credential_identifier is provided, try to retrieve stored credential context first
+        if (credentialRequestVO.getCredentialIdentifier() != null) {
+            String contextKey = "CREDENTIAL_CONTEXT_" + credentialRequestVO.getCredentialIdentifier();
+            String storedContextJson = authResult.getSession().getNote(contextKey);
+
+            if (storedContextJson != null && !storedContextJson.isEmpty()) {
+                try {
+                    Map<String, Object> storedContext = JsonSerialization.readValue(storedContextJson, Map.class);
+                    String storedCredentialConfigurationId = (String) storedContext.get("credentialConfigurationId");
+
+                    // Use the stored credential configuration ID to find the credential scope
+                    Map<String, SupportedCredentialConfiguration> supportedCredentials = OID4VCIssuerWellKnownProvider.getSupportedCredentials(session);
+                    if (supportedCredentials.containsKey(storedCredentialConfigurationId)) {
+                        SupportedCredentialConfiguration config = supportedCredentials.get(storedCredentialConfigurationId);
+                        ClientModel client = session.getContext().getClient();
+                        Map<String, ClientScopeModel> clientScopes = client.getClientScopes(false);
+                        ClientScopeModel clientScope = clientScopes.get(config.getScope());
+
+                        if (clientScope != null) {
+                            requestedCredential = new CredentialScopeModel(clientScope);
+                        } else {
+                            LOGGER.errorf("Client scope not found for stored credential configuration: %s", config.getScope());
+                            throw new BadRequestException(getErrorResponse(ErrorType.UNKNOWN_CREDENTIAL_CONFIGURATION));
+                        }
+                    } else {
+                        LOGGER.errorf("Stored credential configuration not found: %s", storedCredentialConfigurationId);
+                        throw new BadRequestException(getErrorResponse(ErrorType.UNKNOWN_CREDENTIAL_CONFIGURATION));
+                    }
+                } catch (Exception e) {
+                    LOGGER.errorf(e, "Failed to parse stored credential context for identifier: %s", credentialRequestVO.getCredentialIdentifier());
+                    throw new BadRequestException(getErrorResponse(ErrorType.UNKNOWN_CREDENTIAL_IDENTIFIER));
+                }
             } else {
-                errorType = ErrorType.UNKNOWN_CREDENTIAL_IDENTIFIER;
+                // No stored context found, try to use credential_identifier as a direct scope name
+                try {
+                    requestedCredential = credentialRequestVO.findCredentialScope(session).orElseThrow(() -> {
+                        LOGGER.errorf("Credential scope not found for identifier: %s", credentialRequestVO.getCredentialIdentifier());
+                        return new BadRequestException(getErrorResponse(ErrorType.UNKNOWN_CREDENTIAL_IDENTIFIER));
+                    });
+                } catch (Exception e) {
+                    LOGGER.errorf(e, "Failed to find credential scope for identifier: %s", credentialRequestVO.getCredentialIdentifier());
+                    throw new BadRequestException(getErrorResponse(ErrorType.UNKNOWN_CREDENTIAL_IDENTIFIER));
+                }
             }
-            
-            return new BadRequestException(getErrorResponse(errorType));
-        });
+        } else if (credentialRequestVO.getCredentialConfigurationId() != null) {
+            // Use credential_configuration_id for direct lookup
+            requestedCredential = credentialRequestVO.findCredentialScope(session).orElseThrow(() -> {
+                LOGGER.errorf("Credential scope not found for configuration ID: %s", credentialRequestVO.getCredentialConfigurationId());
+                return new BadRequestException(getErrorResponse(ErrorType.UNKNOWN_CREDENTIAL_CONFIGURATION));
+            });
+        } else {
+            // Neither provided - this should not happen due to earlier validation
+            throw new BadRequestException(getErrorResponse(ErrorType.MISSING_CREDENTIAL_IDENTIFIER_AND_CONFIGURATION_ID));
+        }
 
         checkScope(requestedCredential);
 
@@ -757,7 +803,9 @@ public class OID4VCIssuerEndpoint {
         protocolMappers
                 .forEach(mapper -> mapper.setClaimsForSubject(subjectClaims, authResult.getSession()));
 
-        subjectClaims.forEach((key, value) -> vc.getCredentialSubject().setClaims(key, value));
+        Map<String, Object> filteredSubjectClaims = applyClaimsFiltering(subjectClaims, authResult.getSession(), credentialConfig.getScope());
+
+        filteredSubjectClaims.forEach((key, value) -> vc.getCredentialSubject().setClaims(key, value));
 
         protocolMappers
                 .forEach(mapper -> mapper.setClaimsForCredential(vc, authResult.getSession()));
@@ -829,5 +877,62 @@ public class OID4VCIssuerEndpoint {
         }
 
         return credentialBuilder;
+    }
+
+    /**
+     * Applies claims filtering based on stored authorization details claims.
+     * If no claims filtering is requested, returns all claims unchanged.
+     *
+     * @param allClaims   all available claims
+     * @param userSession the user session
+     * @param scope       the credential scope
+     * @return filtered claims based on authorization details
+     */
+    private Map<String, Object> applyClaimsFiltering(Map<String, Object> allClaims, UserSessionModel userSession, String scope) {
+        try {
+            // Look for stored claims in user session notes
+            String claimsKey = "AUTHORIZATION_DETAILS_CLAIMS_" + scope;
+            String storedClaimsJson = userSession.getNote(claimsKey);
+
+            if (storedClaimsJson != null && !storedClaimsJson.isEmpty()) {
+                try {
+                    // Parse the stored claims from JSON
+                    List<ClaimsDescription> storedClaims =
+                            JsonSerialization.readValue(storedClaimsJson,
+                                    new TypeReference<List<ClaimsDescription>>() {
+                                    });
+
+                    if (storedClaims != null && !storedClaims.isEmpty()) {
+                        Map<String, Object> filteredClaims = ClaimsPathPointer.filterClaimsByAuthorizationDetails(
+                                allClaims, storedClaims);
+                        return filteredClaims;
+                    } else {
+                        LOGGER.infof("Stored claims list is null or empty");
+                    }
+                } catch (Exception e) {
+                    LOGGER.errorf(e, "Failed to parse stored claims for scope %s", scope);
+                }
+            } else {
+                LOGGER.infof("No stored claims found for scope %s", scope);
+            }
+            // No claims filtering requested, return all claims
+            return allClaims;
+
+        } catch (IllegalArgumentException e) {
+            // Mandatory claim missing - this should fail credential issuance
+            String errorMessage = e.getMessage();
+            if (errorMessage.contains("Mandatory claim not found:")) {
+                LOGGER.errorf("Mandatory claim missing during claims filtering for scope %s: %s", scope, errorMessage);
+                throw new BadRequestException("Credential issuance failed: " + errorMessage +
+                        ". The requested mandatory claim is not available in the user profile.");
+            } else {
+                LOGGER.errorf("Claims filtering error for scope %s: %s", scope, errorMessage);
+                throw new BadRequestException("Credential issuance failed: " + errorMessage);
+            }
+        } catch (Exception e) {
+            // Log error but continue with all claims to avoid breaking existing functionality
+            LOGGER.errorf(e, "Unexpected error during claims filtering for scope %s, continuing with all claims", scope);
+            return allClaims;
+        }
     }
 }

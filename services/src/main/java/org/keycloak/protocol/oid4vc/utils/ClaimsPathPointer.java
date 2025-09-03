@@ -16,13 +16,14 @@
  */
 package org.keycloak.protocol.oid4vc.utils;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.jboss.logging.Logger;
 import org.keycloak.protocol.oid4vc.model.ClaimsDescription;
+import org.keycloak.utils.StringUtil;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
 
 /**
  * Utility class for handling claims path pointers.
@@ -31,7 +32,6 @@ import java.util.List;
 public class ClaimsPathPointer {
 
     private static final Logger logger = Logger.getLogger(ClaimsPathPointer.class);
-    private static final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
      * Validates a claims path pointer.
@@ -51,7 +51,10 @@ public class ClaimsPathPointer {
             }
 
             if (component instanceof String) {
-                // String is valid for object key selection
+                // String is valid for object key selection, but should not be blank
+                if (StringUtil.isBlank((String) component)) {
+                    return false;
+                }
                 continue;
             }
 
@@ -163,60 +166,342 @@ public class ClaimsPathPointer {
     }
 
     /**
-     * Processes a claims path pointer against a JSON credential (for JSON-based credentials).
+     * Filters a map of claims based on authorization details claims descriptions.
+     * Only claims that match the requested paths will be included in the result.
      *
-     * @param path       the claims path pointer
-     * @param credential the JSON credential to process against
-     * @return the selected JSON elements, or null if processing fails
+     * @param allClaims       the complete map of claims to filter
+     * @param requestedClaims the list of claims descriptions from authorization details
+     * @return filtered map containing only the requested claims
+     * @throws IllegalArgumentException if mandatory claims are missing
      */
-    public static List<JsonNode> processJsonPath(List<Object> path, JsonNode credential) {
-        if (!isValidPath(path) || credential == null) {
-            return null;
+    public static Map<String, Object> filterClaimsByAuthorizationDetails(
+            Map<String, Object> allClaims,
+            List<ClaimsDescription> requestedClaims) {
+
+        if (requestedClaims == null || requestedClaims.isEmpty()) {
+            return allClaims; // No filtering requested, return all claims
         }
 
-        try {
-            List<JsonNode> selected = new ArrayList<>();
-            selected.add(credential);
+        Map<String, Object> filteredClaims = new HashMap<>();
 
-            for (Object component : path) {
-                List<JsonNode> nextSelected = new ArrayList<>();
-
-                for (JsonNode node : selected) {
-                    if (component instanceof String) {
-                        // Select object key
-                        JsonNode child = node.get((String) component);
-                        if (child != null) {
-                            nextSelected.add(child);
-                        }
-                    } else if (component == null) {
-                        // Select all array elements
-                        if (node.isArray()) {
-                            for (JsonNode child : node) {
-                                nextSelected.add(child);
-                            }
-                        }
-                    } else if (component instanceof Integer) {
-                        // Select specific array index
-                        if (node.isArray()) {
-                            int index = (Integer) component;
-                            if (index >= 0 && index < node.size()) {
-                                nextSelected.add(node.get(index));
-                            }
-                        }
-                    }
-                }
-
-                if (nextSelected.isEmpty()) {
-                    return null; // No elements selected, abort processing
-                }
-
-                selected = nextSelected;
+        for (ClaimsDescription claim : requestedClaims) {
+            List<Object> path = claim.getPath();
+            if (path == null || path.isEmpty()) {
+                continue; // Skip invalid paths
             }
 
-            return selected;
-        } catch (Exception e) {
-            logger.warnf(e, "Error processing claims path pointer: %s", path);
-            return null;
+            try {
+                // Get claim values
+                List<Object> claimValues = processClaimsPathPointer(allClaims, path);
+
+                if (!claimValues.isEmpty()) {
+                    // Add all selected claim values to filtered results
+                    if (claimValues.size() == 1) {
+                        // Single value, use existing method
+                        addClaimByPath(filteredClaims, path, claimValues.get(0));
+                    } else {
+                        // Multiple values from array selection, use helper method
+                        addMultipleClaimsByPath(filteredClaims, path, claimValues);
+                    }
+                } else if (Boolean.TRUE.equals(claim.getMandatory())) {
+                    // Mandatory claim is missing - this should fail
+                    throw new IllegalArgumentException("Mandatory claim not found: " + path);
+                }
+                // Optional claims that don't exist are simply not included
+            } catch (IllegalArgumentException e) {
+                if (Boolean.TRUE.equals(claim.getMandatory())) {
+                    // Re-throw for mandatory claims
+                    throw e;
+                }
+                // For optional claims, log warning and continue
+                logger.warnf("Failed to process optional claim path %s: %s", path, e.getMessage());
+            }
+        }
+
+        return filteredClaims;
+    }
+
+
+    /**
+     * Processes a claims path pointer according to OID4VCI specification.
+     *
+     * @param claims the claims map to search in
+     * @param path   the claims path pointer
+     * @return the set of selected JSON elements, or empty list if none found
+     * @throws IllegalArgumentException if processing fails according to spec rules
+     */
+    public static List<Object> processClaimsPathPointer(Map<String, Object> claims, List<Object> path) {
+        if (path == null || path.isEmpty()) {
+            throw new IllegalArgumentException("Claims path pointer must be a non-empty array");
+        }
+        if (claims == null) {
+            throw new IllegalArgumentException("Claims map cannot be null");
+        }
+
+        // Start with root element
+        List<Object> currentSelection = new ArrayList<>();
+        currentSelection.add(claims);
+
+        // Process each path component from left to right
+        for (Object component : path) {
+            if (currentSelection.isEmpty()) {
+                throw new IllegalArgumentException("No elements currently selected, cannot process further");
+            }
+
+            List<Object> nextSelection = new ArrayList<>();
+
+            for (Object current : currentSelection) {
+                if (component instanceof String) {
+                    // String component: select element by key
+                    if (current instanceof Map) {
+                        Map<?, ?> map = (Map<?, ?>) current;
+                        Object value = map.get(component);
+                        if (value != null) {
+                            nextSelection.add(value);
+                        }
+                        // If key doesn't exist, element is removed from selection (not added to nextSelection)
+                    } else {
+                        // Not an object, abort processing for this element
+                        // Element is removed from selection
+                    }
+                } else if (component instanceof Integer) {
+                    // Integer component: select element by index
+                    int index = (Integer) component;
+                    if (index < 0) {
+                        throw new IllegalArgumentException("Negative integer values are not allowed in claims path pointer");
+                    }
+                    if (current instanceof List) {
+                        List<?> list = (List<?>) current;
+                        if (index < list.size()) {
+                            nextSelection.add(list.get(index));
+                        }
+                        // If index out of bounds, element is removed from selection
+                    } else {
+                        // Not a list, abort processing for this element
+                        // Element is removed from selection
+                    }
+                } else if (component == null) {
+                    // Null component: select all elements of currently selected array(s)
+                    if (current instanceof List) {
+                        List<?> list = (List<?>) current;
+                        nextSelection.addAll(list);
+                    } else {
+                        // Not an array, abort processing for this element
+                        // Element is removed from selection
+                    }
+                } else {
+                    throw new IllegalArgumentException("Invalid path component type: " + component.getClass().getSimpleName() +
+                            ". Only String, Integer, and null are allowed.");
+                }
+            }
+
+            currentSelection = nextSelection;
+        }
+
+        if (currentSelection.isEmpty()) {
+            throw new IllegalArgumentException("No elements selected after processing claims path pointer");
+        }
+
+        return currentSelection;
+    }
+
+    /**
+     * Adds multiple claim values to a claims map when array selection is involved.
+     * This method properly handles paths with null components that select multiple array elements.
+     *
+     * @param claims the claims map to add to
+     * @param path   the claims path pointer
+     * @param values the list of values to add
+     */
+    private static void addMultipleClaimsByPath(Map<String, Object> claims, List<Object> path, List<Object> values) {
+        if (values == null || values.isEmpty()) {
+            return;
+        }
+
+        // For simple paths, add the first value
+        if (path.size() == 1 && path.get(0) instanceof String) {
+            claims.put((String) path.get(0), values.get(0));
+            return;
+        }
+
+        // For complex paths with array selection, we need to handle the structure properly
+        // This creates the appropriate nested structure to hold the selected values
+        if (values.size() == 1) {
+            // Single value, use existing method
+            addClaimByPath(claims, path, values.get(0));
+        } else {
+            // Multiple values - this indicates array selection
+            // We need to create an array structure to hold all values
+            createArrayStructureForMultipleValues(claims, path, values);
+        }
+    }
+
+    /**
+     * Creates an array structure to hold multiple values from array selection.
+     * This handles the case where a path with null components selects multiple array elements.
+     *
+     * @param claims the claims map to add to
+     * @param path   the claims path pointer
+     * @param values the list of values to add
+     */
+    private static void createArrayStructureForMultipleValues(Map<String, Object> claims, List<Object> path, List<Object> values) {
+        if (path.size() < 2) {
+            return;
+        }
+
+        Object current = claims;
+        String rootKey = (String) path.get(0);
+
+        // Ensure root key exists
+        if (!(current instanceof Map)) {
+            return;
+        }
+
+        Map<String, Object> rootMap = (Map<String, Object>) current;
+        if (!rootMap.containsKey(rootKey)) {
+            rootMap.put(rootKey, new ArrayList<Object>());
+        }
+
+        current = rootMap.get(rootKey);
+
+        // Navigate through the path, building structure as needed
+        for (int i = 1; i < path.size() - 1; i++) {
+            Object component = path.get(i);
+
+            if (component instanceof String) {
+                if (!(current instanceof Map)) {
+                    return; // Can't navigate further
+                }
+                Map<String, Object> map = (Map<String, Object>) current;
+                if (!map.containsKey(component)) {
+                    map.put((String) component, new HashMap<String, Object>());
+                }
+                current = map.get(component);
+            } else if (component instanceof Integer) {
+                if (!(current instanceof List)) {
+                    return; // Can't navigate further
+                }
+                List<Object> list = (List<Object>) current;
+                int index = (Integer) component;
+                while (list.size() <= index) {
+                    list.add(new HashMap<String, Object>());
+                }
+                current = list.get(index);
+            }
+        }
+
+        // Set the final value - for array selection, we want to add all values
+        Object finalComponent = path.get(path.size() - 1);
+        if (finalComponent instanceof String) {
+            if (current instanceof Map) {
+                Map<String, Object> map = (Map<String, Object>) current;
+                // For array selection, store all values
+                map.put((String) finalComponent, new ArrayList<Object>(values));
+            }
+        } else if (finalComponent instanceof Integer) {
+            if (current instanceof List) {
+                List<Object> list = (List<Object>) current;
+                int index = (Integer) finalComponent;
+                while (list.size() <= index) {
+                    list.add(null);
+                }
+                // For array selection, store all values
+                list.set(index, new ArrayList<Object>(values));
+            }
+        }
+    }
+
+    /**
+     * Adds a claim value to a claims map using a claims path pointer.
+     *
+     * @param claims the claims map to add to
+     * @param path   the claims path pointer
+     * @return the claim value, or null if not found
+     */
+    private static void addClaimByPath(Map<String, Object> claims, List<Object> path, Object value) {
+        if (path == null || path.isEmpty() || claims == null) {
+            return;
+        }
+
+        if (path.size() == 1 && path.get(0) instanceof String) {
+            // Simple case: direct key assignment
+            claims.put((String) path.get(0), value);
+            return;
+        }
+
+        // Complex case: nested path - build the structure
+        buildNestedClaimStructure(claims, path, value);
+    }
+
+    /**
+     * Builds nested claim structure for complex paths.
+     *
+     * @param claims the claims map to build in
+     * @param path   the claims path pointer
+     * @param value  the value to add
+     */
+    private static void buildNestedClaimStructure(Map<String, Object> claims, List<Object> path, Object value) {
+        if (path.size() < 2) {
+            return;
+        }
+
+        Object current = claims;
+        String rootKey = (String) path.get(0);
+
+        // Ensure root key exists
+        if (!(current instanceof Map)) {
+            return;
+        }
+
+        Map<String, Object> rootMap = (Map<String, Object>) current;
+        if (!rootMap.containsKey(rootKey)) {
+            rootMap.put(rootKey, new HashMap<String, Object>());
+        }
+
+        current = rootMap.get(rootKey);
+
+        // Navigate through the path, building structure as needed
+        for (int i = 1; i < path.size() - 1; i++) {
+            Object component = path.get(i);
+
+            if (component instanceof String) {
+                if (!(current instanceof Map)) {
+                    return; // Can't navigate further
+                }
+                Map<String, Object> map = (Map<String, Object>) current;
+                if (!map.containsKey(component)) {
+                    map.put((String) component, new HashMap<String, Object>());
+                }
+                current = map.get(component);
+            } else if (component instanceof Integer) {
+                if (!(current instanceof List)) {
+                    return; // Can't navigate further
+                }
+                List<Object> list = (List<Object>) current;
+                int index = (Integer) component;
+                while (list.size() <= index) {
+                    list.add(new HashMap<String, Object>());
+                }
+                current = list.get(index);
+            }
+        }
+
+        // Set the final value
+        Object finalComponent = path.get(path.size() - 1);
+        if (finalComponent instanceof String) {
+            if (current instanceof Map) {
+                Map<String, Object> map = (Map<String, Object>) current;
+                map.put((String) finalComponent, value);
+            }
+        } else if (finalComponent instanceof Integer) {
+            if (current instanceof List) {
+                List<Object> list = (List<Object>) current;
+                int index = (Integer) finalComponent;
+                while (list.size() <= index) {
+                    list.add(null);
+                }
+                list.set(index, value);
+            }
         }
     }
 }

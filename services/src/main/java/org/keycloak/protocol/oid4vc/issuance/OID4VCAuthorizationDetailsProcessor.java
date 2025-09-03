@@ -18,8 +18,6 @@
 package org.keycloak.protocol.oid4vc.issuance;
 
 import com.fasterxml.jackson.core.type.TypeReference;
-import jakarta.ws.rs.core.MultivaluedMap;
-import jakarta.ws.rs.core.Response;
 import org.jboss.logging.Logger;
 import org.keycloak.events.Errors;
 import org.keycloak.events.EventBuilder;
@@ -29,18 +27,26 @@ import org.keycloak.models.UserSessionModel;
 import org.keycloak.protocol.oid4vc.model.AuthorizationDetail;
 import org.keycloak.protocol.oid4vc.model.AuthorizationDetailResponse;
 import org.keycloak.protocol.oid4vc.model.ClaimsDescription;
-import org.keycloak.protocol.oid4vc.utils.ClaimsPathPointer;
 import org.keycloak.protocol.oid4vc.model.SupportedCredentialConfiguration;
+import org.keycloak.protocol.oid4vc.model.Claim;
 import org.keycloak.services.CorsErrorResponseException;
 import org.keycloak.services.cors.Cors;
 import org.keycloak.util.JsonSerialization;
 
 import static org.keycloak.OAuth2Constants.AUTHORIZATION_DETAILS_PARAM;
 
+import jakarta.ws.rs.core.MultivaluedMap;
+import jakarta.ws.rs.core.Response;
+
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
+
+import org.keycloak.protocol.oid4vc.utils.ClaimsPathPointer;
 
 public class OID4VCAuthorizationDetailsProcessor implements AuthorizationDetailsProcessor {
     private static final Logger logger = Logger.getLogger(OID4VCAuthorizationDetailsProcessor.class);
@@ -60,6 +66,7 @@ public class OID4VCAuthorizationDetailsProcessor implements AuthorizationDetails
     }
 
     public List<AuthorizationDetailResponse> process(UserSessionModel userSession, ClientSessionContext clientSessionCtx) {
+
         String authorizationDetailsParam = formParams.getFirst(AUTHORIZATION_DETAILS_PARAM);
         if (authorizationDetailsParam == null) {
             return null; // authorization_details is optional
@@ -68,11 +75,11 @@ public class OID4VCAuthorizationDetailsProcessor implements AuthorizationDetails
         List<AuthorizationDetail> authDetails = parseAuthorizationDetails(authorizationDetailsParam);
 
         if (authDetails.isEmpty()) {
-            logger.warnf("Empty authorization_details array is not allowed");
             throw getInvalidRequestException("Invalid authorization_details: empty array is not allowed");
         }
 
         Map<String, SupportedCredentialConfiguration> supportedCredentials = OID4VCIssuerWellKnownProvider.getSupportedCredentials(session);
+
         List<AuthorizationDetailResponse> authDetailsResponse = new ArrayList<>();
 
         // Retrieve authorization servers and issuer identifier for locations check
@@ -80,13 +87,14 @@ public class OID4VCAuthorizationDetailsProcessor implements AuthorizationDetails
         String issuerIdentifier = OID4VCIssuerWellKnownProvider.getIssuer(session.getContext());
 
         for (AuthorizationDetail detail : authDetails) {
+
             validateAuthorizationDetail(detail, supportedCredentials, authorizationServers, issuerIdentifier);
+
             AuthorizationDetailResponse responseDetail = buildAuthorizationDetailResponse(detail, userSession, supportedCredentials, clientSessionCtx);
             authDetailsResponse.add(responseDetail);
         }
 
         if (authDetailsResponse.isEmpty()) {
-            logger.warnf("No valid authorization_details found after validation");
             throw getInvalidRequestException("Invalid authorization_details: no valid authorization details found");
         }
 
@@ -98,7 +106,6 @@ public class OID4VCAuthorizationDetailsProcessor implements AuthorizationDetails
             return JsonSerialization.readValue(authorizationDetailsParam, new TypeReference<List<AuthorizationDetail>>() {
             });
         } catch (Exception e) {
-            logger.warnf(e, "Invalid authorization_details format: %s", authorizationDetailsParam);
             throw getInvalidRequestException("Invalid authorization_details format: " + authorizationDetailsParam);
         }
     }
@@ -108,7 +115,16 @@ public class OID4VCAuthorizationDetailsProcessor implements AuthorizationDetails
         return new CorsErrorResponseException(cors, "invalid_request", errorDescription, Response.Status.BAD_REQUEST);
     }
 
+    /**
+     * Validates an authorization detail against supported credentials and other constraints.
+     *
+     * @param detail               the authorization detail to validate
+     * @param supportedCredentials map of supported credential configurations
+     * @param authorizationServers list of authorization servers
+     * @param issuerIdentifier     the issuer identifier
+     */
     private void validateAuthorizationDetail(AuthorizationDetail detail, Map<String, SupportedCredentialConfiguration> supportedCredentials, List<String> authorizationServers, String issuerIdentifier) {
+
         String type = detail.getType();
         String credentialConfigurationId = detail.getCredentialConfigurationId();
         List<ClaimsDescription> claims = detail.getClaims();
@@ -117,7 +133,6 @@ public class OID4VCAuthorizationDetailsProcessor implements AuthorizationDetails
         if (authorizationServers != null && !authorizationServers.isEmpty() && OPENID_CREDENTIAL_TYPE.equals(type)) {
             List<String> locations = detail.getLocations();
             if (locations == null || locations.size() != 1 || !issuerIdentifier.equals(locations.get(0))) {
-                logger.warnf("Invalid locations field in authorization_details: %s, expected: %s", locations, issuerIdentifier);
                 throw getInvalidRequestException("Invalid authorization_details: locations=" + locations + ", expected=" + issuerIdentifier);
             }
         }
@@ -141,30 +156,62 @@ public class OID4VCAuthorizationDetailsProcessor implements AuthorizationDetails
             throw getInvalidRequestException("Invalid credential configuration: unsupported credential_configuration_id=" + credentialConfigurationId);
         }
 
+
         // Validate claims if present
         if (claims != null && !claims.isEmpty()) {
-            validateClaims(claims);
+            validateClaims(claims, supportedCredentials, credentialConfigurationId);
         }
     }
 
-    private void validateClaims(List<ClaimsDescription> claims) {
-        // Validate each claims description
-        for (ClaimsDescription claim : claims) {
-            if (claim.getPath() == null || claim.getPath().isEmpty()) {
-                logger.warnf("Invalid claims description: path is required");
-                throw getInvalidRequestException("Invalid claims description: path is required");
-            }
+    /**
+     * Validates that the requested claims are supported by the credential configuration.
+     * This performs semantic validation by checking if Keycloak supports the requested claims.
+     *
+     * @param claims                    the list of claims to validate
+     * @param supportedCredentials      map of supported credential configurations
+     * @param credentialConfigurationId the ID of the credential configuration
+     */
+    private void validateClaims(List<ClaimsDescription> claims, Map<String, SupportedCredentialConfiguration> supportedCredentials, String credentialConfigurationId) {
+        SupportedCredentialConfiguration config = supportedCredentials.get(credentialConfigurationId);
+        if (config == null) {
+            return;
+        }
 
-            // Validate the claims path pointer
-            if (!ClaimsPathPointer.isValidPath(claim.getPath())) {
-                logger.warnf("Invalid claims path pointer: %s", claim.getPath());
-                throw getInvalidRequestException("Invalid claims path pointer: " + claim.getPath());
+        // Get the exposed claims from credential metadata
+        List<Claim> exposedClaims = null;
+        if (config.getCredentialMetadata() != null && config.getCredentialMetadata().getClaims() != null) {
+            exposedClaims = config.getCredentialMetadata().getClaims();
+        }
+
+        if (exposedClaims == null || exposedClaims.isEmpty()) {
+            throw getInvalidRequestException("Credential configuration does not expose any claims metadata");
+        }
+
+        // Convert exposed claims to a set of paths for easy comparison
+        Set<String> exposedClaimPaths = new HashSet<>();
+        for (Claim exposedClaim : exposedClaims) {
+            if (exposedClaim.getPath() != null && !exposedClaim.getPath().isEmpty()) {
+                exposedClaimPaths.add(exposedClaim.getPath().toString());
             }
         }
 
-        // Validate for conflicts and contradictions
+        // Validate each requested claim against exposed metadata
+        for (ClaimsDescription requestedClaim : claims) {
+            if (requestedClaim.getPath() == null || requestedClaim.getPath().isEmpty()) {
+                throw getInvalidRequestException("Invalid claims description: path is required");
+            }
+
+            String requestedPath = requestedClaim.getPath().toString();
+
+            // Check if the requested claim path exists in the exposed metadata
+            if (!exposedClaimPaths.contains(requestedPath)) {
+                throw getInvalidRequestException("Unsupported claim: " + requestedPath +
+                        ". This claim is not supported by the credential configuration.");
+            }
+        }
+
+        // Check for conflicts using ClaimsPathPointer utility
         if (!ClaimsPathPointer.validateClaimsDescriptions(claims)) {
-            logger.warnf("Conflicting or contradictory claims descriptions found");
             throw getInvalidRequestException("Invalid claims descriptions: conflicting or contradictory claims found");
         }
     }
@@ -193,8 +240,33 @@ public class OID4VCAuthorizationDetailsProcessor implements AuthorizationDetails
         responseDetail.setCredentialConfigurationId(credentialConfigurationId);
         responseDetail.setCredentialIdentifiers(credentialIdentifiers);
 
-        // Include claims in response if present in request
+        // Store claims and credential context in user session notes for later use during credential issuance
         if (detail.getClaims() != null) {
+            // Store claims with a unique key based on credential configuration ID
+            String claimsKey = "AUTHORIZATION_DETAILS_CLAIMS_" + credentialConfigurationId;
+            try {
+                userSession.setNote(claimsKey, JsonSerialization.writeValueAsString(detail.getClaims()));
+            } catch (Exception e) {
+                logger.warnf(e, "Failed to store claims in user session for credential configuration %s", credentialConfigurationId);
+            }
+
+            // Store credential context mapping using credential identifier as key
+            for (String credentialIdentifier : credentialIdentifiers) {
+                String contextKey = "CREDENTIAL_CONTEXT_" + credentialIdentifier;
+                try {
+                    // Store the complete credential context for later retrieval
+                    Map<String, Object> credentialContext = Map.of(
+                            "credentialConfigurationId", credentialConfigurationId,
+                            "claims", detail.getClaims(),
+                            "type", OPENID_CREDENTIAL_TYPE
+                    );
+                    userSession.setNote(contextKey, JsonSerialization.writeValueAsString(credentialContext));
+                } catch (Exception e) {
+                    logger.warnf(e, "Failed to store credential context for identifier %s", credentialIdentifier);
+                }
+            }
+
+            // Include claims in response
             responseDetail.setClaims(detail.getClaims());
         }
 
