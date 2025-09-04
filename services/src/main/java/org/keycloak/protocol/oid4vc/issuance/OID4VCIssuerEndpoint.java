@@ -1030,9 +1030,11 @@ public class OID4VCIssuerEndpoint {
         protocolMappers
                 .forEach(mapper -> mapper.setClaimsForSubject(subjectClaims, authResult.getSession()));
 
-        Map<String, Object> filteredSubjectClaims = applyClaimsFiltering(subjectClaims, authResult.getSession(), credentialConfig.getScope());
+        // Validate that requested claims from authorization_details are present
+        validateRequestedClaimsArePresent(subjectClaims, authResult.getSession(), credentialConfig.getScope());
 
-        filteredSubjectClaims.forEach((key, value) -> vc.getCredentialSubject().setClaims(key, value));
+        // Include all available claims
+        subjectClaims.forEach((key, value) -> vc.getCredentialSubject().setClaims(key, value));
 
         protocolMappers
                 .forEach(mapper -> mapper.setClaimsForCredential(vc, authResult.getSession()));
@@ -1107,15 +1109,14 @@ public class OID4VCIssuerEndpoint {
     }
 
     /**
-     * Applies claims filtering based on stored authorization details claims.
-     * If no claims filtering is requested, returns all claims unchanged.
+     * Validates that all requested claims from authorization_details are present in the available claims.
      *
      * @param allClaims   all available claims
      * @param userSession the user session
      * @param scope       the credential scope
-     * @return filtered claims based on authorization details
+     * @throws BadRequestException if mandatory requested claims are missing
      */
-    private Map<String, Object> applyClaimsFiltering(Map<String, Object> allClaims, UserSessionModel userSession, String scope) {
+    private void validateRequestedClaimsArePresent(Map<String, Object> allClaims, UserSessionModel userSession, String scope) {
         try {
             // Look for stored claims in user session notes
             String claimsKey = "AUTHORIZATION_DETAILS_CLAIMS_" + scope;
@@ -1130,9 +1131,18 @@ public class OID4VCIssuerEndpoint {
                                     });
 
                     if (storedClaims != null && !storedClaims.isEmpty()) {
-                        Map<String, Object> filteredClaims = ClaimsPathPointer.filterClaimsByAuthorizationDetails(
-                                allClaims, storedClaims);
-                        return filteredClaims;
+                        // Validate that all requested claims are present in the available claims
+                        // We use filterClaimsByAuthorizationDetails to check if claims can be found
+                        // but we don't actually filter - we just validate presence
+                        try {
+                            ClaimsPathPointer.filterClaimsByAuthorizationDetails(allClaims, storedClaims);
+                            LOGGER.debugf("All requested claims are present for scope %s", scope);
+                        } catch (IllegalArgumentException e) {
+                            // If filtering fails, it means some requested claims are missing
+                            LOGGER.errorf("Requested claims validation failed for scope %s: %s", scope, e.getMessage());
+                            throw new BadRequestException("Credential issuance failed: " + e.getMessage() +
+                                    ". The requested claims are not available in the user profile.");
+                        }
                     } else {
                         LOGGER.infof("Stored claims list is null or empty");
                     }
@@ -1142,8 +1152,7 @@ public class OID4VCIssuerEndpoint {
             } else {
                 LOGGER.infof("No stored claims found for scope %s", scope);
             }
-            // No claims filtering requested, return all claims
-            return allClaims;
+            // No claims filtering requested, all claims are valid
 
         } catch (IllegalArgumentException e) {
             // Mandatory claim missing - this should fail credential issuance
@@ -1158,8 +1167,7 @@ public class OID4VCIssuerEndpoint {
             }
         } catch (Exception e) {
             // Log error but continue with all claims to avoid breaking existing functionality
-            LOGGER.errorf(e, "Unexpected error during claims filtering for scope %s, continuing with all claims", scope);
-            return allClaims;
+            LOGGER.errorf(e, "Unexpected error during claims validation for scope %s, continuing with all claims", scope);
         }
     }
 }

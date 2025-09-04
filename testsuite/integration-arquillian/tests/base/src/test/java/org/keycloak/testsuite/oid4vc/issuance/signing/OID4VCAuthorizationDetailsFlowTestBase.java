@@ -50,7 +50,11 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.UUID;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.fail;
 import static org.keycloak.protocol.oid4vc.issuance.OID4VCAuthorizationDetailsProcessor.OPENID_CREDENTIAL_TYPE;
 
 /**
@@ -440,11 +444,12 @@ public abstract class OID4VCAuthorizationDetailsFlowTestBase extends OID4VCIssue
     }
 
     @Test
-    public void testCompleteFlowWithClaimsFiltering() throws Exception {
+    public void testCompleteFlowWithClaimsValidation() throws Exception {
         String token = getBearerToken(oauth, client, getCredentialClientScope().getName());
         Oid4vcTestContext ctx = prepareOid4vcTestContext(token);
 
         // Step 1: Request token with authorization details containing specific claims
+        // This tests that requested claims are validated and present in the final credential
         ClaimsDescription claim = new ClaimsDescription();
 
         // Construct claim path based on credential format
@@ -512,7 +517,7 @@ public abstract class OID4VCAuthorizationDetailsFlowTestBase extends OID4VCIssue
             assertNotNull("Credentials should be present", parsedResponse.getCredentials());
             assertEquals("Should have exactly one credential", 1, parsedResponse.getCredentials().size());
 
-            // Step 3: Verify that the issued credential contains ONLY the requested claims
+            // Step 3: Verify that the issued credential contains the requested claims AND may contain additional claims
             CredentialResponse.Credential credentialWrapper = parsedResponse.getCredentials().get(0);
             assertNotNull("Credential wrapper should not be null", credentialWrapper);
 

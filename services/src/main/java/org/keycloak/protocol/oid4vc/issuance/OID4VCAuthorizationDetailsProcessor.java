@@ -39,7 +39,6 @@ import jakarta.ws.rs.core.MultivaluedMap;
 import jakarta.ws.rs.core.Response;
 
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -173,9 +172,6 @@ public class OID4VCAuthorizationDetailsProcessor implements AuthorizationDetails
      */
     private void validateClaims(List<ClaimsDescription> claims, Map<String, SupportedCredentialConfiguration> supportedCredentials, String credentialConfigurationId) {
         SupportedCredentialConfiguration config = supportedCredentials.get(credentialConfigurationId);
-        if (config == null) {
-            return;
-        }
 
         // Get the exposed claims from credential metadata
         List<Claim> exposedClaims = null;
@@ -188,12 +184,10 @@ public class OID4VCAuthorizationDetailsProcessor implements AuthorizationDetails
         }
 
         // Convert exposed claims to a set of paths for easy comparison
-        Set<String> exposedClaimPaths = new HashSet<>();
-        for (Claim exposedClaim : exposedClaims) {
-            if (exposedClaim.getPath() != null && !exposedClaim.getPath().isEmpty()) {
-                exposedClaimPaths.add(exposedClaim.getPath().toString());
-            }
-        }
+        Set<String> exposedClaimPaths = exposedClaims.stream()
+                .filter(claim -> claim.getPath() != null && !claim.getPath().isEmpty())
+                .map(claim -> claim.getPath().toString())
+                .collect(Collectors.toSet());
 
         // Validate each requested claim against exposed metadata
         for (ClaimsDescription requestedClaim : claims) {
