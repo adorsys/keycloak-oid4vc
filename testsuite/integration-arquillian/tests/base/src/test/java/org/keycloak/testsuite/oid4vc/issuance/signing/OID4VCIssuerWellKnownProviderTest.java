@@ -43,6 +43,7 @@ import org.keycloak.crypto.SignatureVerifierContext;
 import org.keycloak.jose.jws.JWSHeader;
 import org.keycloak.jose.jws.JWSInput;
 import org.keycloak.models.RealmModel;
+import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.oid4vci.CredentialScopeModel;
 import org.keycloak.models.oid4vci.Oid4vcProtocolMapperModel;
 import org.keycloak.models.ProtocolMapperModel;
@@ -94,6 +95,8 @@ import static org.keycloak.constants.Oid4VciConstants.SIGNED_METADATA_JWT_TYPE;
 import static org.keycloak.jose.jwe.JWEConstants.A256GCM;
 import static org.keycloak.jose.jwe.JWEConstants.RSA_OAEP;
 import static org.keycloak.jose.jwe.JWEConstants.RSA_OAEP_256;
+import static org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerWellKnownProvider.ATTR_ENCRYPTION_REQUIRED;
+import org.keycloak.constants.Oid4VciConstants;
 
 
 public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest {
@@ -102,8 +105,11 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
     public void configureTestRealm(RealmRepresentation testRealm) {
         Map<String, String> attributes = Optional.ofNullable(testRealm.getAttributes()).orElseGet(HashMap::new);
         attributes.put("credential_response_encryption.encryption_required", "true");
-        attributes.put("batch_credential_issuance.batch_size", "10");
         attributes.put(OID4VCIssuerWellKnownProvider.ATTR_ENCRYPTION_REQUIRED, "true");
+        attributes.put(Oid4VciConstants.BATCH_CREDENTIAL_ISSUANCE_BATCH_SIZE, "10");
+        attributes.put("signed_metadata", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJmb28iOiJiYXIifQ.XYZ123abc");
+        attributes.put(ATTR_ENCRYPTION_REQUIRED, "true");
+
         testRealm.setAttributes(attributes);
 
         if (testRealm.getComponents() == null) {
@@ -388,36 +394,37 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
     }
 
 
-//    @Test
-//    public void testCredentialIssuerMetadataFields() {
-//        KeycloakTestingClient testingClient = this.testingClient;
-//
-//        testingClient
-//                .server(TEST_REALM_NAME)
-//                .run(session -> {
-//                    CredentialIssuer issuer = getCredentialIssuer(session);
-//
-//                    CredentialResponseEncryptionMetadata encryption = issuer.getCredentialResponseEncryption();
-//                    Assert.assertNotNull(encryption);
-//
-//                    Assert.assertTrue(encryption.getAlgValuesSupported().contains(RSA_OAEP));
-//                    Assert.assertTrue("Supported encryption methods should include A256GCM", encryption.getEncValuesSupported().contains(A256GCM));
-//                    Assert.assertTrue(encryption.getEncryptionRequired());
-//                    Assert.assertEquals(Integer.valueOf(10), issuer.getBatchCredentialIssuance().getBatchSize());
-//
-//                });
-//    }
-//
-//    private static CredentialIssuer getCredentialIssuer(KeycloakSession session) throws JWSInputException, IOException {
-//        RealmModel realm = session.getContext().getRealm();
-//
-//        realm.setAttribute(OID4VCIssuerWellKnownProvider.ATTR_ENCRYPTION_REQUIRED, "true");
-//        realm.setAttribute("batch_credential_issuance.batch_size", "10");
-//        realm.setAttribute(OID4VCIssuerWellKnownProvider.SIGNED_METADATA_ENABLED_ATTR, "false"); // Disable signed metadata for this test
-//
-//        OID4VCIssuerWellKnownProvider provider = new OID4VCIssuerWellKnownProvider(session);
-//        return provider.getConfig();
-//    }
+    @Test
+    public void testCredentialIssuerMetadataFields() {
+        KeycloakTestingClient testingClient = this.testingClient;
+
+        testingClient
+                .server(TEST_REALM_NAME)
+                .run(session -> {
+                    CredentialIssuer issuer = getCredentialIssuer(session);
+
+                    CredentialResponseEncryptionMetadata encryption = issuer.getCredentialResponseEncryption();
+                    assertNotNull(encryption);
+
+                    assertTrue(encryption.getAlgValuesSupported().contains(RSA_OAEP));
+                    assertTrue("Supported encryption methods should include A256GCM", encryption.getEncValuesSupported().contains(A256GCM));
+                    assertTrue(encryption.getEncryptionRequired());
+                    assertEquals(Integer.valueOf(10), issuer.getBatchCredentialIssuance().getBatchSize());
+                    assertEquals("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJmb28iOiJiYXIifQ.XYZ123abc",
+                            issuer.getSignedMetadata());
+                });
+    }
+
+    private static CredentialIssuer getCredentialIssuer(KeycloakSession session) {
+        RealmModel realm = session.getContext().getRealm();
+
+        realm.setAttribute(ATTR_ENCRYPTION_REQUIRED, "true");
+        realm.setAttribute(Oid4VciConstants.BATCH_CREDENTIAL_ISSUANCE_BATCH_SIZE, "10");
+        realm.setAttribute("signed_metadata", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJmb28iOiJiYXIifQ.XYZ123abc");
+
+        OID4VCIssuerWellKnownProvider provider = new OID4VCIssuerWellKnownProvider(session);
+        return (CredentialIssuer) provider.getConfig();
+    }
 
     @Test
     public void testIssuerMetadataIncludesEncryptionSupport() throws IOException {
@@ -633,6 +640,57 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
                     assertEquals("The test-credential should be offered in the jwt-vc format.", Format.JWT_VC, credentialIssuer.getCredentialsSupported().get("test-credential").getFormat());
                     assertNotNull("The test-credential can optionally provide a claims claim.", credentialIssuer.getCredentialsSupported().get("test-credential").getClaims());
                 }));
+    }
+
+    @Test
+    public void testBatchCredentialIssuanceValidation() {
+        KeycloakTestingClient testingClient = this.testingClient;
+
+        // Valid batch size (2 or greater) should be accepted
+        testBatchSizeValidation(testingClient, "5", true, 5);
+
+        // Invalid batch size (less than 2) should be rejected
+        testBatchSizeValidation(testingClient, "1", false, null);
+
+        // Edge case - batch size exactly 2 should be accepted
+        testBatchSizeValidation(testingClient, "2", true, 2);
+
+        // Zero batch size should be rejected
+        testBatchSizeValidation(testingClient, "0", false, null);
+
+        // Negative batch size should be rejected
+        testBatchSizeValidation(testingClient, "-1", false, null);
+
+        // Large valid batch size should be accepted
+        testBatchSizeValidation(testingClient, "1000", true, 1000);
+
+        // Non-numeric value should be rejected (parsing exception)
+        testBatchSizeValidation(testingClient, "invalid", false, null);
+    }
+
+    private void testBatchSizeValidation(KeycloakTestingClient testingClient, String batchSize, boolean shouldBePresent, Integer expectedValue) {
+        testingClient
+                .server(TEST_REALM_NAME)
+                .run(session -> {
+                    // Create a new isolated realm for testing
+                    RealmModel testRealm = session.realms().createRealm("test-batch-validation-" + batchSize);
+
+                    try {
+                        testRealm.setAttribute(Oid4VciConstants.BATCH_CREDENTIAL_ISSUANCE_BATCH_SIZE, batchSize);
+
+                        CredentialIssuer.BatchCredentialIssuance result = OID4VCIssuerWellKnownProvider.getBatchCredentialIssuance(testRealm);
+
+                        if (shouldBePresent) {
+                            assertNotNull("batch_credential_issuance should be present for batch size " + batchSize, result);
+                            assertEquals("batch_credential_issuance should have correct batch size for " + batchSize,
+                                    expectedValue, result.getBatchSize());
+                        } else {
+                            assertNull("batch_credential_issuance should be null for invalid batch size " + batchSize, result);
+                        }
+                    } finally {
+                        session.realms().removeRealm(testRealm.getId());
+                    }
+                });
     }
 
     public static void extendConfigureTestRealm(RealmRepresentation testRealm, ClientRepresentation clientRepresentation) {

@@ -31,6 +31,8 @@ public final class Oid4VciConstants {
 
     public static final String SIGNED_METADATA_JWT_TYPE = "openidvci-issuer-metadata+jwt";
 
+    public static final String BATCH_CREDENTIAL_ISSUANCE_BATCH_SIZE = "batch_credential_issuance.batch_size";
+
     private Oid4VciConstants() {
     }
 }
