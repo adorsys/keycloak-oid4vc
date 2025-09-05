@@ -302,7 +302,7 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
         s = IOUtils.toString(credentialOfferResponse.getEntity().getContent(), StandardCharsets.UTF_8);
         CredentialsOffer credentialsOffer = JsonSerialization.readValue(s, CredentialsOffer.class);
 
-        // 3. Get the issuer metadata
+        // 3. Get the issuer metadata using the realm-scoped endpoint for tests
         HttpGet getIssuerMetadata = new HttpGet(credentialsOffer.getCredentialIssuer() + "/.well-known/openid-credential-issuer");
         CloseableHttpResponse issuerMetadataResponse = httpClient.execute(getIssuerMetadata);
         assertEquals(HttpStatus.SC_OK, issuerMetadataResponse.getStatusLine().getStatusCode());
