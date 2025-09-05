@@ -40,7 +40,6 @@ import org.keycloak.jose.jwe.JWEException;
 import org.keycloak.jose.jwk.JWK;
 import org.keycloak.jose.jwk.JWKParser;
 import org.keycloak.models.RealmModel;
-import org.keycloak.models.utils.KeycloakModelUtils;
 import org.keycloak.models.oid4vci.CredentialScopeModel;
 import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerEndpoint;
 import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerWellKnownProvider;
@@ -715,7 +714,7 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
         s = IOUtils.toString(credentialOfferResponse.getEntity().getContent(), StandardCharsets.UTF_8);
         CredentialsOffer credentialsOffer = JsonSerialization.readValue(s, CredentialsOffer.class);
 
-        // 3. Get the issuer metadata
+        // 3. Get the issuer metadata using the realm-scoped endpoint for tests
         HttpGet getIssuerMetadata = new HttpGet(credentialsOffer.getCredentialIssuer() + "/.well-known/openid-credential-issuer");
         CloseableHttpResponse issuerMetadataResponse = httpClient.execute(getIssuerMetadata);
         assertEquals(HttpStatus.SC_OK, issuerMetadataResponse.getStatusLine().getStatusCode());

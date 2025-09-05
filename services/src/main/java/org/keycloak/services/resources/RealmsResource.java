@@ -16,7 +16,9 @@
  */
 package org.keycloak.services.resources;
 
+import jakarta.ws.rs.core.UriBuilderException;
 import org.jboss.logging.Logger;
+import org.keycloak.constants.Oid4VciConstants;
 import org.keycloak.http.HttpRequest;
 import org.keycloak.OAuthErrorException;
 import org.keycloak.authorization.AuthorizationProvider;
@@ -56,6 +58,8 @@ import jakarta.ws.rs.core.UriInfo;
 import jakarta.ws.rs.ext.Provider;
 
 import java.net.URI;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.Comparator;
 
 /**
@@ -69,6 +73,9 @@ public class RealmsResource {
 
     @Context
     protected KeycloakSession session;
+
+    // Tracks which deprecated realm-scoped well-known endpoints were already logged to avoid noisy logs
+    private static final Set<String> DEPRECATED_WELL_KNOWN_LOG_KEYS = ConcurrentHashMap.newKeySet();
 
     public static UriBuilder realmBaseUrl(UriInfo uriInfo) {
         UriBuilder baseUriBuilder = uriInfo.getBaseUriBuilder();
@@ -236,22 +243,88 @@ public class RealmsResource {
         resolveRealmAndUpdateSession(session, name);
         checkSsl(session, session.getContext().getRealm());
 
-        WellKnownProviderFactory wellKnownProviderFactoryFound = session.getKeycloakSessionFactory().getProviderFactoriesStream(WellKnownProvider.class)
-                .map(providerFactory -> (WellKnownProviderFactory) providerFactory)
-                .filter(wellKnownProviderFactory -> alias.equals(wellKnownProviderFactory.getAlias()))
-                .sorted(Comparator.comparingInt(WellKnownProviderFactory::getPriority))
-                .findFirst().orElseThrow(NotFoundException::new);
+        WellKnownProviderFactory wellKnownProviderFactoryFound =
+                session.getKeycloakSessionFactory()
+                        .getProviderFactoriesStream(WellKnownProvider.class)
+                        .map(providerFactory -> (WellKnownProviderFactory) providerFactory)
+                        .filter(factory -> alias.equals(factory.getAlias()))
+                        .sorted(Comparator.comparingInt(WellKnownProviderFactory::getPriority))
+                        .findFirst()
+                        .orElseThrow(NotFoundException::new);
 
-        logger.tracef("Use provider with ID '%s' for well-known alias '%s'", wellKnownProviderFactoryFound.getId(), alias);
+        logger.tracef(
+                "Use provider with ID '%s' for well-known alias '%s'",
+                wellKnownProviderFactoryFound.getId(),
+                alias
+        );
 
-        WellKnownProvider wellKnown = session.getProvider(WellKnownProvider.class, wellKnownProviderFactoryFound.getId());
+        WellKnownProvider wellKnown =
+                session.getProvider(WellKnownProvider.class, wellKnownProviderFactoryFound.getId());
 
-        if (wellKnown != null) {
-            ResponseBuilder responseBuilder = Response.ok(wellKnown.getConfig()).cacheControl(CacheControlUtil.noCache());
-            return Cors.builder().allowAllOrigins().auth().add(responseBuilder);
+        if (wellKnown == null) {
+            throw new NotFoundException();
         }
 
-        throw new NotFoundException();
+        ResponseBuilder responseBuilder =
+                Response.ok(wellKnown.getConfig())
+                        .cacheControl(CacheControlUtil.noCache());
+
+        // Add deprecation headers ONLY for old realm-scoped OID4VCI metadata endpoint:
+        // old: /realms/{realm}/.well-known/{alias}
+        // new: /.well-known/{alias}/realms/{realm}
+        try {
+            boolean isOldRealmScopedWellKnown = isOldRealmScopedWellKnown(session, alias);
+
+            if (isOldRealmScopedWellKnown) {
+                UriBuilder base = session.getContext().getUri().getBaseUriBuilder();
+                // successor: /.well-known/{alias}/realms/{realm}
+                URI successor =
+                        ServerMetadataResource.wellKnownOAuthProviderUrl(base)
+                                .build(alias, name);
+
+                responseBuilder
+                        .header("Warning", "299 - \"Deprecated endpoint; use " + successor + "\"")
+                        .header("Deprecation", "true")
+                        .header("Link", "<" + successor + ">; rel=\"successor-version\"");
+
+                // Log deprecation once per realm+alias to server logs
+                String deprecationLogKey = alias + ":" + name;
+                if (DEPRECATED_WELL_KNOWN_LOG_KEYS.add(deprecationLogKey)) {
+                    logger.warnf(
+                            "Deprecated realm-scoped well-known endpoint accessed for alias '%s' "
+                                    + "in realm '%s'. Use %s instead.",
+                            alias,
+                            name,
+                            successor
+                    );
+                }
+            }
+        } catch (IllegalArgumentException | UriBuilderException e) {
+            // do not fail the request if deprecation header enrichment fails
+            logger.debugf(
+                    "Failed to enrich headers for deprecation warning: %s",
+                    e.getMessage()
+            );
+        }
+
+        return Cors.builder()
+                .allowAllOrigins()
+                .auth()
+                .add(responseBuilder);
+    }
+
+    private static boolean isOldRealmScopedWellKnown(KeycloakSession session, String alias) {
+        String requestPath = session.getContext().getUri().getRequestUri().getPath();
+        boolean isOldRealmScopedWellKnown = false;
+
+        if (requestPath != null
+                && Oid4VciConstants.WELL_KNOWN_OPENID_CREDENTIAL_ISSUER.equals(alias)) {
+
+            int idxRealms = requestPath.indexOf("/realms/");
+            int idxWellKnown = requestPath.indexOf("/.well-known/");
+            isOldRealmScopedWellKnown = idxRealms >= 0 && idxWellKnown > idxRealms;
+        }
+        return isOldRealmScopedWellKnown;
     }
 
     @Path("{realm}/authz")

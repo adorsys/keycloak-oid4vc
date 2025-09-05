@@ -23,16 +23,19 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.Context;
+import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriBuilder;
 import jakarta.ws.rs.ext.Provider;
 import org.jboss.logging.Logger;
 import org.keycloak.models.KeycloakSession;
+import org.keycloak.models.RealmModel;
+import org.keycloak.services.managers.RealmManager;
 import org.keycloak.protocol.oauth2.OAuth2WellKnownProviderFactory;
+import org.keycloak.constants.Oid4VciConstants;
 import org.keycloak.services.cors.Cors;
-
-import java.util.List;
+import static org.keycloak.utils.MediaType.APPLICATION_JWT;
 
 @Provider
 @Path("/.well-known")
@@ -43,31 +46,53 @@ public class ServerMetadataResource {
     @Context
     protected KeycloakSession session;
 
+    public static UriBuilder wellKnownOAuthProviderUrl(UriBuilder builder) {
+        return builder.path(ServerMetadataResource.class).path("{provider}/realms/{realm}");
+    }
+
     @OPTIONS
     @Path("{provider}/realms/{realm}")
     @Produces(MediaType.APPLICATION_JSON)
-    public Response getOAuth2AuthorizationServerWellKnownVersionPreflight(final @PathParam("provider") String providerName,
-                                                                          final @PathParam("realm") String name) {
-        if (!isValidProvider(providerName)) throw new NotFoundException();
+    public Response getOAuth2AuthorizationServerWellKnownVersionPreflight(
+            final @PathParam("provider") String providerName,
+            final @PathParam("realm") String name) {
+
+        if (!isValidProvider(providerName)) {
+            throw new NotFoundException();
+        }
         return Cors.builder().allowedMethods("GET").preflight().auth().add(Response.ok());
     }
 
     @GET
     @Path("{provider}/realms/{realm}")
     @Produces(MediaType.APPLICATION_JSON)
-    public Response getOAuth2AuthorizationServerWellKnown(final @PathParam("provider") String providerName,
-                                                          final @PathParam("realm") String name) {
-        if (!isValidProvider(providerName)) throw new NotFoundException();
-        return RealmsResource.getWellKnownResponse(session, name, providerName, logger);
-    }
+    public Response getOAuth2AuthorizationServerWellKnown(
+            final @PathParam("provider") String providerName,
+            final @PathParam("realm") String name) {
 
-    public static UriBuilder wellKnownOAuthProviderUrl(UriBuilder builder) {
-        return builder.path(ServerMetadataResource.class).path("{provider}/realms/{realm}");
+        if (!isValidProvider(providerName)) {
+            throw new NotFoundException();
+        }
+
+        if (Oid4VciConstants.WELL_KNOWN_OPENID_CREDENTIAL_ISSUER.equals(providerName)) {
+            String accept = session.getContext().getRequestHeaders().getHeaderString(HttpHeaders.ACCEPT);
+            if (APPLICATION_JWT.equals(accept)) {
+                RealmModel realm = new RealmManager(session).getRealmByName(name);
+                if (realm != null) {
+                    String signed = realm.getAttribute("signed_metadata");
+                    if (signed != null && !signed.isEmpty()) {
+                        return Cors.builder().allowAllOrigins().auth()
+                                .add(Response.ok(signed).header(HttpHeaders.CONTENT_TYPE, APPLICATION_JWT));
+                    }
+                }
+            }
+        }
+        return RealmsResource.getWellKnownResponse(session, name, providerName, logger);
     }
 
     private boolean isValidProvider(String providerName) {
         // you can add codes here considering the current status of the implementation (preview, experimental).
-        if (OAuth2WellKnownProviderFactory.PROVIDER_ID.equals(providerName)) return true;
-        return false;
+        return OAuth2WellKnownProviderFactory.PROVIDER_ID.equals(providerName)
+                || Oid4VciConstants.WELL_KNOWN_OPENID_CREDENTIAL_ISSUER.equals(providerName);
     }
 }

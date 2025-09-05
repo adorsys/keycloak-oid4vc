@@ -76,18 +76,16 @@ function checkResponse<T>(response: T) {
 export async function getIssuer(context: KeycloakContext<BaseEnvironment>) {
   const response = await request(
     joinPath(
-      "/realms/",
+      "/.well-known/openid-credential-issuer/realms/",
       context.environment.realm,
-      "/.well-known/openid-credential-issuer",
     ),
     context,
     {},
     new URL(
       joinPath(
         context.environment.serverBaseUrl,
-        "/realms/",
+        "/.well-known/openid-credential-issuer/realms/",
         context.environment.realm,
-        "/.well-known/openid-credential-issuer",
       ),
     ),
   );
