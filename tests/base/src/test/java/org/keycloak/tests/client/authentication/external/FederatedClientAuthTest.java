@@ -30,7 +30,7 @@ import java.util.UUID;
 @KeycloakIntegrationTest(config = ClientAuthIdpServerConfig.class)
 public class FederatedClientAuthTest {
 
-    private static final String IDP_ALIAS = "myidp";
+    private static final String IDP_ALIAS = "external-idp";
 
     private static final String CLIENT_ID = "myclient";
 

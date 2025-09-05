@@ -64,8 +64,8 @@ public class CredentialIssuer {
     @JsonProperty("credential_response_encryption")
     private CredentialResponseEncryptionMetadata credentialResponseEncryption;
 
-    @JsonProperty("signed_metadata")
-    private String signedMetadata;
+    @JsonProperty("credential_request_encryption")
+    private CredentialRequestEncryptionMetadata credentialRequestEncryption;
 
     public String getCredentialIssuer() {
         return credentialIssuer;
@@ -160,12 +160,12 @@ public class CredentialIssuer {
         return this;
     }
 
-    public String getSignedMetadata() {
-        return signedMetadata;
+    public CredentialRequestEncryptionMetadata getCredentialRequestEncryption() {
+        return credentialRequestEncryption;
     }
 
-    public CredentialIssuer setSignedMetadata(String signedMetadata) {
-        this.signedMetadata = signedMetadata;
+    public CredentialIssuer setCredentialRequestEncryption(CredentialRequestEncryptionMetadata credentialRequestEncryption) {
+        this.credentialRequestEncryption = credentialRequestEncryption;
         return this;
     }
 

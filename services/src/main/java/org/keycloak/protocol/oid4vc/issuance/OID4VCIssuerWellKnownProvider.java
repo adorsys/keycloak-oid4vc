@@ -37,18 +37,23 @@ import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.CredentialBuilder
 import org.keycloak.protocol.oid4vc.model.CredentialIssuer;
 
 import org.keycloak.protocol.oid4vc.model.CredentialResponseEncryptionMetadata;
+import org.keycloak.protocol.oid4vc.model.CredentialRequestEncryptionMetadata;
 import org.keycloak.protocol.oid4vc.model.SupportedCredentialConfiguration;
 import org.keycloak.representations.JsonWebToken;
+import org.keycloak.protocol.oidc.utils.JWKSServerUtils;
 import org.keycloak.services.Urls;
 import org.keycloak.urls.UrlType;
 import org.keycloak.util.JsonSerialization;
 import org.keycloak.wellknown.WellKnownProvider;
 import org.jboss.logging.Logger;
+import org.keycloak.jose.jwk.JWK;
+import org.keycloak.jose.jwk.JSONWebKeySet;
 
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static org.keycloak.constants.Oid4VciConstants.SIGNED_METADATA_JWT_TYPE;
 import static org.keycloak.crypto.Algorithm.ES256;
@@ -112,13 +117,9 @@ public class OID4VCIssuerWellKnownProvider implements WellKnownProvider {
                 .setCredentialsSupported(getSupportedCredentials(keycloakSession))
                 .setAuthorizationServers(List.of(getIssuer(context)))
                 .setCredentialResponseEncryption(getCredentialResponseEncryption(keycloakSession))
-                .setBatchCredentialIssuance(getBatchCredentialIssuance(keycloakSession));
-        
-        // Set signed metadata if available
-        String signedMetadata = realm.getAttribute("signed_metadata");
-        if (signedMetadata != null) {
-            issuer.setSignedMetadata(signedMetadata);
-        }
+                .setBatchCredentialIssuance(getBatchCredentialIssuance(keycloakSession))
+                .setCredentialRequestEncryption(getCredentialRequestEncryption(keycloakSession))
+                ;
         
         return getMetadataResponse(issuer, keycloakSession);
     }
@@ -311,6 +312,27 @@ public class OID4VCIssuerWellKnownProvider implements WellKnownProvider {
         // Get supported algorithms from available encryption keys
         metadata.setAlgValuesSupported(getSupportedEncryptionAlgorithms(session));
         metadata.setEncValuesSupported(getSupportedEncryptionMethods());
+        metadata.setZipValuesSupported(getSupportedCompressionMethods());
+        metadata.setEncryptionRequired(isEncryptionRequired(realm));
+
+        return metadata;
+    }
+
+    /**
+     * Returns the credential request encryption metadata for the issuer.
+     * Determines supported algorithms from available realm keys.
+     *
+     * @param session The Keycloak session
+     * @return The credential request encryption metadata
+     */
+    public static CredentialRequestEncryptionMetadata getCredentialRequestEncryption(KeycloakSession session) {
+        RealmModel realm = session.getContext().getRealm();
+        CredentialRequestEncryptionMetadata metadata = new CredentialRequestEncryptionMetadata();
+
+        // Get supported algorithms from available encryption keys
+        metadata.setJwks(getEncryptionJwks(session));
+        metadata.setEncValuesSupported(getSupportedEncryptionMethods());
+        metadata.setZipValuesSupported(getSupportedCompressionMethods());
         metadata.setEncryptionRequired(isEncryptionRequired(realm));
 
         return metadata;
@@ -349,6 +371,37 @@ public class OID4VCIssuerWellKnownProvider implements WellKnownProvider {
      */
     private static List<String> getSupportedEncryptionMethods() {
         return List.of(JWEConstants.A256GCM);
+    }
+
+    /**
+     * Returns the supported compression methods from realm attributes.
+     *
+     * Note: Keycloak's JWE implementation currently only has placeholder support for compression
+     * in the JWEHeader class, but no actual compression/decompression logic is implemented.
+     * The compression algorithm field exists but is not processed during JWE encoding/decoding.
+     *
+     * TODO: Implement JWE compression support when Keycloak core adds compression functionality
+     */
+    private static List<String> getSupportedCompressionMethods() {
+        // Keycloak JWE implementation lacks compression support - only header placeholder exists
+        return List.of();
+    }
+
+    /**
+     * Returns the encryption JWKS from realm keys.
+     * Filters the realm JWKS to include only encryption keys.
+     */
+    private static List<JWK> getEncryptionJwks(KeycloakSession session) {
+        RealmModel realm = session.getContext().getRealm();
+        JSONWebKeySet realmJwks = JWKSServerUtils.getRealmJwks(session, realm);
+
+        if (realmJwks.getKeys() == null) {
+            return List.of();
+        }
+
+        return Stream.of(realmJwks.getKeys())
+                .filter(jwk -> KeyUse.ENC.getSpecName().equals(jwk.getPublicKeyUse()))
+                .toList();
     }
 
     /**

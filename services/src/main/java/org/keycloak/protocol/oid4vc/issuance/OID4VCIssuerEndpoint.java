@@ -35,8 +35,12 @@ import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.Response;
+import org.keycloak.OAuth2Constants;
 import org.jboss.logging.Logger;
 import org.keycloak.common.util.SecretGenerator;
+import org.keycloak.component.ComponentFactory;
+import org.keycloak.component.ComponentModel;
+import org.keycloak.constants.Oid4VciConstants;
 import org.keycloak.events.Errors;
 import org.keycloak.events.EventBuilder;
 import org.keycloak.jose.jwe.JWE;
@@ -68,6 +72,7 @@ import org.keycloak.protocol.oid4vc.model.CredentialResponse;
 import org.keycloak.protocol.oid4vc.model.CredentialResponseEncryption;
 import org.keycloak.protocol.oid4vc.model.CredentialResponseEncryptionMetadata;
 import org.keycloak.protocol.oid4vc.model.CredentialsOffer;
+import org.keycloak.services.ErrorResponseException;
 import org.keycloak.protocol.oid4vc.model.ErrorResponse;
 import org.keycloak.protocol.oid4vc.model.ErrorType;
 import org.keycloak.protocol.oid4vc.model.Format;
@@ -88,8 +93,11 @@ import org.keycloak.services.CorsErrorResponseException;
 import org.keycloak.services.cors.Cors;
 import org.keycloak.services.managers.AppAuthManager;
 import org.keycloak.services.managers.AuthenticationManager;
+import org.keycloak.services.util.DPoPUtil;
 import org.keycloak.util.JsonSerialization;
 import org.keycloak.utils.MediaType;
+import org.keycloak.representations.dpop.DPoP;
+import org.keycloak.common.VerificationException;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -125,8 +133,8 @@ public class OID4VCIssuerEndpoint {
     public static final String NONCE_PATH = "nonce";
     public static final String CREDENTIAL_PATH = "credential";
     public static final String CREDENTIAL_OFFER_PATH = "credential-offer/";
-    public static final String RESPONSE_TYPE_IMG_PNG = "image/png";
-    public static final String CREDENTIAL_OFFER_URI_CODE_SCOPE = "credential-offer";
+    public static final String RESPONSE_TYPE_IMG_PNG = Oid4VciConstants.RESPONSE_TYPE_IMG_PNG;
+    public static final String CREDENTIAL_OFFER_URI_CODE_SCOPE = Oid4VciConstants.CREDENTIAL_OFFER_URI_CODE_SCOPE;
     private final KeycloakSession session;
     private final AppAuthManager.BearerTokenAuthenticator bearerTokenAuthenticator;
     private final TimeProvider timeProvider;
@@ -224,12 +232,12 @@ public class OID4VCIssuerEndpoint {
     private String generateNotificationId() {
         return SecretGenerator.getInstance().randomString();
     }
-    
+
     /**
      * the OpenId4VCI nonce-endpoint
      *
      * @return a short-lived c_nonce value that must be presented in key-bound proofs at the credential endpoint.
-     * @see https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0-15.html#name-nonce-endpoint
+     * @see https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0-16.html#name-nonce-endpoint
      * @see https://datatracker.ietf.org/doc/html/draft-demarco-nonce-endpoint#name-nonce-response
      */
     @POST
@@ -240,9 +248,24 @@ public class OID4VCIssuerEndpoint {
         NonceResponse nonceResponse = new NonceResponse();
         String sourceEndpoint = OID4VCIssuerWellKnownProvider.getNonceEndpoint(session.getContext());
         String audience = OID4VCIssuerWellKnownProvider.getCredentialsEndpoint(session.getContext());
-        String nonce = cNonceHandler.buildCNonce(List.of(audience), Map.of(JwtCNonceHandler.SOURCE_ENDPOINT, sourceEndpoint));
-        nonceResponse.setNonce(nonce);
-        return Response.ok().header(HttpHeaders.CACHE_CONTROL, "no-store").entity(nonceResponse).build();
+
+        // Generate c_nonce for the response body
+        String bodyCNonce = cNonceHandler.buildCNonce(List.of(audience), Map.of(JwtCNonceHandler.SOURCE_ENDPOINT, sourceEndpoint));
+
+        // Generate separate DPoP nonce for the header
+        String headerDPoPNonce = cNonceHandler.buildCNonce(List.of(audience), Map.of(JwtCNonceHandler.SOURCE_ENDPOINT, sourceEndpoint));
+
+        nonceResponse.setNonce(bodyCNonce);
+
+        Response.ResponseBuilder responseBuilder = Response.ok()
+                .header(HttpHeaders.CACHE_CONTROL, "no-store")
+                .entity(nonceResponse);
+
+        if (headerDPoPNonce != null) {
+            responseBuilder.header(OAuth2Constants.DPOP_NONCE_HEADER, headerDPoPNonce);
+        }
+
+        return responseBuilder.build();
     }
 
     /**
@@ -615,7 +638,35 @@ public class OID4VCIssuerEndpoint {
     }
 
     private AuthenticationManager.AuthResult getAuthResult() {
-        return getAuthResult(new BadRequestException(getErrorResponse(ErrorType.INVALID_TOKEN)));
+        AuthenticationManager.AuthResult authResult = bearerTokenAuthenticator.authenticate();
+        if (authResult == null) {
+            throw new BadRequestException(getErrorResponse(ErrorType.INVALID_TOKEN));
+        }
+
+        // Validate DPoP nonce if present in the DPoP proof
+        DPoP dPoP = session.getAttribute(DPoPUtil.DPOP_SESSION_ATTRIBUTE, DPoP.class);
+        if (dPoP != null) {
+            Object nonceClaim = Optional.ofNullable(dPoP.getOtherClaims())
+                    .map(m -> m.get("nonce"))
+                    .orElse(null);
+            if (nonceClaim instanceof String nonceJwt && !nonceJwt.isEmpty()) {
+                try {
+                    CNonceHandler cNonceHandler = session.getProvider(CNonceHandler.class);
+                    String expectedAudience = OID4VCIssuerWellKnownProvider.getCredentialsEndpoint(session.getContext());
+                    String expectedSource = OID4VCIssuerWellKnownProvider.getNonceEndpoint(session.getContext());
+                    cNonceHandler.verifyCNonce(
+                            nonceJwt,
+                            List.of(expectedAudience),
+                            Map.of(JwtCNonceHandler.SOURCE_ENDPOINT, expectedSource)
+                    );
+                } catch (VerificationException e) {
+                    LOGGER.debugf("DPoP nonce validation failed: %s", e.getMessage());
+                    throw new BadRequestException(getErrorResponse(ErrorType.INVALID_TOKEN));
+                }
+            }
+        }
+
+        return authResult;
     }
 
     // get the auth result from the authentication manager
@@ -803,7 +854,14 @@ public class OID4VCIssuerEndpoint {
                 vcIssuanceContext.getCredentialBody().addKeyBinding(jwks.get(0));
             }
         } catch (VCIssuerException e) {
-            throw new BadRequestException(String.format("Could not validate provided %s proof", proofType), e);
+            if (e.getErrorType() == ErrorType.INVALID_NONCE) {
+                throw new ErrorResponseException(
+                        ErrorType.INVALID_NONCE.getValue(),
+                        "The proofs parameter in the Credential Request uses an invalid nonce",
+                        Response.Status.BAD_REQUEST
+                );
+            }
+            throw new BadRequestException("Could not validate provided proof", e);
         }
     }
 
