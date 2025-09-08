@@ -682,10 +682,12 @@ public class OID4VCIssuerEndpoint {
     }
 
     private boolean looksLikeCompactJwe(String payload) {
-        if (payload == null) return false;
-        // Compact JWE serialization consists of 5 dot-separated base64url parts
-        int parts = payload.split("\\.").length;
-        return parts == 5;
+        try {
+            new JWE(payload);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     private String selectKeyManagementAlg(CredentialResponseEncryptionMetadata metadata, JWK jwk) {
