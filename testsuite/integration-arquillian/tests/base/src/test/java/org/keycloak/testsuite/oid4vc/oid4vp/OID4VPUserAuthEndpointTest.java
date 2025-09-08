@@ -37,6 +37,7 @@ import org.keycloak.jose.jwk.JWK;
 import org.keycloak.jose.jws.JWSInput;
 import org.keycloak.jose.jws.JWSInputException;
 import org.keycloak.keys.Attributes;
+import org.keycloak.models.UserModel;
 import org.keycloak.protocol.oid4vc.oid4vp.OID4VPUserAuthEndpointFactory;
 import org.keycloak.protocol.oid4vc.oid4vp.authenticator.SdJwtAuthenticatorFactory;
 import org.keycloak.protocol.oid4vc.oid4vp.model.RequestObject;
@@ -211,6 +212,27 @@ public class OID4VPUserAuthEndpointTest extends OID4VCIssuerEndpointTest {
         testSuccessfulAuthentication(sdJwt, opts);
     }
 
+
+    @Test
+    public void shouldAuthenticateSuccessfully_UnknownUser() throws Exception {
+        // Request a SD-JWT credential from Keycloak to use for authentication
+        String testUser = "unknown-user";
+        String sdJwt = sdJwtVPTestUtils.requestSdJwtCredential(VCT_CONFIG_DEFAULT, testUser);
+
+        // Proceed to authentication
+        testSuccessfulAuthentication(sdJwt, TestOpts.getDefault().setTestUser(testUser));
+
+        // Assert that "unknown-user" was imported
+        testingClient.server(TEST_REALM_NAME).run(session -> {
+            UserModel user = session.users().getUserByUsername(
+                    session.getContext().getRealm(),
+                    testUser
+            );
+
+            assertNotNull("User 'unknown-user' should have been imported", user);
+        });
+    }
+
     @Test
     public void shouldFailAuthentication_IfRepeatedAfterSuccess() throws Exception {
         // Request a valid SD-JWT credential from Keycloak to use for authentication
@@ -340,20 +362,6 @@ public class OID4VPUserAuthEndpointTest extends OID4VCIssuerEndpointTest {
     }
 
     @Test
-    public void shouldFailAuthentication_UnknownUser() throws Exception {
-        // Request a SD-JWT credential from Keycloak to use for authentication
-        String sdJwt = sdJwtVPTestUtils.requestSdJwtCredential(VCT_CONFIG_DEFAULT, "unknown-user");
-
-        // Proceed to authentication
-        testFailingAuthentication(
-                sdJwt, TestOpts.getDefault(),
-                HttpStatus.SC_UNAUTHORIZED,
-                ProcessingError.VP_TOKEN_AUTH_ERROR.getErrorString(),
-                "USER_NOT_FOUND: User with presented SD-JWT unknown"
-        );
-    }
-
-    @Test
     public void shouldFailAuthentication_SdJwtWithUnexpectedVct() throws Exception {
         // Request SD-JWT credentials from Keycloak to use for authentication
         String sdJwt = sdJwtVPTestUtils.requestSdJwtCredential("https://this-vct-is-not-expected.com", TEST_USER);
@@ -445,7 +453,7 @@ public class OID4VPUserAuthEndpointTest extends OID4VCIssuerEndpointTest {
                 .getToken();
 
         // Assert authenticating user
-        assertEquals(TEST_USER, accessToken.getPreferredUsername());
+        assertEquals(opts.getTestUser(), accessToken.getPreferredUsername());
     }
 
     /**
@@ -734,6 +742,7 @@ public class OID4VPUserAuthEndpointTest extends OID4VCIssuerEndpointTest {
     static class TestOpts {
 
         boolean shouldBase64EncodeVpToken;
+        String testUser = TEST_USER;
         String overridePresentationDefinitionId;
         Descriptor.Format overrideDescriptorFormat;
         String overrideDescriptorPath;
@@ -748,6 +757,15 @@ public class OID4VPUserAuthEndpointTest extends OID4VCIssuerEndpointTest {
 
         public TestOpts setShouldBase64EncodeVpToken(boolean shouldBase64EncodeVpToken) {
             this.shouldBase64EncodeVpToken = shouldBase64EncodeVpToken;
+            return this;
+        }
+
+        public String getTestUser() {
+            return testUser;
+        }
+
+        public TestOpts setTestUser(String testUser) {
+            this.testUser = testUser;
             return this;
         }
 
