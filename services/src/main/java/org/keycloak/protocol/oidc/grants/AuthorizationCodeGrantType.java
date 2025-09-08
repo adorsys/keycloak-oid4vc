@@ -228,7 +228,7 @@ public class AuthorizationCodeGrantType extends OAuth2GrantTypeBase {
     @Override
     protected void addCustomTokenResponseClaims(AccessTokenResponse res, ClientSessionContext clientSessionCtx) {
         List<AuthorizationDetailResponse> authDetailsResponse = clientSessionCtx.getAttribute(AUTHORIZATION_DETAILS_RESPONSE_KEY, List.class);
-        if (authDetailsResponse != null) {
+        if (authDetailsResponse != null && !authDetailsResponse.isEmpty()) {
             res.setOtherClaims(AUTHORIZATION_DETAILS_PARAM, authDetailsResponse);
         }
     }
