@@ -66,6 +66,7 @@ import org.keycloak.sdjwt.vp.SdJwtVP;
 import org.keycloak.services.managers.AppAuthManager;
 import org.keycloak.testsuite.util.oauth.AccessTokenResponse;
 import org.keycloak.util.JsonSerialization;
+import org.testcontainers.shaded.org.apache.commons.lang3.exception.ExceptionUtils;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -173,6 +174,11 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
                     })));
             Assert.fail("Should have thrown an exception");
         } catch (BadRequestException ex) {
+            Assert.assertEquals("""
+                                        c_nonce: expected 'aud' to be equal to \
+                                        '[https://localhost:8543/auth/realms/test/protocol/oid4vc/credential]' but \
+                                        actual value was '[]'""",
+                    ExceptionUtils.getRootCause(ex).getMessage());
             Assert.assertEquals("Could not validate provided proof", ex.getMessage());
         }
     }
@@ -199,6 +205,11 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
                     })));
             Assert.fail("Should have thrown an exception");
         } catch (BadRequestException ex) {
+            Assert.assertEquals("""
+                                        c_nonce: expected 'source_endpoint' to be equal to \
+                                        'https://localhost:8543/auth/realms/test/protocol/oid4vc/nonce' but \
+                                        actual value was 'null'""",
+                    ExceptionUtils.getRootCause(ex).getMessage());
             Assert.assertEquals("Could not validate provided proof", ex.getMessage());
         }
     }
@@ -233,6 +244,9 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
                     })));
             Assert.fail("Should have thrown an exception");
         } catch (BadRequestException ex) {
+            String message = ExceptionUtils.getRootCause(ex).getMessage();
+            Assert.assertTrue(String.format("Message '%s' should match regular expression", message),
+                    message.matches("c_nonce not valid: \\d+\\(exp\\) < \\d+\\(now\\)"));
             Assert.assertEquals("Could not validate provided proof", ex.getMessage());
         }
     }
