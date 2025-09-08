@@ -1159,11 +1159,13 @@ public class OID4VCIssuerEndpoint {
             String errorMessage = e.getMessage();
             if (errorMessage.contains("Mandatory claim not found:")) {
                 LOGGER.errorf("Mandatory claim missing during claims filtering for scope %s: %s", scope, errorMessage);
-                throw new BadRequestException("Credential issuance failed: " + errorMessage +
-                        ". The requested mandatory claim is not available in the user profile.");
+                throw new BadRequestException(getErrorResponse(ErrorType.INVALID_CREDENTIAL_REQUEST,
+                        "Credential issuance failed: " + errorMessage +
+                                ". The requested mandatory claim is not available in the user profile."));
             } else {
                 LOGGER.errorf("Claims filtering error for scope %s: %s", scope, errorMessage);
-                throw new BadRequestException("Credential issuance failed: " + errorMessage);
+                throw new BadRequestException(getErrorResponse(ErrorType.INVALID_CREDENTIAL_REQUEST,
+                        "Credential issuance failed: " + errorMessage));
             }
         } catch (BadRequestException e) {
             // Re-throw BadRequestException to ensure client receives proper error response
