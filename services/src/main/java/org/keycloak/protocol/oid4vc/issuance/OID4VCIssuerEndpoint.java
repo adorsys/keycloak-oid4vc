@@ -237,7 +237,7 @@ public class OID4VCIssuerEndpoint {
     private String generateNotificationId() {
         return SecretGenerator.getInstance().randomString();
     }
-    
+
     /**
      * the OpenId4VCI nonce-endpoint
      *
@@ -573,15 +573,29 @@ public class OID4VCIssuerEndpoint {
         SupportedCredentialConfiguration supportedCredential =
                 OID4VCIssuerWellKnownProvider.toSupportedCredentialConfiguration(session, requestedCredential);
 
-        Object theCredential = getCredential(authResult, supportedCredential, credentialRequestVO);
+        // Get the list of all proofs (handles single proof, multiple proofs, or none)
+        List<String> allProofs = getAllProofs(credentialRequestVO);
 
-        // Generate credential response
-        CredentialResponse responseVO = new CredentialResponse()
-                .addCredential(theCredential)
-                .setNotificationId(generateNotificationId());
+        CredentialResponse responseVO = new CredentialResponse();
+        responseVO.setNotificationId(generateNotificationId());
+
+        if (allProofs.isEmpty()) {
+            // Single issuance without proof
+            Object theCredential = getCredential(authResult, supportedCredential, credentialRequestVO);
+            responseVO.addCredential(theCredential);
+        } else {
+            // Issue credentials for each proof (or one if no proofs)
+            Proofs originalProofs = credentialRequestVO.getProofs();
+            for (String currentProof : allProofs) {
+                credentialRequestVO.setProofs(new Proofs().setJwt(List.of(currentProof)));
+                Object theCredential = getCredential(authResult, supportedCredential, credentialRequestVO);
+                responseVO.addCredential(theCredential);
+            }
+            credentialRequestVO.setProofs(originalProofs);
+        }
 
         // Encrypt all responses if encryption parameters are provided, except for error credential responses
-        if (encryptionParams != null && !(theCredential instanceof ErrorResponse)) {
+        if (encryptionParams != null) {
             String jwe = encryptCredentialResponse(responseVO, encryptionParams);
             return Response.ok()
                     .type(MediaType.APPLICATION_JWT)
@@ -590,6 +604,23 @@ public class OID4VCIssuerEndpoint {
         }
 
         return Response.ok().entity(responseVO).build();
+    }
+
+    private List<String> getAllProofs(CredentialRequest credentialRequestVO) {
+        List<String> allProofs = new ArrayList<>();
+
+        Proofs proofs = credentialRequestVO.getProofs();
+        if (proofs == null) {
+            return allProofs; // No proofs provided
+        }
+
+        if (proofs.getJwt() == null || proofs.getJwt().isEmpty()) {
+            throw new BadRequestException(getErrorResponse(ErrorType.INVALID_PROOF,
+                    "The 'proofs' object must contain exactly one proof type with non-empty array."));
+        }
+
+        allProofs.addAll(proofs.getJwt());
+        return allProofs;
     }
 
     /**
@@ -698,10 +729,12 @@ public class OID4VCIssuerEndpoint {
     }
 
     private boolean looksLikeCompactJwe(String payload) {
-        if (payload == null) return false;
-        // Compact JWE serialization consists of 5 dot-separated base64url parts
-        int parts = payload.split("\\.").length;
-        return parts == 5;
+        try {
+            new JWE(payload);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     private String selectKeyManagementAlg(CredentialResponseEncryptionMetadata metadata, JWK jwk) {
@@ -912,7 +945,8 @@ public class OID4VCIssuerEndpoint {
      */
     private Object getCredential(AuthenticationManager.AuthResult authResult,
                                  SupportedCredentialConfiguration credentialConfig,
-                                 CredentialRequest credentialRequestVO) {
+                                 CredentialRequest credentialRequestVO
+    ) {
 
         // Get the client scope model from the credential configuration
         CredentialScopeModel credentialScopeModel = getClientScopeModel(credentialConfig);
