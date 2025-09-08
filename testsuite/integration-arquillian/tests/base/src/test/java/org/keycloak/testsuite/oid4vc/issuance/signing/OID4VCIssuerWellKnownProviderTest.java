@@ -23,15 +23,28 @@ import jakarta.ws.rs.client.Client;
 import jakarta.ws.rs.client.WebTarget;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriBuilder;
+import org.apache.http.HttpHeaders;
+import org.apache.http.HttpStatus;
+import org.apache.http.client.methods.CloseableHttpResponse;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClientBuilder;
+import org.apache.http.util.EntityUtils;
 import org.hamcrest.MatcherAssert;
 import org.hamcrest.Matchers;
-import org.junit.Assert;
 import org.junit.Test;
 import org.keycloak.common.util.MultivaluedHashMap;
+import org.keycloak.common.util.Time;
 import org.keycloak.crypto.Algorithm;
 import org.keycloak.jose.jwe.JWEConstants;
 import org.keycloak.jose.jwk.JWK;
 import org.keycloak.models.KeycloakSession;
+import org.keycloak.crypto.KeyUse;
+import org.keycloak.crypto.KeyWrapper;
+import org.keycloak.crypto.SignatureProvider;
+import org.keycloak.crypto.SignatureVerifierContext;
+import org.keycloak.jose.jws.JWSHeader;
+import org.keycloak.jose.jws.JWSInput;
 import org.keycloak.models.RealmModel;
 import org.keycloak.models.oid4vci.CredentialScopeModel;
 import org.keycloak.models.oid4vci.Oid4vcProtocolMapperModel;
@@ -62,11 +75,13 @@ import org.keycloak.testsuite.client.KeycloakTestingClient;
 import org.keycloak.testsuite.util.AdminClientUtil;
 import org.keycloak.testsuite.util.oauth.OAuthClient;
 import org.keycloak.util.JsonSerialization;
+import org.keycloak.utils.MediaType;
 import org.keycloak.utils.StringUtil;
 
 import java.io.IOException;
 import java.io.Serializable;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -76,8 +91,11 @@ import java.util.Optional;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.assertNull;
+import static org.keycloak.constants.Oid4VciConstants.SIGNED_METADATA_JWT_TYPE;
 import static org.keycloak.jose.jwe.JWEConstants.A256GCM;
 import static org.keycloak.jose.jwe.JWEConstants.RSA_OAEP;
 import static org.keycloak.jose.jwe.JWEConstants.RSA_OAEP_256;
@@ -93,16 +111,18 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
     public void configureTestRealm(RealmRepresentation testRealm) {
         Map<String, String> attributes = Optional.ofNullable(testRealm.getAttributes()).orElseGet(HashMap::new);
         attributes.put("credential_response_encryption.encryption_required", "true");
-        attributes.put(Oid4VciConstants.BATCH_CREDENTIAL_ISSUANCE_BATCH_SIZE, "10");
-        attributes.put("signed_metadata", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJmb28iOiJiYXIifQ.XYZ123abc");
-        attributes.put(ATTR_ENCRYPTION_REQUIRED, "true");
         attributes.put(ATTR_REQUEST_ZIP_ALGS, "DEF");
+        attributes.put(OID4VCIssuerWellKnownProvider.ATTR_ENCRYPTION_REQUIRED, "true");
+        attributes.put(Oid4VciConstants.BATCH_CREDENTIAL_ISSUANCE_BATCH_SIZE, "10");
+        attributes.put(ATTR_ENCRYPTION_REQUIRED, "true");
+
         testRealm.setAttributes(attributes);
 
         if (testRealm.getComponents() == null) {
             testRealm.setComponents(new MultivaluedHashMap<>());
         }
 
+        // Add encryption keys
         testRealm.getComponents().add("org.keycloak.keys.KeyProvider",
                 getRsaEncKeyProvider(RSA_OAEP_256, "enc-key-oaep256", 100));
         testRealm.getComponents().add("org.keycloak.keys.KeyProvider",
@@ -139,6 +159,214 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
                 });
     }
 
+    @Test
+    public void testUnsignedMetadata() {
+        try (CloseableHttpClient httpClient = HttpClientBuilder.create().build()) {
+            String wellKnownUri = OAuthClient.AUTH_SERVER_ROOT + "/realms/" + TEST_REALM_NAME + "/.well-known/openid-credential-issuer";
+            String expectedIssuer = getRealmPath(TEST_REALM_NAME);
+
+            // Configure realm for unsigned metadata
+            testingClient.server(TEST_REALM_NAME).run(session -> {
+                RealmModel realm = session.getContext().getRealm();
+                realm.setAttribute(OID4VCIssuerWellKnownProvider.SIGNED_METADATA_ENABLED_ATTR, "true");
+                realm.setAttribute(OID4VCIssuerWellKnownProvider.SIGNED_METADATA_ALG_ATTR, "RS256");
+                realm.setAttribute(OID4VCIssuerWellKnownProvider.SIGNED_METADATA_LIFESPAN_ATTR, "3600");
+            });
+
+            HttpGet getJsonMetadata = new HttpGet(wellKnownUri);
+            getJsonMetadata.addHeader(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON);
+            try (CloseableHttpResponse response = httpClient.execute(getJsonMetadata)) {
+                assertEquals(HttpStatus.SC_OK, response.getStatusLine().getStatusCode());
+                assertEquals("Content-Type should be application/json", MediaType.APPLICATION_JSON,
+                        response.getFirstHeader(HttpHeaders.CONTENT_TYPE).getValue());
+                String json = EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8);
+                CredentialIssuer issuer = JsonSerialization.readValue(json, CredentialIssuer.class);
+                assertNotNull("Response should be a CredentialIssuer object", issuer);
+                assertEquals("credential_issuer should be set", expectedIssuer, issuer.getCredentialIssuer());
+                assertEquals("credential_endpoint should be correct",
+                        expectedIssuer + "/protocol/oid4vc/credential",
+                        issuer.getCredentialEndpoint());
+                assertEquals("nonce_endpoint should be correct",
+                        expectedIssuer + "/protocol/oid4vc/nonce",
+                        issuer.getNonceEndpoint());
+                assertEquals("deferred_credential_endpoint should be correct",
+                        expectedIssuer + "/protocol/oid4vc/deferred_credential",
+                        issuer.getDeferredCredentialEndpoint());
+                assertNotNull("authorization_servers should be present", issuer.getAuthorizationServers());
+                assertNotNull("credential_response_encryption should be present", issuer.getCredentialResponseEncryption());
+                assertNotNull("batch_credential_issuance should be present", issuer.getBatchCredentialIssuance());
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to process JSON metadata response: " + e.getMessage(), e);
+        }
+    }
+
+    @Test
+    public void testSignedMetadata() {
+        try (CloseableHttpClient httpClient = HttpClientBuilder.create().build()) {
+            String wellKnownUri = OAuthClient.AUTH_SERVER_ROOT + "/realms/" + TEST_REALM_NAME + "/.well-known/openid-credential-issuer";
+            String expectedIssuer = getRealmPath(TEST_REALM_NAME);
+
+            // Configure realm for signed metadata
+            testingClient.server(TEST_REALM_NAME).run(session -> {
+                RealmModel realm = session.getContext().getRealm();
+                realm.setAttribute(OID4VCIssuerWellKnownProvider.SIGNED_METADATA_ENABLED_ATTR, "true");
+                realm.setAttribute(OID4VCIssuerWellKnownProvider.SIGNED_METADATA_ALG_ATTR, "RS256");
+                realm.setAttribute(OID4VCIssuerWellKnownProvider.SIGNED_METADATA_LIFESPAN_ATTR, "3600");
+            });
+
+            HttpGet getJwtMetadata = new HttpGet(wellKnownUri);
+            getJwtMetadata.addHeader(HttpHeaders.ACCEPT, org.keycloak.utils.MediaType.APPLICATION_JWT);
+            try (CloseableHttpResponse response = httpClient.execute(getJwtMetadata)) {
+                assertEquals(HttpStatus.SC_OK, response.getStatusLine().getStatusCode());
+                assertEquals("Content-Type should be application/jwt", org.keycloak.utils.MediaType.APPLICATION_JWT,
+                        response.getFirstHeader(HttpHeaders.CONTENT_TYPE).getValue());
+                String jws = EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8);
+                assertNotNull("Response should be a JWT string", jws);
+                JWSInput jwsInput = new JWSInput(jws);
+
+                // Validate JOSE Header
+                JWSHeader header = jwsInput.getHeader();
+                assertEquals("Algorithm should be RS256", "RS256", header.getAlgorithm().name());
+                assertEquals("Type should be openidvci-issuer-metadata+jwt",
+                        SIGNED_METADATA_JWT_TYPE, header.getType());
+                assertNotNull("Key ID should be present", header.getKeyId());
+                assertNotNull("x5c header should be present if certificates are configured", header.getX5c());
+
+                // Validate JWT claims
+                Map<String, Object> claims = JsonSerialization.readValue(jwsInput.getContent(), Map.class);
+                assertEquals("sub should match credential_issuer", expectedIssuer, claims.get("sub"));
+                assertEquals("credential_issuer should be set", expectedIssuer, claims.get("credential_issuer"));
+                assertEquals("iss should match credential_issuer", expectedIssuer, claims.get("iss"));
+                assertNotNull("iat should be present", claims.get("iat"));
+                assertTrue("iat should be a number", claims.get("iat") instanceof Number);
+                assertTrue("iat should be recent", ((Number) claims.get("iat")).longValue() <= Time.currentTime());
+                assertNotNull("exp should be present", claims.get("exp"));
+                assertTrue("exp should be a number", claims.get("exp") instanceof Number);
+                assertTrue("exp should be in the future",
+                        ((Number) claims.get("exp")).longValue() > Time.currentTime());
+                assertEquals("credential_endpoint should be correct",
+                        expectedIssuer + "/protocol/oid4vc/credential",
+                        claims.get("credential_endpoint"));
+                assertEquals("nonce_endpoint should be correct",
+                        expectedIssuer + "/protocol/oid4vc/nonce",
+                        claims.get("nonce_endpoint"));
+                assertEquals("deferred_credential_endpoint should be correct",
+                        expectedIssuer + "/protocol/oid4vc/deferred_credential",
+                        claims.get("deferred_credential_endpoint"));
+                assertNotNull("authorization_servers should be present", claims.get("authorization_servers"));
+                assertNotNull("credential_response_encryption should be present", claims.get("credential_response_encryption"));
+                assertNotNull("batch_credential_issuance should be present", claims.get("batch_credential_issuance"));
+
+                // Verify signature
+                byte[] encodedSignatureInput = jwsInput.getEncodedSignatureInput().getBytes(StandardCharsets.UTF_8);
+                byte[] signature = jwsInput.getSignature();
+                testingClient.server(TEST_REALM_NAME).run(session -> {
+                    RealmModel realm = session.getContext().getRealm();
+                    KeyWrapper keyWrapper = session.keys().getActiveKey(realm, KeyUse.SIG, "RS256");
+                    assertNotNull("Active signing key should exist", keyWrapper);
+                    SignatureProvider signatureProvider = session.getProvider(SignatureProvider.class, "RS256");
+                    assertNotNull("Signature provider should exist for RS256", signatureProvider);
+                    SignatureVerifierContext verifier = signatureProvider.verifier(keyWrapper);
+                    boolean isValid = verifier.verify(encodedSignatureInput, signature);
+                    assertTrue("JWS signature should be valid", isValid);
+                });
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to process JWT metadata response: " + e.getMessage(), e);
+        }
+    }
+
+    @Test
+    public void testUnsignedMetadataWhenSignedDisabled() {
+        try (CloseableHttpClient httpClient = HttpClientBuilder.create().build()) {
+            String wellKnownUri = OAuthClient.AUTH_SERVER_ROOT + "/realms/" + TEST_REALM_NAME + "/.well-known/openid-credential-issuer";
+            String expectedIssuer = getRealmPath(TEST_REALM_NAME);
+
+            // Disable signed metadata
+            testingClient.server(TEST_REALM_NAME).run(session -> {
+                RealmModel realm = session.getContext().getRealm();
+                realm.setAttribute(OID4VCIssuerWellKnownProvider.SIGNED_METADATA_ENABLED_ATTR, "false");
+                assertNotNull("Realm should have signed metadata disabled",
+                        realm.getAttribute(OID4VCIssuerWellKnownProvider.SIGNED_METADATA_ENABLED_ATTR));
+            });
+
+            HttpGet getUnsignedMetadata = new HttpGet(wellKnownUri);
+            getUnsignedMetadata.addHeader(HttpHeaders.ACCEPT, org.keycloak.utils.MediaType.APPLICATION_JWT);
+            try (CloseableHttpResponse response = httpClient.execute(getUnsignedMetadata)) {
+                assertEquals(HttpStatus.SC_OK, response.getStatusLine().getStatusCode());
+                assertEquals("Content-Type should be application/json when signed metadata is disabled",
+                        MediaType.APPLICATION_JSON, response.getFirstHeader(HttpHeaders.CONTENT_TYPE).getValue());
+                String json = EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8);
+                CredentialIssuer issuer = JsonSerialization.readValue(json, CredentialIssuer.class);
+                assertNotNull("Unsigned metadata should return CredentialIssuer", issuer);
+                assertEquals("credential_issuer should be set", expectedIssuer, issuer.getCredentialIssuer());
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to process unsigned metadata response: " + e.getMessage(), e);
+        }
+    }
+
+    @Test
+    public void testSignedMetadataWithInvalidLifespan() {
+        try (CloseableHttpClient httpClient = HttpClientBuilder.create().build()) {
+            String wellKnownUri = OAuthClient.AUTH_SERVER_ROOT + "/realms/" + TEST_REALM_NAME + "/.well-known/openid-credential-issuer";
+            String expectedIssuer = getRealmPath(TEST_REALM_NAME);
+
+            // Configure invalid lifespan
+            testingClient.server(TEST_REALM_NAME).run(session -> {
+                RealmModel realm = session.getContext().getRealm();
+                realm.setAttribute(OID4VCIssuerWellKnownProvider.SIGNED_METADATA_ENABLED_ATTR, "true");
+                realm.setAttribute(OID4VCIssuerWellKnownProvider.SIGNED_METADATA_ALG_ATTR, "RS256");
+                realm.setAttribute(OID4VCIssuerWellKnownProvider.SIGNED_METADATA_LIFESPAN_ATTR, "invalid");
+            });
+
+            HttpGet getInvalidExpMetadata = new HttpGet(wellKnownUri);
+            getInvalidExpMetadata.addHeader(HttpHeaders.ACCEPT, org.keycloak.utils.MediaType.APPLICATION_JWT);
+            try (CloseableHttpResponse response = httpClient.execute(getInvalidExpMetadata)) {
+                assertEquals(HttpStatus.SC_OK, response.getStatusLine().getStatusCode());
+                assertEquals("Content-Type should be application/json due to invalid lifespan",
+                        MediaType.APPLICATION_JSON, response.getFirstHeader(HttpHeaders.CONTENT_TYPE).getValue());
+                String json = EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8);
+                CredentialIssuer issuer = JsonSerialization.readValue(json, CredentialIssuer.class);
+                assertNotNull("Response should be a CredentialIssuer object", issuer);
+                assertEquals("credential_issuer should be set", expectedIssuer, issuer.getCredentialIssuer());
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to process invalid lifespan metadata response: " + e.getMessage(), e);
+        }
+    }
+
+    @Test
+    public void testSignedMetadataWithInvalidAlgorithm() {
+        try (CloseableHttpClient httpClient = HttpClientBuilder.create().build()) {
+            String wellKnownUri = OAuthClient.AUTH_SERVER_ROOT + "/realms/" + TEST_REALM_NAME + "/.well-known/openid-credential-issuer";
+            String expectedIssuer = getRealmPath(TEST_REALM_NAME);
+
+            // Configure invalid algorithm
+            testingClient.server(TEST_REALM_NAME).run(session -> {
+                RealmModel realm = session.getContext().getRealm();
+                realm.setAttribute(OID4VCIssuerWellKnownProvider.SIGNED_METADATA_ENABLED_ATTR, "true");
+                realm.setAttribute(OID4VCIssuerWellKnownProvider.SIGNED_METADATA_ALG_ATTR, "INVALID_ALG");
+                realm.setAttribute(OID4VCIssuerWellKnownProvider.SIGNED_METADATA_LIFESPAN_ATTR, "3600");
+            });
+
+            HttpGet getJwtMetadata = new HttpGet(wellKnownUri);
+            getJwtMetadata.addHeader(HttpHeaders.ACCEPT, org.keycloak.utils.MediaType.APPLICATION_JWT);
+            try (CloseableHttpResponse response = httpClient.execute(getJwtMetadata)) {
+                assertEquals(HttpStatus.SC_OK, response.getStatusLine().getStatusCode());
+                assertEquals("Content-Type should be application/json due to invalid algorithm",
+                        MediaType.APPLICATION_JSON, response.getFirstHeader(HttpHeaders.CONTENT_TYPE).getValue());
+                String json = EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8);
+                CredentialIssuer issuer = JsonSerialization.readValue(json, CredentialIssuer.class);
+                assertNotNull("Response should be a CredentialIssuer object", issuer);
+                assertEquals("credential_issuer should be set", expectedIssuer, issuer.getCredentialIssuer());
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to process invalid algorithm metadata response: " + e.getMessage(), e);
+        }
+    }
+
 
     /**
      * This test uses the configured scopes {@link #jwtTypeCredentialClientScope} and
@@ -151,7 +379,7 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
         assertEquals(getRealmPath(TEST_REALM_NAME), credentialIssuer.getCredentialIssuer());
         assertEquals(getBasePath(TEST_REALM_NAME) + OID4VCIssuerEndpoint.CREDENTIAL_PATH,
                 credentialIssuer.getCredentialEndpoint());
-        Assert.assertNull("Display was not configured", credentialIssuer.getDisplay());
+        assertNull("Display was not configured", credentialIssuer.getDisplay());
         assertEquals("Authorization Server should have the realm-address.",
                 1,
                 credentialIssuer.getAuthorizationServers().size());
@@ -163,16 +391,23 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
         CredentialResponseEncryptionMetadata encryption = credentialIssuer.getCredentialResponseEncryption();
         assertNotNull("credential_response_encryption should be present", encryption);
         assertEquals(List.of(RSA_OAEP, RSA_OAEP_256), encryption.getAlgValuesSupported());
-        assertTrue("Should include A256GCM", encryption.getEncValuesSupported().contains(A256GCM));
+        assertEquals(List.of(A256GCM), encryption.getEncValuesSupported());
+        assertNotNull("zip_values_supported should be present", encryption.getZipValuesSupported());
         assertTrue("encryption_required should be true", encryption.getEncryptionRequired());
+
+        // Check credential_request_encryption
+        CredentialRequestEncryptionMetadata requestEncryption = credentialIssuer.getCredentialRequestEncryption();
+        assertNotNull("credential_request_encryption should be present", requestEncryption);
+        assertEquals(List.of(A256GCM), requestEncryption.getEncValuesSupported());
+        assertNotNull("zip_values_supported should be present", requestEncryption.getZipValuesSupported());
+        assertTrue("encryption_required should be true", requestEncryption.isEncryptionRequired());
+        assertNotNull("JWKS should be present", requestEncryption.getJwks());
+        assertNotEquals("JWKS should not be empty when encryption keys are available",
+                0, requestEncryption.getJwks().getKeys().length);
 
         CredentialIssuer.BatchCredentialIssuance batch = credentialIssuer.getBatchCredentialIssuance();
         assertNotNull("batch_credential_issuance should be present", batch);
         assertEquals(Integer.valueOf(10), batch.getBatchSize());
-        assertEquals(
-                "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJmb28iOiJiYXIifQ.XYZ123abc",
-                credentialIssuer.getSignedMetadata()
-        );
 
         for (ClientScopeRepresentation clientScope : List.of(jwtTypeCredentialClientScope,
                 sdJwtTypeCredentialClientScope,
@@ -190,7 +425,7 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
         CredentialIssuer credentialIssuer = getCredentialIssuerMetadata();
         SupportedCredentialConfiguration supportedConfig = credentialIssuer.getCredentialsSupported()
                 .get(clientScope.getName());
-
+                
         assertNotNull(supportedConfig);
         assertEquals(Format.SD_JWT_VC, supportedConfig.getFormat());
         assertEquals(clientScope.getName(), supportedConfig.getScope());
@@ -198,7 +433,7 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
         assertEquals(clientScope.getName(), supportedConfig.getCredentialDefinition().getType().get(0));
         assertEquals(1, supportedConfig.getCredentialDefinition().getContext().size());
         assertEquals(clientScope.getName(), supportedConfig.getCredentialDefinition().getContext().get(0));
-        Assert.assertNotNull(supportedConfig.getCredentialMetadata());
+        assertNotNull(supportedConfig.getCredentialMetadata());
         assertEquals(clientScope.getName(), supportedConfig.getScope());
 
         compareClaims(supportedConfig.getFormat(), supportedConfig.getCredentialMetadata().getClaims(), clientScope.getProtocolMappers());
@@ -215,13 +450,19 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
 
                     CredentialResponseEncryptionMetadata encryption = issuer.getCredentialResponseEncryption();
                     assertNotNull(encryption);
+
                     assertTrue(encryption.getAlgValuesSupported().contains(RSA_OAEP));
-                    assertTrue("Should include A256GCM",
-                            encryption.getEncValuesSupported().contains(A256GCM));
+                    assertTrue("Supported encryption methods should include A256GCM", encryption.getEncValuesSupported().contains(A256GCM));
+                    assertNotNull("zip_values_supported should be present", encryption.getZipValuesSupported());
                     assertTrue(encryption.getEncryptionRequired());
+
+                    // Check credential_request_encryption
+                    CredentialRequestEncryptionMetadata requestEncryption = issuer.getCredentialRequestEncryption();
+                    assertNotNull("credential_request_encryption should be present", requestEncryption);
+                    assertTrue("Supported encryption methods should include A256GCM", requestEncryption.getEncValuesSupported().contains(A256GCM));
+                    assertNotNull("zip_values_supported should be present", requestEncryption.getZipValuesSupported());
+                    assertTrue("encryption_required should be true", requestEncryption.isEncryptionRequired());
                     assertEquals(Integer.valueOf(10), issuer.getBatchCredentialIssuance().getBatchSize());
-                    assertEquals("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJmb28iOiJiYXIifQ.XYZ123abc",
-                            issuer.getSignedMetadata());
                 });
     }
 
@@ -230,10 +471,10 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
 
         realm.setAttribute(ATTR_ENCRYPTION_REQUIRED, "true");
         realm.setAttribute(ATTR_REQUEST_ZIP_ALGS, "DEF");
-        realm.setAttribute("batch_credential_issuance.batch_size", "10");
+        realm.setAttribute(Oid4VciConstants.BATCH_CREDENTIAL_ISSUANCE_BATCH_SIZE, "10");
 
         OID4VCIssuerWellKnownProvider provider = new OID4VCIssuerWellKnownProvider(session);
-        return (CredentialIssuer) provider.getConfig();
+        return provider.getIssuerMetadata();
     }
 
     @Test
@@ -248,20 +489,30 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
                 CredentialIssuer oid4vciIssuerConfig = JsonSerialization.readValue(
                         discoveryResponse.readEntity(String.class), CredentialIssuer.class);
 
-                CredentialResponseEncryptionMetadata encryption = oid4vciIssuerConfig.getCredentialResponseEncryption();
-                assertNotNull("Encryption support should be advertised in metadata", encryption);
-
-                // Test alg_values_supported (backward compatibility)
+                assertNotNull("Encryption support should be advertised in metadata",
+                        oid4vciIssuerConfig.getCredentialResponseEncryption());
                 assertFalse("Supported algorithms should not be empty",
-                        encryption.getAlgValuesSupported().isEmpty());
-                assertTrue("Supported algorithms should include RSA-OAEP",
-                        encryption.getAlgValuesSupported().contains("RSA-OAEP"));
-
-                // Test enc_values_supported
+                        oid4vciIssuerConfig.getCredentialResponseEncryption().getAlgValuesSupported().isEmpty());
                 assertFalse("Supported encryption methods should not be empty",
-                        encryption.getEncValuesSupported().isEmpty());
+                        oid4vciIssuerConfig.getCredentialResponseEncryption().getEncValuesSupported().isEmpty());
+                assertNotNull("zip_values_supported should be present",
+                        oid4vciIssuerConfig.getCredentialResponseEncryption().getZipValuesSupported());
+                assertTrue("Supported algorithms should include RSA-OAEP",
+                        oid4vciIssuerConfig.getCredentialResponseEncryption().getAlgValuesSupported().contains("RSA-OAEP"));
                 assertTrue("Supported encryption methods should include A256GCM",
-                        encryption.getEncValuesSupported().contains("A256GCM"));
+                        oid4vciIssuerConfig.getCredentialResponseEncryption().getEncValuesSupported().contains("A256GCM"));
+                assertNotNull("Credential request encryption should be advertised in metadata",
+                        oid4vciIssuerConfig.getCredentialRequestEncryption());
+                assertFalse("Supported encryption methods should not be empty",
+                        oid4vciIssuerConfig.getCredentialRequestEncryption().getEncValuesSupported().isEmpty());
+                assertNotNull("zip_values_supported should be present",
+                        oid4vciIssuerConfig.getCredentialRequestEncryption().getZipValuesSupported());
+                assertTrue("Supported encryption methods should include A256GCM",
+                        oid4vciIssuerConfig.getCredentialRequestEncryption().getEncValuesSupported().contains("A256GCM"));
+                assertNotNull("JWKS should be present in credential request encryption",
+                        oid4vciIssuerConfig.getCredentialRequestEncryption().getJwks());
+                assertNotEquals("JWKS should not be empty when encryption keys are available",
+                        0, oid4vciIssuerConfig.getCredentialRequestEncryption().getJwks().getKeys().length);
             }
         }
     }
@@ -341,7 +592,7 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
     private void compareDisplay(SupportedCredentialConfiguration supportedConfig, ClientScopeRepresentation clientScope) {
         String display = clientScope.getAttributes().get(CredentialScopeModel.VC_DISPLAY);
         if (StringUtil.isBlank(display)) {
-            Assert.assertNull(supportedConfig.getCredentialMetadata() != null ? supportedConfig.getCredentialMetadata().getDisplay() : null);
+            assertNull(supportedConfig.getCredentialMetadata() != null ? supportedConfig.getCredentialMetadata().getDisplay() : null);
             return;
         }
         List<DisplayObject> expectedDisplayObjectList;
@@ -392,7 +643,7 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
                         assertNotNull("There should be a claim matching the protocol-mappers config!", claim);
                     }
                     else {
-                        Assert.assertNull("This claim should not be included in the metadata-config!", claim);
+                        assertNull("This claim should not be included in the metadata-config!", claim);
                         // no other checks to do for this claim
                         continue;
                     }
@@ -406,7 +657,7 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
                             new SerializableClaimDisplayReference());
                     List<ClaimDisplay> actualDisplayList = claim.getDisplay();
                     if (expectedDisplayList == null) {
-                        Assert.assertNull(actualDisplayList);
+                        assertNull(actualDisplayList);
                     }
                     else {
                         assertEquals(expectedDisplayList.size(), actualDisplayList.size());
@@ -443,12 +694,7 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
                 .server(TEST_REALM_NAME)
                 .run((session -> {
                     OID4VCIssuerWellKnownProvider oid4VCIssuerWellKnownProvider = new OID4VCIssuerWellKnownProvider(session);
-                    Object issuerConfig = oid4VCIssuerWellKnownProvider.getConfig();
-
-                    assertTrue("Valid credential-issuer metadata should be returned.", issuerConfig instanceof CredentialIssuer);
-
-                    CredentialIssuer credentialIssuer = (CredentialIssuer) issuerConfig;
-
+                    CredentialIssuer credentialIssuer = oid4VCIssuerWellKnownProvider.getIssuerMetadata();
                     assertEquals("The correct issuer should be included.", expectedIssuer, credentialIssuer.getCredentialIssuer());
                     assertEquals("The correct credentials endpoint should be included.", expectedCredentialsEndpoint, credentialIssuer.getCredentialEndpoint());
                     assertEquals("The correct deferred_credential_endpoint should be included.", expectedDeferredEndpoint, credentialIssuer.getDeferredCredentialEndpoint());
@@ -502,11 +748,11 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
                         CredentialIssuer.BatchCredentialIssuance result = OID4VCIssuerWellKnownProvider.getBatchCredentialIssuance(testRealm);
 
                         if (shouldBePresent) {
-                            Assert.assertNotNull("batch_credential_issuance should be present for batch size " + batchSize, result);
-                            Assert.assertEquals("batch_credential_issuance should have correct batch size for " + batchSize,
+                            assertNotNull("batch_credential_issuance should be present for batch size " + batchSize, result);
+                            assertEquals("batch_credential_issuance should have correct batch size for " + batchSize,
                                     expectedValue, result.getBatchSize());
                         } else {
-                            Assert.assertNull("batch_credential_issuance should be null for invalid batch size " + batchSize, result);
+                            assertNull("batch_credential_issuance should be null for invalid batch size " + batchSize, result);
                         }
                     } finally {
                         session.realms().removeRealm(testRealm.getId());
