@@ -90,12 +90,6 @@ public class SdJwtAuthenticator implements Authenticator {
         }
 
         UserModel user = recoverAuthenticatingUser(context, sdJwt);
-        if (user == null) {
-            logger.debugf("Authentication passed but authenticating user is unknown");
-            failDenyingAuthenticatingUser(context);
-            return;
-        }
-
         context.setUser(user);
         context.success(); // Mark authentication as successful
         logger.debugf("User '%s' successfully authenticated", user.getUsername());
@@ -114,8 +108,28 @@ public class SdJwtAuthenticator implements Authenticator {
     }
 
     private UserModel recoverAuthenticatingUser(AuthenticationFlowContext context, SdJwtVP sdJwt) {
-        logger.info("Recovering authenticating user");
+        logger.info("Recovering (or importing) authenticating user");
+        String username = readUsernameFromCredential(sdJwt);
 
+        // Recover authenticating user
+        UserModel user = KeycloakModelUtils.findUserByNameOrEmail(
+                context.getSession(),
+                context.getRealm(),
+                username
+        );
+
+        // Import user if not found
+        if (user == null) {
+            // TODO: Improve user import strategy. Extend AbstractIdpAuthenticator?
+            user = context.getSession().users().addUser(context.getRealm(), username);
+            user.setEnabled(true);
+            logger.infof("Imported user '%s' from SD-JWT credential", username);
+        }
+
+        return user;
+    }
+
+    private String readUsernameFromCredential(SdJwtVP sdJwt) {
         // Read username from SD-JWT
         JsonNode issuerSignedJwtPayload = sdJwt.getIssuerSignedJWT().getPayload();
         JsonNode username = issuerSignedJwtPayload.get(OAuth2Constants.USERNAME);
@@ -126,12 +140,7 @@ public class SdJwtAuthenticator implements Authenticator {
             Objects.requireNonNull(username, "Disclosing a username is a presentation requirement");
         }
 
-        // Recover authenticating user
-        return KeycloakModelUtils.findUserByNameOrEmail(
-                context.getSession(),
-                context.getRealm(),
-                username.asText()
-        );
+        return username.asText();
     }
 
     private JsonNode readSelectivelyDisclosedUsername(SdJwtVP sdJwt) {
@@ -159,23 +168,6 @@ public class SdJwtAuthenticator implements Authenticator {
 
         context.failure(
                 AuthenticationFlowError.INVALID_CREDENTIALS,
-                Response.status(Response.Status.UNAUTHORIZED.getStatusCode())
-                        .type(MediaType.APPLICATION_JSON_TYPE)
-                        .entity(errorRep)
-                        .build()
-        );
-    }
-
-    private void failDenyingAuthenticatingUser(AuthenticationFlowContext context) {
-        logger.info("Presented SD-JWT will be rejected for associated user is unknown");
-
-        var errorRep = new OAuth2ErrorRepresentation(
-                Errors.USER_NOT_FOUND,
-                "User with presented SD-JWT unknown"
-        );
-
-        context.failure(
-                AuthenticationFlowError.UNKNOWN_USER,
                 Response.status(Response.Status.UNAUTHORIZED.getStatusCode())
                         .type(MediaType.APPLICATION_JSON_TYPE)
                         .entity(errorRep)
