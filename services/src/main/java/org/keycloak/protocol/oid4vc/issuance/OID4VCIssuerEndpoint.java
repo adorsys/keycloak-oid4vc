@@ -1165,6 +1165,9 @@ public class OID4VCIssuerEndpoint {
                 LOGGER.errorf("Claims filtering error for scope %s: %s", scope, errorMessage);
                 throw new BadRequestException("Credential issuance failed: " + errorMessage);
             }
+        } catch (BadRequestException e) {
+            // Re-throw BadRequestException to ensure client receives proper error response
+            throw e;
         } catch (Exception e) {
             // Log error but continue with all claims to avoid breaking existing functionality
             LOGGER.errorf(e, "Unexpected error during claims validation for scope %s, continuing with all claims", scope);
