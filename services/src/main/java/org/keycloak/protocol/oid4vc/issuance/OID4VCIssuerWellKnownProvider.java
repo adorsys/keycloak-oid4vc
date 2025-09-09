@@ -17,10 +17,12 @@
 
 package org.keycloak.protocol.oid4vc.issuance;
 
+import jakarta.ws.rs.core.UriBuilder;
 import jakarta.ws.rs.core.UriInfo;
 import org.keycloak.constants.Oid4VciConstants;
 import org.keycloak.crypto.KeyUse;
 import org.keycloak.crypto.KeyWrapper;
+import org.keycloak.http.HttpResponse;
 import org.keycloak.jose.jwe.JWEConstants;
 import org.keycloak.models.KeyManager;
 import org.keycloak.models.KeycloakContext;
@@ -31,11 +33,16 @@ import org.keycloak.protocol.oid4vc.OID4VCLoginProtocolFactory;
 import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.CredentialBuilder;
 import org.keycloak.protocol.oid4vc.model.CredentialIssuer;
 
+import java.net.URI;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+
 import org.keycloak.protocol.oid4vc.model.CredentialResponseEncryptionMetadata;
 import org.keycloak.protocol.oid4vc.model.CredentialRequestEncryptionMetadata;
 import org.keycloak.protocol.oid4vc.model.SupportedCredentialConfiguration;
 import org.keycloak.protocol.oidc.utils.JWKSServerUtils;
 import org.keycloak.services.Urls;
+import org.keycloak.services.resources.ServerMetadataResource;
 import org.keycloak.urls.UrlType;
 import org.keycloak.wellknown.WellKnownProvider;
 import org.jboss.logging.Logger;
@@ -66,6 +73,8 @@ public class OID4VCIssuerWellKnownProvider implements WellKnownProvider {
 
     public static final String ATTR_ENCRYPTION_REQUIRED = "oid4vci.encryption.required";
 
+    private static final Set<String> DEPRECATED_ROUTE_LOG_KEYS = ConcurrentHashMap.newKeySet();
+
     public OID4VCIssuerWellKnownProvider(KeycloakSession keycloakSession) {
         this.keycloakSession = keycloakSession;
     }
@@ -86,8 +95,12 @@ public class OID4VCIssuerWellKnownProvider implements WellKnownProvider {
                 .setCredentialsSupported(getSupportedCredentials(keycloakSession))
                 .setAuthorizationServers(List.of(getIssuer(context)))
                 .setCredentialResponseEncryption(getCredentialResponseEncryption(keycloakSession))
-                .setCredentialRequestEncryption(getCredentialRequestEncryption(keycloakSession))
-                .setBatchCredentialIssuance(getBatchCredentialIssuance(keycloakSession));
+                .setBatchCredentialIssuance(getBatchCredentialIssuance(keycloakSession))
+                .setSignedMetadata(getSignedMetadata(keycloakSession));
+
+        // Add deprecation headers/logs if the old realm-scoped route was used
+        addDeprecationHeadersIfOldRoute(keycloakSession);
+
         return issuer;
     }
 
@@ -304,6 +317,40 @@ public class OID4VCIssuerWellKnownProvider implements WellKnownProvider {
                 .filter(algorithm -> algorithm != null && !algorithm.isEmpty())
                 .distinct()
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * Attach OID4VCI-specific deprecation headers (and a one-time server WARN) when the old
+     * realm-scoped route is used.
+     * old: /realms/{realm}/.well-known/openid-credential-issuer
+     * new: /.well-known/openid-credential-issuer/realms/{realm}
+     */
+    private void addDeprecationHeadersIfOldRoute(KeycloakSession session) {
+        String requestPath = session.getContext().getUri().getRequestUri().getPath();
+        if (requestPath == null) {
+            return;
+        }
+
+        int idxRealms = requestPath.indexOf("/realms/");
+        int idxWellKnown = requestPath.indexOf("/.well-known/");
+        boolean isOldRoute = idxRealms >= 0 && idxWellKnown > idxRealms;
+        if (!isOldRoute) {
+            return;
+        }
+
+        UriBuilder base = session.getContext().getUri().getBaseUriBuilder();
+        String logKey = session.getContext().getRealm().getName();
+        URI successor = ServerMetadataResource.wellKnownOAuthProviderUrl(base)
+                .build(Oid4VciConstants.WELL_KNOWN_OPENID_CREDENTIAL_ISSUER, logKey);
+
+        HttpResponse httpResponse = session.getContext().getHttpResponse();
+        httpResponse.setHeader("Warning", "299 - \"Deprecated endpoint; use " + successor + "\"");
+        httpResponse.setHeader("Deprecation", "true");
+        httpResponse.setHeader("Link", "<" + successor + ">; rel=\"successor-version\"");
+
+        if (DEPRECATED_ROUTE_LOG_KEYS.add(logKey)) {
+            LOGGER.warnf("Deprecated realm-scoped well-known endpoint accessed for OID4VCI in realm '%s'. Use %s instead.", logKey, successor);
+        }
     }
 
 }
