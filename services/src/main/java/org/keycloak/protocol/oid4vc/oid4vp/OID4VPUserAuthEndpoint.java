@@ -28,9 +28,11 @@ import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import org.jboss.logging.Logger;
+import org.keycloak.OAuth2Constants;
 import org.keycloak.OAuthErrorException;
 import org.keycloak.authentication.AuthenticationProcessor;
 import org.keycloak.events.EventBuilder;
@@ -45,7 +47,6 @@ import org.keycloak.protocol.oid4vc.oid4vp.service.AuthenticationSessionStore;
 import org.keycloak.protocol.oid4vc.oid4vp.service.AuthorizationRequestService;
 import org.keycloak.protocol.oid4vc.oid4vp.service.AuthorizationResponseService;
 import org.keycloak.protocol.oid4vc.oid4vp.service.CorsService;
-import org.keycloak.protocol.oidc.utils.AuthorizeClientUtil;
 import org.keycloak.representations.idm.OAuth2ErrorRepresentation;
 import org.keycloak.services.resource.RealmResourceProvider;
 import org.keycloak.sessions.AuthenticationSessionModel;
@@ -86,15 +87,14 @@ public class OID4VPUserAuthEndpoint extends OID4VPUserAuthEndpointBase
     /**
      * Generates an OpenID4VP authentication request for user authentication.
      */
-    @POST
+    @GET
     @Path("/request")
-    @Consumes(MediaType.APPLICATION_FORM_URLENCODED)
     @Produces(MediaType.APPLICATION_JSON)
-    public Response getAuthenticationRequest() {
+    public Response getAuthenticationRequest(@QueryParam(OAuth2Constants.CLIENT_ID) String clientId) {
         logger.debug("Initiating user authentication over OpenID4VP...");
         event.event(EventType.OID4VP_INIT_AUTH);
 
-        ClientModel client = authenticateClient();
+        ClientModel client = checkClient(clientId);
         AuthenticationSessionModel authSession = createAuthSession(client);
         AuthenticatorConfigModel authConfig = getSdjwtAuthenticatorConfig();
         SdJwtAuthRequirements authReqs = new SdJwtAuthRequirements(session.getContext(), authConfig);
@@ -218,15 +218,25 @@ public class OID4VPUserAuthEndpoint extends OID4VPUserAuthEndpointBase
     }
 
     /**
-     * Authenticates the client making the request.
+     * Loads client model associated with the given client ID
      */
-    private ClientModel authenticateClient() {
-        logger.debugf("Attempting client authentication...");
-        ClientModel client = AuthorizeClientUtil
-                .authorizeClient(session, event, CorsService.open())
-                .getClient();
+    private ClientModel checkClient(String clientId) {
+        ClientModel client = realm.getClientByClientId(clientId);
 
-        logger.debugf("Client %s authenticated", client.getClientId());
+        if (client == null) {
+            throw new BadRequestException(errorResponse(
+                    Response.Status.BAD_REQUEST,
+                    "Invalid client ID"
+            ));
+        }
+
+        if (!client.isEnabled()) {
+            throw new BadRequestException(errorResponse(
+                    Response.Status.BAD_REQUEST,
+                    "Client is disabled"
+            ));
+        }
+
         return client;
     }
 
