@@ -667,6 +667,11 @@ class AdminClient {
       },
     );
   }
+
+  async getServerInfo() {
+    await this.#login();
+    return await this.#client.serverInfo.find();
+  }
 }
 
 const adminClient = new AdminClient();

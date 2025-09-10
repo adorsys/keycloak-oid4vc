@@ -21,8 +21,6 @@ export const getProtocolName = (t: TFunction<"clients">, protocol: string) => {
     default:
       return protocol;
   }
-
-  return protocol;
 };
 
 export const defaultContextAttributes = [
