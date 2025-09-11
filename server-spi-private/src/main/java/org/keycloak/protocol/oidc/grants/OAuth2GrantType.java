@@ -102,6 +102,9 @@ public interface OAuth2GrantType extends Provider {
             this.cors = cors;
             this.tokenManager = tokenManager;
             this.grantType = formParams.getFirst(OAuth2Constants.GRANT_TYPE);
+            if (this.client != null) {
+                this.protocol = session.getProvider(LoginProtocol.class, this.client.getProtocol());
+            }
         }
 
         public void setFormParams(MultivaluedHashMap<String, String> formParams) {
@@ -110,6 +113,9 @@ public interface OAuth2GrantType extends Provider {
 
         public void setClient(ClientModel client) {
             this.client = client;
+            if (client != null) {
+                this.protocol = session.getProvider(LoginProtocol.class, client.getProtocol());
+            }
         }
 
         public void setClientConfig(Object clientConfig) {

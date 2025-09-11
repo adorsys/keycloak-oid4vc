@@ -27,6 +27,8 @@ import java.util.HashMap;
 
 /**
  * Represents an authorization_details object in the Token Request as per OID4VCI.
+ * 
+ * @author <a href="mailto:Forkim.Akwichek@adorsys.com">Forkim Akwichek</a>
  */
 public class AuthorizationDetail {
 

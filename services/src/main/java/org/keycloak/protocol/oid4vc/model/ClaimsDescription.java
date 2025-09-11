@@ -24,6 +24,8 @@ import java.util.List;
  * Represents a claims description object as used in authorization details.
  * A claims description object defines the requirements for the claims that the Wallet
  * requests to be included in the Credential.
+ * 
+ * @author <a href="mailto:Forkim.Akwichek@adorsys.com">Forkim Akwichek</a>
  */
 public class ClaimsDescription {
 

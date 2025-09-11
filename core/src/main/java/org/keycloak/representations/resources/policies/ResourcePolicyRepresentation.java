@@ -124,7 +124,7 @@ public class ResourcePolicyRepresentation {
             return this;
         }
 
-        public Builder onCoditions(ResourcePolicyConditionRepresentation... condition) {
+        public Builder onConditions(ResourcePolicyConditionRepresentation... condition) {
             if (conditions == null) {
                 conditions = new ArrayList<>();
             }
@@ -149,6 +149,14 @@ public class ResourcePolicyRepresentation {
 
         public Builder name(String name) {
             return withConfig("name", name);
+        }
+
+        public Builder immediate() {
+            return withConfig("scheduled", "false");
+        }
+
+        public Builder recurring() {
+            return withConfig("recurring", "true");
         }
 
         public List<ResourcePolicyRepresentation> build() {

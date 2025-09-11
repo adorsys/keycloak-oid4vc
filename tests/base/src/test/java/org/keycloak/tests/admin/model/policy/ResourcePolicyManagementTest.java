@@ -19,7 +19,6 @@ package org.keycloak.tests.admin.model.policy;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
-import static org.junit.Assert.fail;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -32,14 +31,15 @@ import java.util.List;
 import java.util.UUID;
 
 import jakarta.ws.rs.core.Response;
-import jakarta.ws.rs.core.Response.Status;
 import org.hamcrest.Matchers;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import java.io.IOException;
 
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.keycloak.admin.client.resource.RealmResourcePolicies;
+import org.keycloak.broker.oidc.KeycloakOIDCIdentityProviderFactory;
 import org.keycloak.common.util.Time;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
@@ -52,9 +52,11 @@ import org.keycloak.models.policy.ResourceOperationType;
 import org.keycloak.models.policy.ResourcePolicy;
 import org.keycloak.models.policy.ResourcePolicyManager;
 import org.keycloak.models.policy.ResourcePolicyStateProvider;
+import org.keycloak.models.policy.SetUserAttributeActionProviderFactory;
 import org.keycloak.models.policy.UserCreationTimeResourcePolicyProviderFactory;
 import org.keycloak.models.policy.UserSessionRefreshTimeResourcePolicyProviderFactory;
 import org.keycloak.models.policy.conditions.IdentityProviderPolicyConditionFactory;
+import org.keycloak.representations.idm.IdentityProviderRepresentation;
 import org.keycloak.representations.resources.policies.ResourcePolicyActionRepresentation;
 import org.keycloak.representations.resources.policies.ResourcePolicyConditionRepresentation;
 import org.keycloak.representations.resources.policies.ResourcePolicyRepresentation;
@@ -187,26 +189,6 @@ public class ResourcePolicyManagementTest {
     }
 
     @Test
-    public void testTimeVsPriorityConflictingActions() {
-        List<ResourcePolicyRepresentation> expectedPolicies = ResourcePolicyRepresentation.create()
-                .of(UserCreationTimeResourcePolicyProviderFactory.ID)
-                .withActions(
-                        ResourcePolicyActionRepresentation.create().of(NotifyUserActionProviderFactory.ID)
-                                .after(Duration.ofDays(10))
-                                .build(),
-                        ResourcePolicyActionRepresentation.create().of(DisableUserActionProviderFactory.ID)
-                                .after(Duration.ofDays(5))
-                                .build()
-                ).build();
-
-        RealmResourcePolicies policies = managedRealm.admin().resources().policies();
-
-        try (Response response = policies.create(expectedPolicies)) {
-            assertThat(response.getStatus(), is(Status.BAD_REQUEST.getStatusCode()));
-        }
-    }
-
-    @Test
     public void testPolicyDoesNotFallThroughActionsInSingleRun() {
         managedRealm.admin().resources().policies().create(ResourcePolicyRepresentation.create()
                 .of(UserCreationTimeResourcePolicyProviderFactory.ID)
@@ -221,7 +203,7 @@ public class ResourcePolicyManagementTest {
                 ).build()).close();
 
         // create a new user - should bind the user to the policy and setup the first action
-        managedRealm.admin().users().create(UserConfigBuilder.create().username("testuser").email("testuser@example.com").build());
+        managedRealm.admin().users().create(UserConfigBuilder.create().username("testuser").email("testuser@example.com").build()).close();
 
         runOnServer.run((RunOnServer) session -> {
             RealmModel realm = configureSessionContext(session);
@@ -232,8 +214,8 @@ public class ResourcePolicyManagementTest {
             assertEquals(1, registeredPolicies.size());
 
             ResourcePolicy policy = registeredPolicies.get(0);
-            assertEquals(2, manager.getActions(policy).size());
-            ResourceAction notifyAction = manager.getActions(policy).get(0);
+            assertEquals(2, manager.getActions(policy.getId()).size());
+            ResourceAction notifyAction = manager.getActions(policy.getId()).get(0);
 
             ResourcePolicyStateProvider stateProvider = session.getProvider(ResourcePolicyStateProvider.class);
             ResourcePolicyStateProvider.ScheduledAction scheduledAction = stateProvider.getScheduledAction(policy.getId(), user.getId());
@@ -248,7 +230,7 @@ public class ResourcePolicyManagementTest {
                 user = session.users().getUserById(realm, user.getId());
 
                 // Verify that the next action was scheduled for the user
-                ResourceAction disableAction = manager.getActions(policy).get(1);
+                ResourceAction disableAction = manager.getActions(policy.getId()).get(1);
                 scheduledAction = stateProvider.getScheduledAction(policy.getId(), user.getId());
                 assertNotNull(scheduledAction, "An action should have been scheduled for the user " + user.getUsername());
                 assertEquals(disableAction.getId(), scheduledAction.actionId(), "The second action should have been scheduled");
@@ -268,19 +250,25 @@ public class ResourcePolicyManagementTest {
     public void testAssignPolicyToExistingResources() {
         // create some realm users
         for (int i = 0; i < 10; i++) {
-            managedRealm.admin().users().create(UserConfigBuilder.create().username("user-" + i).build());
+            managedRealm.admin().users().create(UserConfigBuilder.create().username("user-" + i).build()).close();
         }
 
         // create some users associated with a federated identity
         for (int i = 0; i < 10; i++) {
             managedRealm.admin().users().create(UserConfigBuilder.create().username("idp-user-" + i)
-                    .federatedLink("someidp", UUID.randomUUID().toString(), "idp-user-" + i).build());
+                    .federatedLink("someidp", UUID.randomUUID().toString(), "idp-user-" + i).build()).close();
         }
+
+        IdentityProviderRepresentation idp = new IdentityProviderRepresentation();
+        idp.setAlias("someidp");
+        idp.setProviderId(KeycloakOIDCIdentityProviderFactory.PROVIDER_ID);
+        idp.setEnabled(true);
+        managedRealm.admin().identityProviders().create(idp).close();
 
         managedRealm.admin().resources().policies().create(ResourcePolicyRepresentation.create()
                 .of(UserCreationTimeResourcePolicyProviderFactory.ID)
                 .onEvent(ResourceOperationType.ADD_FEDERATED_IDENTITY.name())
-                .onCoditions(ResourcePolicyConditionRepresentation.create()
+                .onConditions(ResourcePolicyConditionRepresentation.create()
                         .of(IdentityProviderPolicyConditionFactory.ID)
                         .withConfig(IdentityProviderPolicyConditionFactory.EXPECTED_ALIASES, "someidp")
                         .build())
@@ -297,12 +285,12 @@ public class ResourcePolicyManagementTest {
         // creation.
         for (int i = 0; i < 3; i++) {
             managedRealm.admin().users().create(UserConfigBuilder.create().username("new-idp-user-" + i)
-                    .federatedLink("someidp", UUID.randomUUID().toString(), "new-idp-user-" + i).build());
+                    .federatedLink("someidp", UUID.randomUUID().toString(), "new-idp-user-" + i).build()).close();
         }
 
         // new realm users created after the policy - these should not be attached to the policy because they are not idp users.
         for (int i = 0; i < 3; i++) {
-            managedRealm.admin().users().create(UserConfigBuilder.create().username("new-user-" + i).build());
+            managedRealm.admin().users().create(UserConfigBuilder.create().username("new-user-" + i).build()).close();
         }
 
         runOnServer.run((RunOnServer) session -> {
@@ -312,8 +300,8 @@ public class ResourcePolicyManagementTest {
             assertEquals(1, registeredPolicies.size());
             ResourcePolicy policy = registeredPolicies.get(0);
 
-            assertEquals(2, policyManager.getActions(policy).size());
-            ResourceAction notifyAction = policyManager.getActions(policy).get(0);
+            assertEquals(2, policyManager.getActions(policy.getId()).size());
+            ResourceAction notifyAction = policyManager.getActions(policy.getId()).get(0);
 
             // check no policies are yet attached to the previous users, only to the ones created after the policy was in place
             ResourcePolicyStateProvider stateProvider = session.getKeycloakSessionFactory().getProviderFactory(ResourcePolicyStateProvider.class).create(session);
@@ -332,7 +320,7 @@ public class ResourcePolicyManagementTest {
                 policyManager.runScheduledActions();
 
                 // check the same users are now scheduled to run the second action.
-                ResourceAction disableAction = policyManager.getActions(policy).get(1);
+                ResourceAction disableAction = policyManager.getActions(policy.getId()).get(1);
                 scheduledActions = stateProvider.getScheduledActionsByPolicy(policy);
                 assertEquals(3, scheduledActions.size());
                 scheduledActions.forEach(scheduledAction -> {
@@ -380,7 +368,6 @@ public class ResourcePolicyManagementTest {
                 .of(UserCreationTimeResourcePolicyProviderFactory.ID)
                 .onEvent(ResourceOperationType.CREATE.toString())
                 .name("test-policy")
-                .withConfig("enabled", "true")
                 .withActions(
                         ResourcePolicyActionRepresentation.create().of(NotifyUserActionProviderFactory.ID)
                                 .after(Duration.ofDays(5))
@@ -397,7 +384,7 @@ public class ResourcePolicyManagementTest {
         assertThat(policy.getName(), is("test-policy"));
 
         // create a new user - should bind the user to the policy and setup the first action
-        managedRealm.admin().users().create(UserConfigBuilder.create().username("testuser").email("testuser@example.com").build());
+        managedRealm.admin().users().create(UserConfigBuilder.create().username("testuser").email("testuser@example.com").build()).close();
 
         runOnServer.run((RunOnServer) session -> {
             RealmModel realm = configureSessionContext(session);
@@ -426,7 +413,7 @@ public class ResourcePolicyManagementTest {
         managedRealm.admin().resources().policies().policy(policy.getId()).update(policy).close();
 
         // create another user - should NOT bind the user to the policy as it is disabled
-        managedRealm.admin().users().create(UserConfigBuilder.create().username("anotheruser").build());
+        managedRealm.admin().users().create(UserConfigBuilder.create().username("anotheruser").build()).close();
 
         runOnServer.run((RunOnServer) session -> {
             RealmModel realm = configureSessionContext(session);
@@ -461,7 +448,7 @@ public class ResourcePolicyManagementTest {
         managedRealm.admin().resources().policies().policy(policy.getId()).update(policy).close();
 
         // create a third user - should bind the user to the policy as it is enabled again
-        managedRealm.admin().users().create(UserConfigBuilder.create().username("thirduser").email("thirduser@example.com").build());
+        managedRealm.admin().users().create(UserConfigBuilder.create().username("thirduser").email("thirduser@example.com").build()).close();
 
         runOnServer.run((RunOnServer) session -> {
             RealmModel realm = configureSessionContext(session);
@@ -496,7 +483,7 @@ public class ResourcePolicyManagementTest {
         managedRealm.admin().resources().policies().create(ResourcePolicyRepresentation.create()
                 .of(UserCreationTimeResourcePolicyProviderFactory.ID)
                 .onEvent(ResourceOperationType.CREATE.toString())
-                .withConfig("recurring", "true")
+                .recurring()
                 .withActions(
                         ResourcePolicyActionRepresentation.create().of(NotifyUserActionProviderFactory.ID)
                                 .after(Duration.ofDays(5))
@@ -504,7 +491,7 @@ public class ResourcePolicyManagementTest {
                 ).build()).close();
 
         // create a new user - should bind the user to the policy and setup the only action in the policy
-        managedRealm.admin().users().create(UserConfigBuilder.create().username("testuser").email("testuser@example.com").build());
+        managedRealm.admin().users().create(UserConfigBuilder.create().username("testuser").email("testuser@example.com").build()).close();
 
         runOnServer.run((RunOnServer) session -> {
             RealmModel realm = configureSessionContext(session);
@@ -516,7 +503,7 @@ public class ResourcePolicyManagementTest {
 
                 UserModel user = session.users().getUserByUsername(realm, "testuser");
                 ResourcePolicy policy = manager.getPolicies().get(0);
-                ResourceAction action = manager.getActions(policy).get(0);
+                ResourceAction action = manager.getActions(policy.getId()).get(0);
 
                 // Verify that the action was scheduled again for the user
                 ResourcePolicyStateProvider stateProvider = session.getProvider(ResourcePolicyStateProvider.class);
@@ -537,6 +524,34 @@ public class ResourcePolicyManagementTest {
     }
 
     @Test
+    public void testRunImmediatePolicy() {
+        // create a test policy with no time conditions - should run immediately when scheduled
+        managedRealm.admin().resources().policies().create(ResourcePolicyRepresentation.create()
+                .of(UserCreationTimeResourcePolicyProviderFactory.ID)
+                .immediate()
+                .withActions(
+                        ResourcePolicyActionRepresentation.create().of(SetUserAttributeActionProviderFactory.ID)
+                                .after(Duration.ofDays(1))
+                                .withConfig("message", "message")
+                                .build(),
+                        ResourcePolicyActionRepresentation.create().of(DisableUserActionProviderFactory.ID)
+                                .after(Duration.ofDays(2))
+                                .build()
+                ).build()).close();
+
+        // create a new user - should be bound to the new policy and all actions should run right away
+        managedRealm.admin().users().create(UserConfigBuilder.create().username("testuser").build()).close();
+
+        // check the user has the attribute set and is disabled
+        runOnServer.run(session -> {
+            configureSessionContext(session);
+            UserModel user = session.users().getUserByUsername(session.getContext().getRealm(), "testuser");
+            assertEquals("message", user.getAttributes().get("message").get(0));
+            assertFalse(user.isEnabled());
+        });
+    }
+
+    @Test
     public void testNotifyUserActionSendsEmailWithDefaultDisableMessage() {
         // Create policy: disable at 10 days, notify 3 days before (at day 7)
         managedRealm.admin().resources().policies().create(ResourcePolicyRepresentation.create()
@@ -551,7 +566,7 @@ public class ResourcePolicyManagementTest {
                                 .build()
                 ).build()).close();
 
-        managedRealm.admin().users().create(UserConfigBuilder.create().username("testuser").email("test@example.com").name("John", "").build());
+        managedRealm.admin().users().create(UserConfigBuilder.create().username("testuser").email("test@example.com").name("John", "").build()).close();
 
         runOnServer.run(session -> {
             ResourcePolicyManager manager = new ResourcePolicyManager(session);
@@ -589,7 +604,7 @@ public class ResourcePolicyManagementTest {
                                 .build()
                 ).build()).close();
 
-        managedRealm.admin().users().create(UserConfigBuilder.create().username("testuser2").email("test2@example.com").name("Jane", "").build());
+        managedRealm.admin().users().create(UserConfigBuilder.create().username("testuser2").email("test2@example.com").name("Jane", "").build()).close();
 
         runOnServer.run(session -> {
 
@@ -629,7 +644,7 @@ public class ResourcePolicyManagementTest {
                                 .build()
                 ).build()).close();
 
-        managedRealm.admin().users().create(UserConfigBuilder.create().username("testuser3").email("test3@example.com").name("Bob", "").build());
+        managedRealm.admin().users().create(UserConfigBuilder.create().username("testuser3").email("test3@example.com").name("Bob", "").build()).close();
 
         runOnServer.run(session -> {
             ResourcePolicyManager manager = new ResourcePolicyManager(session);
@@ -664,7 +679,7 @@ public class ResourcePolicyManagementTest {
                                 .build()
                 ).build()).close();
 
-        managedRealm.admin().users().create(UserConfigBuilder.create().username("testuser4").name("NoEmail", "").build());
+        managedRealm.admin().users().create(UserConfigBuilder.create().username("testuser4").name("NoEmail", "").build()).close();
 
         runOnServer.run(session -> {
             RealmModel realm = configureSessionContext(session);
@@ -704,7 +719,7 @@ public class ResourcePolicyManagementTest {
                                 .build()
                 ).build()).close();
 
-        managedRealm.admin().users().create(UserConfigBuilder.create().username("testuser5").email("testuser5@example.com").name("TestUser5", "").build());
+        managedRealm.admin().users().create(UserConfigBuilder.create().username("testuser5").email("testuser5@example.com").name("TestUser5", "").build()).close();
 
         runOnServer.run(session -> {
             RealmModel realm = configureSessionContext(session);
@@ -806,7 +821,7 @@ public class ResourcePolicyManagementTest {
                                 "\nHTML: " + htmlContent);
             }
         } catch (MessagingException | IOException e) {
-            fail("Failed to read email message: " + e.getMessage());
+            Assertions.fail("Failed to read email message: " + e.getMessage());
         }
     }
 

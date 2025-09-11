@@ -19,10 +19,8 @@ package org.keycloak.protocol.oidc.grants;
 
 import jakarta.ws.rs.core.Response;
 import org.jboss.logging.Logger;
-import org.keycloak.Config;
 import org.keycloak.OAuth2Constants;
 import org.keycloak.OAuthErrorException;
-import org.keycloak.common.Profile;
 import org.keycloak.common.util.SecretGenerator;
 import org.keycloak.events.Details;
 import org.keycloak.events.Errors;
@@ -31,15 +29,14 @@ import org.keycloak.models.AuthenticatedClientSessionModel;
 import org.keycloak.models.ClientSessionContext;
 import org.keycloak.models.Constants;
 import org.keycloak.models.KeycloakSession;
-import org.keycloak.protocol.oid4vc.issuance.OID4VCAuthorizationDetailsProcessor;
-import org.keycloak.protocol.oid4vc.model.AuthorizationDetailResponse;
+import org.keycloak.protocol.oidc.rar.AuthorizationDetailsProcessor;
+import org.keycloak.protocol.oidc.rar.AuthorizationDetailsResponse;
+import org.keycloak.services.CorsErrorResponseException;
 import org.keycloak.protocol.oidc.TokenManager;
 import org.keycloak.protocol.oidc.utils.OAuth2Code;
 import org.keycloak.protocol.oidc.utils.OAuth2CodeParser;
-import org.keycloak.provider.EnvironmentDependentProviderFactory;
 import org.keycloak.representations.AccessToken;
 import org.keycloak.representations.AccessTokenResponse;
-import org.keycloak.services.CorsErrorResponseException;
 import org.keycloak.services.util.DefaultClientSessionContext;
 import org.keycloak.utils.MediaType;
 
@@ -105,10 +102,28 @@ public class PreAuthorizedCodeGrantType extends OAuth2GrantTypeBase {
                 clientSession.getUserSession(),
                 sessionContext).accessToken(accessToken);
 
-        // OID4VCI: Process authorization_details using the processor
-        if (formParams.containsKey(AUTHORIZATION_DETAILS_PARAM)) {
-            OID4VCAuthorizationDetailsProcessor oid4vciProcessor = new OID4VCAuthorizationDetailsProcessor(session, event, formParams, cors);
-            List<AuthorizationDetailResponse> authorizationDetailsResponse = oid4vciProcessor.process(clientSession.getUserSession(), sessionContext);
+        // Process authorization_details using provider discovery
+        String authorizationDetailsParam = formParams.getFirst(AUTHORIZATION_DETAILS_PARAM);
+        if (authorizationDetailsParam != null) {
+            List<AuthorizationDetailsResponse> authorizationDetailsResponse;
+            try {
+                authorizationDetailsResponse = session.getKeycloakSessionFactory()
+                        .getProviderFactoriesStream(AuthorizationDetailsProcessor.class)
+                        .sorted((f1, f2) -> f2.order() - f1.order())
+                        .map(f -> session.getProvider(AuthorizationDetailsProcessor.class, f.getId()))
+                        .map(authzDetailsProcessor -> authzDetailsProcessor.process(clientSession.getUserSession(), sessionContext, authorizationDetailsParam))
+                        .filter(authzDetailsResponse -> authzDetailsResponse != null)
+                        .findFirst()
+                        .orElse(null);
+            } catch (RuntimeException e) {
+                if (e.getMessage() != null && e.getMessage().contains("Invalid authorization_details")) {
+                    LOGGER.warnf(e, "Error when processing authorization_details");
+                    event.error(Errors.INVALID_REQUEST);
+                    throw new CorsErrorResponseException(cors, "invalid_request", "Error when processing authorization_details", Response.Status.BAD_REQUEST);
+                } else {
+                    throw e;
+                }
+            }
 
             AccessTokenResponse tokenResponse;
             try {

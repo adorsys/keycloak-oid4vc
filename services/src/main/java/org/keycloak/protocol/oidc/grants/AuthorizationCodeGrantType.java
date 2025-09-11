@@ -36,23 +36,23 @@ import org.keycloak.models.ClientScopeModel;
 import org.keycloak.models.ClientSessionContext;
 import org.keycloak.models.UserModel;
 import org.keycloak.models.UserSessionModel;
-import org.keycloak.protocol.oid4vc.issuance.AuthorizationDetailsProcessor;
+import org.keycloak.protocol.oidc.rar.AuthorizationDetailsProcessor;
+import org.keycloak.protocol.oidc.rar.AuthorizationDetailsResponse;
+import org.keycloak.services.CorsErrorResponseException;
 import org.keycloak.protocol.oidc.OIDCLoginProtocol;
 import org.keycloak.protocol.oidc.TokenManager;
 import org.keycloak.protocol.oidc.utils.OAuth2Code;
 import org.keycloak.protocol.oidc.utils.OAuth2CodeParser;
 import org.keycloak.protocol.oidc.utils.PkceUtils;
 import org.keycloak.representations.AccessTokenResponse;
-import org.keycloak.services.CorsErrorResponseException;
 import org.keycloak.services.clientpolicy.ClientPolicyException;
 import org.keycloak.services.clientpolicy.context.TokenRequestContext;
 import org.keycloak.services.clientpolicy.context.TokenResponseContext;
 import org.keycloak.services.managers.AuthenticationManager;
 import org.keycloak.services.util.DPoPUtil;
 import org.keycloak.services.util.DefaultClientSessionContext;
-import org.keycloak.protocol.oid4vc.model.AuthorizationDetailResponse;
 import static org.keycloak.OAuth2Constants.AUTHORIZATION_DETAILS_PARAM;
-import static org.keycloak.protocol.oid4vc.issuance.OID4VCAuthorizationDetailsProcessor.AUTHORIZATION_DETAILS_RESPONSE_KEY;
+import static org.keycloak.models.Constants.AUTHORIZATION_DETAILS_RESPONSE;
 
 /**
  * OAuth 2.0 Authorization Code Grant
@@ -97,9 +97,11 @@ public class AuthorizationCodeGrantType extends OAuth2GrantTypeBase {
             throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_GRANT, "Code is expired", Response.Status.BAD_REQUEST);
         }
 
-        UserSessionModel userSession = null;
+        final UserSessionModel userSession;
         if (clientSession != null) {
             userSession = clientSession.getUserSession();
+        } else {
+            userSession = null;
         }
 
         if (userSession == null) {
@@ -197,12 +199,27 @@ public class AuthorizationCodeGrantType extends OAuth2GrantTypeBase {
         String scopeParam = codeData.getScope();
         ClientSessionContext clientSessionCtx = DefaultClientSessionContext.fromClientSessionAndScopeParameter(clientSession, scopeParam, session);
 
-        // OID4VCI: Process authorization_details using the processor
-        if (context.protocol instanceof OIDCLoginProtocol) {
-            AuthorizationDetailsProcessor processor = ((OIDCLoginProtocol) context.protocol).getAuthorizationDetailsProcessor(session, event, formParams, cors);
-            List<AuthorizationDetailResponse> authorizationDetailsResponse = processor.process(userSession, clientSessionCtx);
-            if (authorizationDetailsResponse != null && !authorizationDetailsResponse.isEmpty()) {
-                clientSessionCtx.setAttribute(AUTHORIZATION_DETAILS_RESPONSE_KEY, authorizationDetailsResponse);
+        // Process authorization_details using provider discovery
+        String authorizationDetailsParam = formParams.getFirst(AUTHORIZATION_DETAILS_PARAM);
+        if (authorizationDetailsParam != null) {
+            try {
+                session.getKeycloakSessionFactory()
+                        .getProviderFactoriesStream(AuthorizationDetailsProcessor.class)
+                        .sorted((f1, f2) -> f2.order() - f1.order())
+                        .map(f -> session.getProvider(AuthorizationDetailsProcessor.class, f.getId()))
+                        .map(authzDetailsProcessor -> authzDetailsProcessor.process(userSession, clientSessionCtx, authorizationDetailsParam))
+                        .filter(authzDetailsResponse -> authzDetailsResponse != null)
+                        .findFirst()
+                        .ifPresentOrElse(authzDetailsResponse -> clientSessionCtx.setAttribute(AUTHORIZATION_DETAILS_RESPONSE, authzDetailsResponse),
+                                () -> logger.debugf("No available AuthorizationDetailsProcessor being able to process authorization_details '%s'", authorizationDetailsParam));
+            } catch (RuntimeException e) {
+                if (e.getMessage() != null && e.getMessage().contains("Invalid authorization_details")) {
+                    logger.warnf(e, "Error when processing authorization_details");
+                    event.error(Errors.INVALID_REQUEST);
+                    throw new CorsErrorResponseException(cors, "invalid_request", "Error when processing authorization_details", Response.Status.BAD_REQUEST);
+                } else {
+                    throw e;
+                }
             }
         }
 
@@ -227,7 +244,7 @@ public class AuthorizationCodeGrantType extends OAuth2GrantTypeBase {
 
     @Override
     protected void addCustomTokenResponseClaims(AccessTokenResponse res, ClientSessionContext clientSessionCtx) {
-        List<AuthorizationDetailResponse> authDetailsResponse = clientSessionCtx.getAttribute(AUTHORIZATION_DETAILS_RESPONSE_KEY, List.class);
+        List<AuthorizationDetailsResponse> authDetailsResponse = clientSessionCtx.getAttribute(AUTHORIZATION_DETAILS_RESPONSE, List.class);
         if (authDetailsResponse != null && !authDetailsResponse.isEmpty()) {
             res.setOtherClaims(AUTHORIZATION_DETAILS_PARAM, authDetailsResponse);
         }

@@ -28,6 +28,8 @@ import java.util.HashMap;
 /**
  * Utility class for handling claims path pointers.
  * A claims path pointer is a pointer into the Verifiable Credential, identifying one or more claims.
+ * 
+ * @author <a href="mailto:Forkim.Akwichek@adorsys.com">Forkim Akwichek</a>
  */
 public class ClaimsPathPointer {
 

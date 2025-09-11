@@ -24,6 +24,8 @@ import static org.junit.Assert.*;
 /**
  * JWT-specific authorization details flow tests.
  * Extends the base class to inherit common test logic while providing JWT-specific implementations.
+ *
+ * @author <a href="mailto:Forkim.Akwichek@adorsys.com">Forkim Akwichek</a>
  */
 public class OID4VCJwtAuthorizationDetailsFlowTest extends OID4VCAuthorizationDetailsFlowTestBase {
 

@@ -30,7 +30,7 @@ import java.util.UUID;
 @KeycloakIntegrationTest(config = ClientAuthIdpServerConfig.class)
 public class FederatedClientAuthTest {
 
-    private static final String IDP_ALIAS = "myidp";
+    private static final String IDP_ALIAS = "external-idp";
 
     private static final String CLIENT_ID = "myclient";
 
@@ -178,6 +178,7 @@ public class FederatedClientAuthTest {
         token.id(UUID.randomUUID().toString());
         token.issuer("http://127.0.0.1:8500");
         token.audience(oAuthClient.getEndpoints().getIssuer());
+        token.iat((long) Time.currentTime());
         token.exp((long) (Time.currentTime() + 300));
         token.subject(CLIENT_ID);
         return token;

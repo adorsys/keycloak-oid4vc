@@ -61,15 +61,6 @@ import org.keycloak.services.managers.AuthenticationSessionManager;
 import org.keycloak.services.managers.ResourceAdminManager;
 import org.keycloak.sessions.AuthenticationSessionModel;
 import org.keycloak.util.TokenUtil;
-import org.keycloak.protocol.oid4vc.issuance.AuthorizationDetailsProcessor;
-import org.keycloak.protocol.oid4vc.issuance.OID4VCAuthorizationDetailsProcessor;
-import org.keycloak.protocol.oid4vc.issuance.DefaultAuthorizationDetailsProcessor;
-import jakarta.ws.rs.core.MultivaluedMap;
-import org.keycloak.services.cors.Cors;
-import com.fasterxml.jackson.core.type.TypeReference;
-import org.keycloak.protocol.oid4vc.model.AuthorizationDetail;
-import java.util.List;
-import org.keycloak.util.JsonSerialization;
 
 import java.io.IOException;
 import java.net.URI;
@@ -79,7 +70,6 @@ import java.util.UUID;
 import static org.keycloak.protocol.oidc.grants.device.DeviceGrantType.approveOAuth2DeviceAuthorization;
 import static org.keycloak.protocol.oidc.grants.device.DeviceGrantType.denyOAuth2DeviceAuthorization;
 import static org.keycloak.protocol.oidc.grants.device.DeviceGrantType.isOAuth2DeviceVerificationFlow;
-import static org.keycloak.OAuth2Constants.AUTHORIZATION_DETAILS_PARAM;
 
 /**
  * @author <a href="mailto:bill@burkecentral.com">Bill Burke</a>
@@ -575,22 +565,5 @@ public class OIDCLoginProtocol implements LoginProtocol {
     @Override
     public void close() {
 
-    }
-
-    public AuthorizationDetailsProcessor getAuthorizationDetailsProcessor(KeycloakSession session, EventBuilder event, MultivaluedMap<String, String> formParams, Cors cors) {
-        if (formParams != null && formParams.getFirst(AUTHORIZATION_DETAILS_PARAM) != null) {
-            String details = formParams.getFirst(AUTHORIZATION_DETAILS_PARAM);
-            try {
-                List<AuthorizationDetail> parsed = JsonSerialization.readValue(details, new TypeReference<List<AuthorizationDetail>>() {});
-                for (AuthorizationDetail detail : parsed) {
-                    if (OID4VCAuthorizationDetailsProcessor.OPENID_CREDENTIAL_TYPE.equals(detail.getType())) {
-                        return new OID4VCAuthorizationDetailsProcessor(session, event, formParams, cors);
-                    }
-                }
-            } catch (Exception e) {
-                logger.warnf(e, "Failed to parse authorization_details: %s", details);
-            }
-        }
-        return new DefaultAuthorizationDetailsProcessor();
     }
 }
