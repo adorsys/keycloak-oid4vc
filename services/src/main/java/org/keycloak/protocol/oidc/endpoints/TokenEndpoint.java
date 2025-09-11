@@ -146,7 +146,6 @@ public class TokenEndpoint {
 
         OAuth2GrantType.Context context = new OAuth2GrantType.Context(session, clientConfig, clientAuthAttributes,
                                                                       formParams, event, cors, tokenManager);
-        context.setProtocol(new OIDCLoginProtocol(session, realm, session.getContext().getUri(), headers, event));
         return grant.process(context);
     }
 
