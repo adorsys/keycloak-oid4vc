@@ -68,6 +68,7 @@ public class OID4VPUserAuthEndpoint extends OID4VPUserAuthEndpointBase
 
     public static final String REQUEST_JWT_PATH = "/request.jwt";
     public static final String RESPONSE_URI_PATH = "/response";
+    public static final String AUTH_STATUS_PATH = "/status/{transactionId}";
 
     private final AuthorizationRequestService authorizationRequestService;
     private final AuthorizationResponseService authorizationResponseService;
@@ -92,23 +93,23 @@ public class OID4VPUserAuthEndpoint extends OID4VPUserAuthEndpointBase
     @Produces(MediaType.APPLICATION_JSON)
     public Response getAuthenticationRequest(@QueryParam(OAuth2Constants.CLIENT_ID) String clientId) {
         logger.debug("Initiating user authentication over OpenID4VP...");
-        event.event(EventType.OID4VP_INIT_AUTH);
 
-        ClientModel client = checkClient(clientId);
-        AuthenticationSessionModel authSession = createAuthSession(client);
-        AuthenticatorConfigModel authConfig = getSdjwtAuthenticatorConfig();
-        SdJwtAuthRequirements authReqs = new SdJwtAuthRequirements(session.getContext(), authConfig);
+        try {
+            checkClient(clientId);
+        } catch (IllegalArgumentException e) {
+            throw new BadRequestException(errorResponse(
+                    Response.Status.BAD_REQUEST,
+                    "Invalid client ID. Maybe unknown or disabled"
+            ), e);
+        }
 
-        // Call delegate service to create an authorization request
-        AuthorizationContext authorizationContext = authorizationRequestService
-                .createAuthorizationRequest(authSession, authReqs);
-
-        AuthorizationContext reducedContext = new AuthorizationContext()
-                .setAuthorizationRequest(authorizationContext.getAuthorizationRequest())
-                .setTransactionId(authorizationContext.getTransactionId());
+        AuthorizationContext authContext = startAuthentication(clientId);
+        AuthenticationSessionModel authSession = recoverAuthenticationSession(
+                authContext.getTransactionId()
+        );
 
         return CorsService.forWebOrigins(authSession)
-                .add(Response.ok(reducedContext));
+                .add(Response.ok(authContext));
     }
 
     /**
@@ -189,7 +190,7 @@ public class OID4VPUserAuthEndpoint extends OID4VPUserAuthEndpointBase
      * In cross-device flows, the wallet should poll this endpoint.
      */
     @GET
-    @Path("/status/{transactionId}")
+    @Path(AUTH_STATUS_PATH)
     @Produces(MediaType.APPLICATION_JSON)
     public Response getAuthorizationContextState(@PathParam("transactionId") String transactionId) {
         logger.debug("Inquiring authorization context state by transaction ID...");
@@ -218,23 +219,38 @@ public class OID4VPUserAuthEndpoint extends OID4VPUserAuthEndpointBase
     }
 
     /**
+     * Initializes OpenID4VP authentication and return authorization context
+     */
+    public AuthorizationContext startAuthentication(String clientId) {
+        logger.debug("Generating new authentication context...");
+        event.event(EventType.OID4VP_INIT_AUTH);
+
+        ClientModel client = checkClient(clientId);
+        AuthenticationSessionModel authSession = createAuthSession(client);
+        AuthenticatorConfigModel authConfig = getSdjwtAuthenticatorConfig();
+        SdJwtAuthRequirements authReqs = new SdJwtAuthRequirements(session.getContext(), authConfig);
+
+        // Call delegate service to create an authorization request
+        AuthorizationContext authorizationContext = authorizationRequestService
+                .createAuthorizationRequest(authSession, authReqs);
+
+        return new AuthorizationContext()
+                .setAuthorizationRequest(authorizationContext.getAuthorizationRequest())
+                .setTransactionId(authorizationContext.getTransactionId());
+    }
+
+    /**
      * Loads client model associated with the given client ID
      */
-    private ClientModel checkClient(String clientId) {
+    public ClientModel checkClient(String clientId) {
         ClientModel client = realm.getClientByClientId(clientId);
 
         if (client == null) {
-            throw new BadRequestException(errorResponse(
-                    Response.Status.BAD_REQUEST,
-                    "Invalid client ID"
-            ));
+            throw new IllegalArgumentException("Invalid client ID");
         }
 
         if (!client.isEnabled()) {
-            throw new BadRequestException(errorResponse(
-                    Response.Status.BAD_REQUEST,
-                    "Client is disabled"
-            ));
+            throw new IllegalArgumentException("Client is disabled");
         }
 
         return client;

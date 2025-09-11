@@ -17,8 +17,16 @@
 
 package org.keycloak.forms.login.freemarker.model;
 
+import jakarta.ws.rs.core.UriBuilder;
+import org.jboss.logging.Logger;
+import org.keycloak.OAuth2Constants;
+import org.keycloak.common.ClientConnection;
+import org.keycloak.events.EventBuilder;
+import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
 import org.keycloak.protocol.oid4vc.oid4vp.OID4VPUserAuthEndpoint;
+import org.keycloak.protocol.oid4vc.oid4vp.OID4VPUserAuthEndpointFactory;
+import org.keycloak.protocol.oid4vc.oid4vp.model.dto.AuthorizationContext;
 import org.keycloak.services.Urls;
 import org.keycloak.services.resources.LoginActionsService;
 
@@ -29,21 +37,49 @@ import java.net.URI;
  */
 public class OID4VPUserAuthBean {
 
-    private final String realm;
+    private static final Logger logger = Logger.getLogger(OID4VPUserAuthBean.class);
+
+    public static final String PARAM_LOGIN_METHOD = "login_method";
+    public static final String LOGIN_METHOD_OID4VP = "oid4vp";
+
+    private final KeycloakSession session;
+    private final RealmModel realm;
     private final URI baseUri;
 
-    public OID4VPUserAuthBean(RealmModel realm, URI baseUri) {
-        this.realm = realm.getName();
+    private final OID4VPUserAuthEndpoint oid4VPUserAuthEndpoint;
+
+    public OID4VPUserAuthBean(KeycloakSession session, RealmModel realm, URI baseUri) {
+        this.session = session;
+        this.realm = realm;
         this.baseUri = baseUri;
+
+        ClientConnection connection = session.getContext().getConnection();
+        EventBuilder event = new EventBuilder(realm, session, connection);
+        this.oid4VPUserAuthEndpoint = new OID4VPUserAuthEndpoint(session, event);
     }
 
     /**
-     * URL to initiate the OID4VP authentication request
+     * URL to trigger UI view for signing in with a wallet
      */
-    public String getRequestUrl() {
-        return Urls.realmBase(baseUri)
-                .path(OID4VPUserAuthEndpoint.class, "getAuthenticationRequest")
-                .build(realm)
+    public String getLoginUrl() {
+        URI currentUri = session.getContext().getUri().getRequestUri();
+
+        // Read client ID
+        var params = session.getContext().getUri().getQueryParameters();
+        String clientId = params.getFirst(OAuth2Constants.CLIENT_ID);
+
+        // Validate client ID for OpenID4VP login
+        try {
+            oid4VPUserAuthEndpoint.checkClient(clientId);
+        } catch (IllegalArgumentException e) {
+            logger.debugf("Invalid client ID '%s' in OIDC URL. Not offering option for OpenID4VP login", clientId);
+            return null;
+        }
+
+        // Build a new URI with the extra query parameter
+        return UriBuilder.fromUri(currentUri)
+                .replaceQueryParam(PARAM_LOGIN_METHOD, LOGIN_METHOD_OID4VP)
+                .build()
                 .toString();
     }
 
@@ -53,7 +89,70 @@ public class OID4VPUserAuthBean {
     public String getLoginActionUrl() {
         return Urls.loginActionsBase(baseUri)
                 .path(LoginActionsService.class, "oid4vpAuthLogin")
-                .build(realm)
+                .build(realm.getName())
                 .toString();
+    }
+
+    /**
+     * Initiate OID4VP authentication and pass authorization context to UI.
+     */
+    public AuthContextBean getAuthContext() {
+        var params = session.getContext().getUri().getQueryParameters();
+
+        // Skip if OID4VP login method not requested
+        String loginMethod = params.getFirst(PARAM_LOGIN_METHOD);
+        if (!LOGIN_METHOD_OID4VP.equals(loginMethod)) {
+            logger.debugf("OpenID4VP login method not requested. Skipping auth context provisioning");
+            return null;
+        }
+
+        // Initiate OID4VP authentication
+        String clientId = params.getFirst(OAuth2Constants.CLIENT_ID);
+        AuthorizationContext authContext = oid4VPUserAuthEndpoint.startAuthentication(clientId);
+
+        // Build URL for polling status
+        String authStatusUrl = buildAuthStatusUrl(authContext.getTransactionId());
+
+        // Return collected context
+        return new AuthContextBean()
+                .setAuthReqQrCode(authContext.getAuthorizationRequest())
+                .setAuthStatusUrl(authStatusUrl);
+    }
+
+    private String buildAuthStatusUrl(String transactionId) {
+        URI currentUri = session.getContext().getUri().getBaseUri();
+        return UriBuilder.fromUri(currentUri)
+                .path("/realms/{realm}")
+                .path(OID4VPUserAuthEndpointFactory.PROVIDER_ID)
+                .path(OID4VPUserAuthEndpoint.AUTH_STATUS_PATH)
+                .build(realm.getName(), transactionId)
+                .toString();
+    }
+
+    /**
+     * Parameters for OpenID4VP authentication
+     */
+    public static class AuthContextBean {
+
+        private String authReqQrCode;
+        private String authStatusUrl;
+
+        public String getAuthReqQrCode() {
+            return authReqQrCode;
+        }
+
+        public AuthContextBean setAuthReqQrCode(String authReqQrCode) {
+            this.authReqQrCode = authReqQrCode;
+            return this;
+        }
+
+        public String getAuthStatusUrl() {
+            return authStatusUrl;
+        }
+
+        public AuthContextBean setAuthStatusUrl(String authStatusUrl) {
+            this.authStatusUrl = authStatusUrl;
+            return this;
+        }
     }
 }

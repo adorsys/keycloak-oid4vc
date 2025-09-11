@@ -572,7 +572,7 @@ public class FreeMarkerLoginFormsProvider implements LoginFormsProvider {
             }
 
             if (Profile.isFeatureEnabled(Feature.OID4VC_VPAUTH)) {
-                attributes.put("oid4vp", new OID4VPUserAuthBean(realm, baseUri));
+                attributes.put("oid4vp", new OID4VPUserAuthBean(session, realm, baseUri));
             }
 
             if (Profile.isFeatureEnabled(Feature.ORGANIZATION)) {
