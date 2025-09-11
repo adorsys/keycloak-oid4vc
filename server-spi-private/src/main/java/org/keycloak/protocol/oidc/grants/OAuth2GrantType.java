@@ -126,10 +126,6 @@ public interface OAuth2GrantType extends Provider {
             this.clientAuthAttributes = clientAuthAttributes;
         }
 
-        public void setProtocol(LoginProtocol protocol) {
-            this.protocol = protocol;
-        }
-
         public ClientModel getClient() {
             return client;
         }
