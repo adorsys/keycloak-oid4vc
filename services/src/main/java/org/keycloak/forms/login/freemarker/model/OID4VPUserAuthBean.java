@@ -17,6 +17,12 @@
 
 package org.keycloak.forms.login.freemarker.model;
 
+import com.google.zxing.BarcodeFormat;
+import com.google.zxing.EncodeHintType;
+import com.google.zxing.WriterException;
+import com.google.zxing.client.j2se.MatrixToImageWriter;
+import com.google.zxing.common.BitMatrix;
+import com.google.zxing.qrcode.QRCodeWriter;
 import jakarta.ws.rs.core.UriBuilder;
 import org.jboss.logging.Logger;
 import org.keycloak.OAuth2Constants;
@@ -30,7 +36,11 @@ import org.keycloak.protocol.oid4vc.oid4vp.model.dto.AuthorizationContext;
 import org.keycloak.services.Urls;
 import org.keycloak.services.resources.LoginActionsService;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.net.URI;
+import java.util.Base64;
+import java.util.Map;
 
 /**
  * @author <a href="mailto:Ingrid.Kamga@adorsys.com">Ingrid Kamga</a>
@@ -42,11 +52,15 @@ public class OID4VPUserAuthBean {
     public static final String PARAM_LOGIN_METHOD = "login_method";
     public static final String LOGIN_METHOD_OID4VP = "oid4vp";
 
+    public static final String QR_CODE_IMAGE_FORMAT = "png";
+    public static final int QR_CODE_IMAGE_SIZE = 300;
+
     private final KeycloakSession session;
     private final RealmModel realm;
     private final URI baseUri;
 
     private final OID4VPUserAuthEndpoint oid4VPUserAuthEndpoint;
+    private AuthContextBean authContextBean;
 
     public OID4VPUserAuthBean(KeycloakSession session, RealmModel realm, URI baseUri) {
         this.session = session;
@@ -106,17 +120,26 @@ public class OID4VPUserAuthBean {
             return null;
         }
 
+        // Return cached context if already initiated
+        if (authContextBean != null) {
+            return authContextBean;
+        }
+
         // Initiate OID4VP authentication
         String clientId = params.getFirst(OAuth2Constants.CLIENT_ID);
         AuthorizationContext authContext = oid4VPUserAuthEndpoint.startAuthentication(clientId);
 
+        // Convert authorization request to QR code
+        String authReqQrCode = turnToQrCodeImageData(authContext.getAuthorizationRequest());
+
         // Build URL for polling status
         String authStatusUrl = buildAuthStatusUrl(authContext.getTransactionId());
 
-        // Return collected context
-        return new AuthContextBean()
-                .setAuthReqQrCode(authContext.getAuthorizationRequest())
+        // Collect and return context
+        authContextBean = new AuthContextBean()
+                .setAuthReqQrCode(authReqQrCode)
                 .setAuthStatusUrl(authStatusUrl);
+        return authContextBean;
     }
 
     private String buildAuthStatusUrl(String transactionId) {
@@ -127,6 +150,28 @@ public class OID4VPUserAuthBean {
                 .path(OID4VPUserAuthEndpoint.AUTH_STATUS_PATH)
                 .build(realm.getName(), transactionId)
                 .toString();
+    }
+
+    private String turnToQrCodeImageData(String data) {
+        try {
+            QRCodeWriter qrCodeWriter = new QRCodeWriter();
+            BitMatrix bitMatrix = qrCodeWriter.encode(
+                    data, BarcodeFormat.QR_CODE,
+                    QR_CODE_IMAGE_SIZE, QR_CODE_IMAGE_SIZE,
+                    // Set margin to 0 to remove default padding
+                    Map.of(EncodeHintType.MARGIN, 0)
+            );
+
+            ByteArrayOutputStream bos = new ByteArrayOutputStream();
+            MatrixToImageWriter.writeToStream(bitMatrix, QR_CODE_IMAGE_FORMAT, bos);
+
+            byte[] pngBytes = bos.toByteArray();
+            String base64 = Base64.getEncoder().encodeToString(pngBytes);
+
+            return String.format("data:image/%s;base64,%s", QR_CODE_IMAGE_FORMAT, base64);
+        } catch (WriterException | IOException e) {
+            throw new RuntimeException("QR code creating failed", e);
+        }
     }
 
     /**

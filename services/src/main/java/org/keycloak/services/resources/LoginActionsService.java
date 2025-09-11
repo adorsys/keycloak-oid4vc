@@ -16,6 +16,7 @@
  */
 package org.keycloak.services.resources;
 
+import jakarta.ws.rs.FormParam;
 import jakarta.ws.rs.HEAD;
 import org.jboss.logging.Logger;
 import org.keycloak.common.Profile;
@@ -1259,13 +1260,14 @@ public class LoginActionsService {
 
     @Path(OID4VP_AUTH_LOGIN_PATH)
     @POST
+    @Consumes(MediaType.APPLICATION_FORM_URLENCODED)
     public Response oid4vpAuthLogin(@QueryParam(AUTH_SESSION_ID) String authSessionId,
                                     @QueryParam(SESSION_CODE) String code,
-                                    @QueryParam(OAuth2Constants.CODE) String authorizationCode,
                                     @QueryParam(Constants.EXECUTION) String execution,
                                     @QueryParam(Constants.CLIENT_ID) String clientId,
                                     @QueryParam(Constants.CLIENT_DATA) String clientData,
-                                    @QueryParam(Constants.TAB_ID) String tabId) {
+                                    @QueryParam(Constants.TAB_ID) String tabId,
+                                    @FormParam(OAuth2Constants.CODE) String authorizationCode) {
         SessionCodeChecks checks = checksForCode(authSessionId, code, execution, clientId, tabId, clientData, AUTHENTICATE_PATH);
         if (!checks.verifyActiveAndValidAction(AuthenticationSessionModel.Action.AUTHENTICATE.name(), ClientSessionCode.ActionType.LOGIN)) {
             return checks.getResponse();
@@ -1276,6 +1278,7 @@ public class LoginActionsService {
         AuthenticationSessionModel authSession = checks.getAuthenticationSession();
 
         // Validate authorization code
+        logger.debugf("Validating authorization code: %s", authorizationCode);
         OAuth2CodeParser.ParseResult result = OAuth2CodeParser.parseCode(session, authorizationCode, realm, event);
         if (result.isIllegalCode() || result.isExpiredCode()) {
             String errorMessage = "Authorization code not valid";
@@ -1288,10 +1291,8 @@ public class LoginActionsService {
         UserSessionModel userSession = clientSession.getUserSession();
         authSession.setAuthenticatedUser(userSession.getUser());
 
-        // Build the ClientSessionContext
-        ClientSessionContext clientSessionCtx = DefaultClientSessionContext
-                .fromClientSessionScopeParameter(clientSession, session);
-
+        logger.debugf("Attempting redirection to client '%s' after successful OID4VP authentication", clientSession.getClient().getClientId());
+        ClientSessionContext clientSessionCtx = AuthenticationProcessor.attachSession(authSession, userSession, session, realm, clientConnection, event);
         return AuthenticationManager.redirectAfterSuccessfulFlow(
                 session, realm, userSession, clientSessionCtx,
                 request, uriInfo, clientConnection, event, authSession

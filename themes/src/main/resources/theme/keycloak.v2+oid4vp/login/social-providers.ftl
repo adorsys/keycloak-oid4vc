@@ -4,7 +4,7 @@
     <#if oid4vp?? && oid4vp.loginUrl??>
         <#assign providers = [{
             "alias": "oid4vp-wallet",
-            "displayName": "Sign in with a wallet",
+            "displayName": "${msg('oid4vpLoginBtnMessage')}",
             "loginUrl": "${oid4vp.loginUrl}"
         }] + social.providers>
     <#else>

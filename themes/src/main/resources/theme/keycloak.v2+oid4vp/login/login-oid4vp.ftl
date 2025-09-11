@@ -3,15 +3,19 @@
 <!-- template: login-oid4vp-wallet.ftl -->
 
     <#if section = "header">
-        Scan the QR code
+        ${msg('oid4vpScanPageTitle')}
     <#elseif section = "form">
-        <p>${oid4vp.authContext.authReqQrCode}</p>
-
+        <div class="pf-v5-u-p-md pf-v5-u-text-align-center">
+            <img src="${oid4vp.authContext.authReqQrCode}" 
+                 style="max-width: 300px;"
+                 alt="QR Code" />
+        </div>
+        
         <form action="${oid4vp.loginActionUrl}"
               id="kc-oid4vp-completion-form"
               method="post"
               style="display:none;">
-            <input type="hidden" id="code" name="code" value="" />
+            <input type="hidden" id="kc-oid4vp-code-input" name="code" value="" />
         </form>
 
         <script type="module">
