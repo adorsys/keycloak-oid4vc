@@ -41,6 +41,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.util.Base64;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * @author <a href="mailto:Ingrid.Kamga@adorsys.com">Ingrid Kamga</a>
@@ -198,6 +199,18 @@ public class OID4VPUserAuthBean {
         public AuthContextBean setAuthStatusUrl(String authStatusUrl) {
             this.authStatusUrl = authStatusUrl;
             return this;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (o == null || getClass() != o.getClass()) return false;
+            AuthContextBean that = (AuthContextBean) o;
+            return Objects.equals(authReqQrCode, that.authReqQrCode) && Objects.equals(authStatusUrl, that.authStatusUrl);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(authReqQrCode, authStatusUrl);
         }
     }
 }

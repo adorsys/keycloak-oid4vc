@@ -24,12 +24,12 @@ import org.apache.http.NameValuePair;
 import org.apache.http.client.entity.UrlEncodedFormEntity;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
+import org.apache.http.client.utils.URIBuilder;
 import org.apache.http.client.utils.URLEncodedUtils;
 import org.apache.http.message.BasicNameValuePair;
 import org.apache.http.util.EntityUtils;
 import org.junit.Before;
 import org.junit.Test;
-import org.keycloak.OAuth2Constants;
 import org.keycloak.TokenVerifier;
 import org.keycloak.common.Profile;
 import org.keycloak.common.util.KeycloakUriBuilder;
@@ -85,10 +85,9 @@ import static org.keycloak.protocol.oid4vc.oid4vp.authenticator.SdJwtAuthenticat
 @EnableFeature(value = Profile.Feature.OID4VC_VPAUTH, skipRestart = true)
 public class OID4VPUserAuthEndpointTest extends OID4VCIssuerEndpointTest {
 
-    private static final String TEST_USER = "test-user@localhost";
-    private static final String TEST_CLIENT_ID = "test-app";
-    private static final String TEST_CLIENT_SECRET = "password";
-    private static final String SD_JWT_AUTH_CONFIG = "sd-jwt-auth-config";
+    public static final String TEST_USER = "test-user@localhost";
+    public static final String TEST_CLIENT_ID = "test-app";
+    public static final String SD_JWT_AUTH_CONFIG = "sd-jwt-auth-config";
 
     private SdJwtVPTestUtils sdJwtVPTestUtils;
 
@@ -579,12 +578,12 @@ public class OID4VPUserAuthEndpointTest extends OID4VCIssuerEndpointTest {
      * A request is sent to the endpoint for this purpose.
      */
     private AuthorizationContext requestAuthorizationRequest() throws Exception {
-        String url = getOid4vpEndpoint("/request");
-        List<BasicNameValuePair> params = getClientAuthParams();
+        URI uri = new URIBuilder(getOid4vpEndpoint("/request"))
+                .addParameter("client_id", TEST_CLIENT_ID)
+                .build();
 
-        HttpPost httpPost = new HttpPost(url);
-        httpPost.setEntity(new UrlEncodedFormEntity(params));
-        HttpResponse response = httpClient.execute(httpPost);
+        HttpGet httpGet = new HttpGet(uri);
+        HttpResponse response = httpClient.execute(httpGet);
         assertEquals(HttpStatus.SC_OK, response.getStatusLine().getStatusCode());
 
         return parseAuthorizationContext(response);
@@ -727,13 +726,6 @@ public class OID4VPUserAuthEndpointTest extends OID4VCIssuerEndpointTest {
                 .path(route)
                 .build()
                 .toString();
-    }
-
-    private static List<BasicNameValuePair> getClientAuthParams() {
-        return new ArrayList<>(List.of(
-                new BasicNameValuePair(OAuth2Constants.CLIENT_ID, TEST_CLIENT_ID),
-                new BasicNameValuePair(OAuth2Constants.CLIENT_SECRET, TEST_CLIENT_SECRET)
-        ));
     }
 
     /**
