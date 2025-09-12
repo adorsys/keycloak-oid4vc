@@ -49,6 +49,7 @@ import org.keycloak.forms.login.freemarker.model.IdpReviewProfileBean;
 import org.keycloak.forms.login.freemarker.model.LoginBean;
 import org.keycloak.forms.login.freemarker.model.LogoutConfirmBean;
 import org.keycloak.forms.login.freemarker.model.OAuthGrantBean;
+import org.keycloak.forms.login.freemarker.model.OID4VPUserAuthBean;
 import org.keycloak.forms.login.freemarker.model.OrganizationBean;
 import org.keycloak.forms.login.freemarker.model.PasswordPoliciesBean;
 import org.keycloak.forms.login.freemarker.model.ProfileBean;
@@ -568,6 +569,10 @@ public class FreeMarkerLoginFormsProvider implements LoginFormsProvider {
                 attributes.put("locale", localeBean);
 
                 lang = localeBean.getCurrentLanguageTag();
+            }
+
+            if (Profile.isFeatureEnabled(Feature.OID4VC_VPAUTH)) {
+                attributes.put("oid4vp", new OID4VPUserAuthBean(session, realm, baseUri));
             }
 
             if (Profile.isFeatureEnabled(Feature.ORGANIZATION)) {

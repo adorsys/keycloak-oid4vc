@@ -28,9 +28,11 @@ import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import org.jboss.logging.Logger;
+import org.keycloak.OAuth2Constants;
 import org.keycloak.OAuthErrorException;
 import org.keycloak.authentication.AuthenticationProcessor;
 import org.keycloak.events.EventBuilder;
@@ -45,7 +47,6 @@ import org.keycloak.protocol.oid4vc.oid4vp.service.AuthenticationSessionStore;
 import org.keycloak.protocol.oid4vc.oid4vp.service.AuthorizationRequestService;
 import org.keycloak.protocol.oid4vc.oid4vp.service.AuthorizationResponseService;
 import org.keycloak.protocol.oid4vc.oid4vp.service.CorsService;
-import org.keycloak.protocol.oidc.utils.AuthorizeClientUtil;
 import org.keycloak.representations.idm.OAuth2ErrorRepresentation;
 import org.keycloak.services.resource.RealmResourceProvider;
 import org.keycloak.sessions.AuthenticationSessionModel;
@@ -67,6 +68,7 @@ public class OID4VPUserAuthEndpoint extends OID4VPUserAuthEndpointBase
 
     public static final String REQUEST_JWT_PATH = "/request.jwt";
     public static final String RESPONSE_URI_PATH = "/response";
+    public static final String AUTH_STATUS_PATH = "/status/{transactionId}";
 
     private final AuthorizationRequestService authorizationRequestService;
     private final AuthorizationResponseService authorizationResponseService;
@@ -86,29 +88,28 @@ public class OID4VPUserAuthEndpoint extends OID4VPUserAuthEndpointBase
     /**
      * Generates an OpenID4VP authentication request for user authentication.
      */
-    @POST
+    @GET
     @Path("/request")
-    @Consumes(MediaType.APPLICATION_FORM_URLENCODED)
     @Produces(MediaType.APPLICATION_JSON)
-    public Response getAuthenticationRequest() {
+    public Response getAuthenticationRequest(@QueryParam(OAuth2Constants.CLIENT_ID) String clientId) {
         logger.debug("Initiating user authentication over OpenID4VP...");
-        event.event(EventType.OID4VP_INIT_AUTH);
 
-        ClientModel client = authenticateClient();
-        AuthenticationSessionModel authSession = createAuthSession(client);
-        AuthenticatorConfigModel authConfig = getSdjwtAuthenticatorConfig();
-        SdJwtAuthRequirements authReqs = new SdJwtAuthRequirements(session.getContext(), authConfig);
+        try {
+            checkClient(clientId);
+        } catch (IllegalArgumentException e) {
+            throw new BadRequestException(errorResponse(
+                    Response.Status.BAD_REQUEST,
+                    "Invalid client ID. Maybe unknown or disabled"
+            ), e);
+        }
 
-        // Call delegate service to create an authorization request
-        AuthorizationContext authorizationContext = authorizationRequestService
-                .createAuthorizationRequest(authSession, authReqs);
-
-        AuthorizationContext reducedContext = new AuthorizationContext()
-                .setAuthorizationRequest(authorizationContext.getAuthorizationRequest())
-                .setTransactionId(authorizationContext.getTransactionId());
+        AuthorizationContext authContext = startAuthentication(clientId);
+        AuthenticationSessionModel authSession = recoverAuthenticationSession(
+                authContext.getTransactionId()
+        );
 
         return CorsService.forWebOrigins(authSession)
-                .add(Response.ok(reducedContext));
+                .add(Response.ok(authContext));
     }
 
     /**
@@ -189,7 +190,7 @@ public class OID4VPUserAuthEndpoint extends OID4VPUserAuthEndpointBase
      * In cross-device flows, the wallet should poll this endpoint.
      */
     @GET
-    @Path("/status/{transactionId}")
+    @Path(AUTH_STATUS_PATH)
     @Produces(MediaType.APPLICATION_JSON)
     public Response getAuthorizationContextState(@PathParam("transactionId") String transactionId) {
         logger.debug("Inquiring authorization context state by transaction ID...");
@@ -218,15 +219,40 @@ public class OID4VPUserAuthEndpoint extends OID4VPUserAuthEndpointBase
     }
 
     /**
-     * Authenticates the client making the request.
+     * Initializes OpenID4VP authentication and return authorization context
      */
-    private ClientModel authenticateClient() {
-        logger.debugf("Attempting client authentication...");
-        ClientModel client = AuthorizeClientUtil
-                .authorizeClient(session, event, CorsService.open())
-                .getClient();
+    public AuthorizationContext startAuthentication(String clientId) {
+        logger.debug("Generating new authentication context...");
+        event.event(EventType.OID4VP_INIT_AUTH);
 
-        logger.debugf("Client %s authenticated", client.getClientId());
+        ClientModel client = checkClient(clientId);
+        AuthenticationSessionModel authSession = createAuthSession(client);
+        AuthenticatorConfigModel authConfig = getSdjwtAuthenticatorConfig();
+        SdJwtAuthRequirements authReqs = new SdJwtAuthRequirements(session.getContext(), authConfig);
+
+        // Call delegate service to create an authorization request
+        AuthorizationContext authorizationContext = authorizationRequestService
+                .createAuthorizationRequest(authSession, authReqs);
+
+        return new AuthorizationContext()
+                .setAuthorizationRequest(authorizationContext.getAuthorizationRequest())
+                .setTransactionId(authorizationContext.getTransactionId());
+    }
+
+    /**
+     * Loads client model associated with the given client ID
+     */
+    public ClientModel checkClient(String clientId) {
+        ClientModel client = realm.getClientByClientId(clientId);
+
+        if (client == null) {
+            throw new IllegalArgumentException("Invalid client ID");
+        }
+
+        if (!client.isEnabled()) {
+            throw new IllegalArgumentException("Client is disabled");
+        }
+
         return client;
     }
 
