@@ -1286,15 +1286,15 @@ public class LoginActionsService {
             return ErrorPage.error(session, authSession, Response.Status.BAD_REQUEST, errorMessage);
         }
 
-        // Recover authenticated client and user session
-        AuthenticatedClientSessionModel clientSession = result.getClientSession();
-        UserSessionModel userSession = clientSession.getUserSession();
-        authSession.setAuthenticatedUser(userSession.getUser());
+        // Attach authenticated user to OIDC sessions
+        authSession.setAuthenticatedUser(result.getClientSession().getUserSession().getUser());
+        ClientSessionContext clientSessionCtx = AuthenticationProcessor.attachSession(
+                authSession, null, session, realm, clientConnection, event);
+        UserSessionModel freshUserSession = clientSessionCtx.getClientSession().getUserSession();
 
-        logger.debugf("Attempting redirection to client '%s' after successful OID4VP authentication", clientSession.getClient().getClientId());
-        ClientSessionContext clientSessionCtx = AuthenticationProcessor.attachSession(authSession, userSession, session, realm, clientConnection, event);
+        logger.debugf("Attempting redirection after successful OID4VP authentication");
         return AuthenticationManager.redirectAfterSuccessfulFlow(
-                session, realm, userSession, clientSessionCtx,
+                session, realm, freshUserSession, clientSessionCtx,
                 request, uriInfo, clientConnection, event, authSession
         );
     }
