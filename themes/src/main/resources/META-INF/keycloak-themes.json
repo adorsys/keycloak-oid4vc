@@ -11,8 +11,5 @@
     }, {
         "name" : "keycloak.v2+oid4vp",
         "types": [ "login" ]
-    }, {
-        "name" : "custom+oid4vp",
-        "types": [ "login" ]
     }]
 }

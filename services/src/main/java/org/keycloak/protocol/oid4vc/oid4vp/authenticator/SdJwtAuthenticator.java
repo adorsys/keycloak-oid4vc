@@ -119,12 +119,9 @@ public class SdJwtAuthenticator implements Authenticator {
         );
 
         // Import user if not found
-        // TODO: Improve user import strategy. Extend AbstractIdpAuthenticator?
         if (user == null) {
-            user = context.getSession().users().addUser(
-                    context.getRealm(),
-                    username
-            );
+            // TODO: Improve user import strategy. Extend AbstractIdpAuthenticator?
+            user = context.getSession().users().addUser(context.getRealm(), username);
             user.setEnabled(true);
             logger.infof("Imported user '%s' from SD-JWT credential", username);
         }
