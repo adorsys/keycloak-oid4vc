@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package org.keycloak.testsuite.oid4vc.oid4vp.oidc;
+package org.keycloak.testsuite.oid4vc.oid4vp;
 
 import jakarta.ws.rs.core.UriBuilder;
 import org.jboss.resteasy.mock.MockHttpRequest;
@@ -55,7 +55,7 @@ public class OID4VPUserAuthBeanTest extends OID4VCIssuerEndpointTest {
             OID4VPUserAuthBean bean = createBeanHelper(session);
 
             // Login URL should contain login_method=oid4vp
-            URI loginUrl = UriBuilder.fromUri(bean.getLoginUrl()).build();
+            URI loginUrl = URI.create(bean.getLoginUrl());
             ResteasyUriInfo uriInfo = new ResteasyUriInfo(loginUrl);
             String loginMethod = uriInfo.getQueryParameters().getFirst(PARAM_LOGIN_METHOD);
             assertEquals(LOGIN_METHOD_OID4VP, loginMethod);
