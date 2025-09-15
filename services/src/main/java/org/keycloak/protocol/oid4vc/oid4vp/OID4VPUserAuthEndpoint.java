@@ -100,7 +100,7 @@ public class OID4VPUserAuthEndpoint extends OID4VPUserAuthEndpointBase
             throw new BadRequestException(errorResponse(
                     Response.Status.BAD_REQUEST,
                     OAuthErrorException.INVALID_CLIENT,
-                    "Invalid client ID. Maybe unknown or disabled"
+                    "Cannot proceed with provided client ID"
             ), e);
         }
 
@@ -251,7 +251,7 @@ public class OID4VPUserAuthEndpoint extends OID4VPUserAuthEndpointBase
         ClientModel client = realm.getClientByClientId(clientId);
 
         if (client == null) {
-            throw new IllegalArgumentException("Invalid client ID");
+            throw new IllegalArgumentException("Client is unknown");
         }
 
         if (!client.isEnabled()) {
