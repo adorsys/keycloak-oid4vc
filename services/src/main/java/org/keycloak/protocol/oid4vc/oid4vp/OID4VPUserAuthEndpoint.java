@@ -99,6 +99,7 @@ public class OID4VPUserAuthEndpoint extends OID4VPUserAuthEndpointBase
         } catch (IllegalArgumentException e) {
             throw new BadRequestException(errorResponse(
                     Response.Status.BAD_REQUEST,
+                    OAuthErrorException.INVALID_CLIENT,
                     "Invalid client ID. Maybe unknown or disabled"
             ), e);
         }
@@ -129,6 +130,7 @@ public class OID4VPUserAuthEndpoint extends OID4VPUserAuthEndpointBase
         } catch (IllegalArgumentException e) {
             throw new NotFoundException(errorResponse(
                     Response.Status.NOT_FOUND,
+                    OAuthErrorException.INVALID_REQUEST,
                     "Authorization context not found for request ID: " + requestId
             ), e);
         }
@@ -158,6 +160,7 @@ public class OID4VPUserAuthEndpoint extends OID4VPUserAuthEndpointBase
         } catch (IllegalArgumentException | JsonProcessingException e) {
             throw new BadRequestException(errorResponse(
                     Response.Status.BAD_REQUEST,
+                    OAuthErrorException.INVALID_REQUEST,
                     String.format("Unparseable response params (%s)", e.getMessage())
             ), e);
         }
@@ -172,6 +175,7 @@ public class OID4VPUserAuthEndpoint extends OID4VPUserAuthEndpointBase
         } catch (IllegalArgumentException e) {
             throw new BadRequestException(errorResponse(
                     Response.Status.BAD_REQUEST,
+                    OAuthErrorException.INVALID_REQUEST,
                     "Authorization context not found for state (request ID): " + state
             ), e);
         }
@@ -204,6 +208,7 @@ public class OID4VPUserAuthEndpoint extends OID4VPUserAuthEndpointBase
         } catch (IllegalArgumentException e) {
             throw new NotFoundException(errorResponse(
                     Response.Status.NOT_FOUND,
+                    OAuthErrorException.INVALID_REQUEST,
                     "Authorization context not found for transaction ID: " + transactionId
             ), e);
         }
@@ -273,8 +278,8 @@ public class OID4VPUserAuthEndpoint extends OID4VPUserAuthEndpointBase
     /**
      * Prepares an invalid request response with the given status and error description.
      */
-    private Response errorResponse(Response.Status status, String errorDescription) {
-        var errorResponse = new OAuth2ErrorRepresentation(OAuthErrorException.INVALID_REQUEST, errorDescription);
+    private Response errorResponse(Response.Status status, String error, String errorDescription) {
+        var errorResponse = new OAuth2ErrorRepresentation(error, errorDescription);
         return CorsService.open().add(Response
                 .status(status)
                 .entity(errorResponse)

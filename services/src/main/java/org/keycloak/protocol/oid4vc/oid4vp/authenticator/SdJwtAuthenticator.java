@@ -90,6 +90,12 @@ public class SdJwtAuthenticator implements Authenticator {
         }
 
         UserModel user = recoverAuthenticatingUser(context, sdJwt);
+        if (user == null) {
+            logger.debugf("Authentication passed but authenticating user is unknown");
+            failDenyingAuthenticatingUser(context);
+            return;
+        }
+
         context.setUser(user);
         context.success(); // Mark authentication as successful
         logger.debugf("User '%s' successfully authenticated", user.getUsername());
@@ -122,8 +128,13 @@ public class SdJwtAuthenticator implements Authenticator {
         if (user == null) {
             // TODO: Improve user import strategy. Extend AbstractIdpAuthenticator?
             user = context.getSession().users().addUser(context.getRealm(), username);
-            user.setEnabled(true);
-            logger.infof("Imported user '%s' from SD-JWT credential", username);
+
+            if (user != null) {
+                user.setEnabled(true);
+                logger.infof("Imported user '%s' from SD-JWT credential", username);
+            } else {
+                logger.errorf("Failed to import user '%s' from SD-JWT credential into Keycloak", username);
+            }
         }
 
         return user;
@@ -168,6 +179,23 @@ public class SdJwtAuthenticator implements Authenticator {
 
         context.failure(
                 AuthenticationFlowError.INVALID_CREDENTIALS,
+                Response.status(Response.Status.UNAUTHORIZED.getStatusCode())
+                        .type(MediaType.APPLICATION_JSON_TYPE)
+                        .entity(errorRep)
+                        .build()
+        );
+    }
+
+    private void failDenyingAuthenticatingUser(AuthenticationFlowContext context) {
+        logger.info("Presented SD-JWT will be rejected for associated user is unknown and could not be imported");
+
+        var errorRep = new OAuth2ErrorRepresentation(
+                Errors.USER_NOT_FOUND,
+                "User with presented SD-JWT unknown and could not be imported"
+        );
+
+        context.failure(
+                AuthenticationFlowError.UNKNOWN_USER,
                 Response.status(Response.Status.UNAUTHORIZED.getStatusCode())
                         .type(MediaType.APPLICATION_JSON_TYPE)
                         .entity(errorRep)

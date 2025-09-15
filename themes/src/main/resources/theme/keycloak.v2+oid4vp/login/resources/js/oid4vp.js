@@ -5,8 +5,14 @@
  *
  * @param {URL} url
  * @param {number} period
+ * @param {number} currentRetry
+ * @param {number} maxRetries
  */
-export async function checkAuthStatus(url, period) {
+export async function checkAuthStatus(url, period, currentRetry = 0, maxRetries = 30) {
+  if (currentRetry >= maxRetries) {
+    return console.error("Polling timed out. Please reload to retry.");
+  }
+
   try {
     // Retrieve status
     const response = await fetch(url);
@@ -19,7 +25,9 @@ export async function checkAuthStatus(url, period) {
 
     // Pending request
     if (data.status === "pending") {
-      return setTimeout(() => checkAuthStatus(url, period), period);
+      return setTimeout(() => checkAuthStatus(
+        url, period, 0, maxRetries
+      ), period);
     }
 
     // Authentication failed
@@ -32,7 +40,9 @@ export async function checkAuthStatus(url, period) {
   } catch (error) {
     console.error("Error while polling:", error);
     // Retrying
-    setTimeout(() => checkAuthStatus(url, period), period);
+    setTimeout(() => checkAuthStatus(
+      url, period, currentRetry + 1, maxRetries
+    ), period);
   }
 }
 

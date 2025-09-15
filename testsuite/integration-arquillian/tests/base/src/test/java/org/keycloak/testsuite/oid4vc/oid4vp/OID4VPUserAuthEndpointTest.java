@@ -33,11 +33,11 @@ import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.impl.cookie.BasicClientCookie;
 import org.apache.http.message.BasicNameValuePair;
 import org.apache.http.util.EntityUtils;
-import org.jboss.arquillian.graphene.page.Page;
 import org.jboss.resteasy.specimpl.ResteasyUriInfo;
 import org.junit.Before;
 import org.junit.Test;
 import org.keycloak.OAuth2Constants;
+import org.keycloak.OAuthErrorException;
 import org.keycloak.TokenVerifier;
 import org.keycloak.common.Profile;
 import org.keycloak.common.VerificationException;
@@ -67,7 +67,6 @@ import org.keycloak.testsuite.ActionURIUtils;
 import org.keycloak.testsuite.arquillian.annotation.EnableFeature;
 import org.keycloak.testsuite.oid4vc.issuance.signing.OID4VCIssuerEndpointTest;
 import org.keycloak.testsuite.oid4vc.oid4vp.utils.SdJwtVPTestUtils;
-import org.keycloak.testsuite.pages.LoginPage;
 import org.keycloak.testsuite.util.oauth.AccessTokenResponse;
 import org.keycloak.util.JsonSerialization;
 import org.openqa.selenium.Cookie;
@@ -106,9 +105,6 @@ public class OID4VPUserAuthEndpointTest extends OID4VCIssuerEndpointTest {
     public static final String SD_JWT_AUTH_CONFIG = "sd-jwt-auth-config";
 
     private SdJwtVPTestUtils sdJwtVPTestUtils;
-
-    @Page
-    protected LoginPage loginPage;
 
     @Before
     public void init() {
@@ -230,7 +226,6 @@ public class OID4VPUserAuthEndpointTest extends OID4VCIssuerEndpointTest {
         testSuccessfulAuthentication(sdJwt, opts);
     }
 
-
     @Test
     public void shouldAuthenticateSuccessfully_UnknownUser() throws Exception {
         // Request a SD-JWT credential from Keycloak to use for authentication
@@ -249,6 +244,20 @@ public class OID4VPUserAuthEndpointTest extends OID4VCIssuerEndpointTest {
 
             assertNotNull("User 'unknown-user' should have been imported", user);
         });
+    }
+
+    @Test
+    public void shouldFailAuthentication_IfInvalidClient() throws Exception {
+        URI uri = new URIBuilder(getOid4vpEndpoint("/request"))
+                .addParameter("client_id", "unknown-client")
+                .build();
+
+        HttpGet httpGet = new HttpGet(uri);
+        HttpResponse response = httpClient.execute(httpGet);
+        assertEquals(HttpStatus.SC_BAD_REQUEST, response.getStatusLine().getStatusCode());
+
+        OAuth2ErrorRepresentation errorRep = parseErrorResponse(response);
+        assertEquals(OAuthErrorException.INVALID_CLIENT, errorRep.getError());
     }
 
     @Test
