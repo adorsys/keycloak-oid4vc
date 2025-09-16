@@ -114,8 +114,33 @@ public class SdJwtAuthenticator implements Authenticator {
     }
 
     private UserModel recoverAuthenticatingUser(AuthenticationFlowContext context, SdJwtVP sdJwt) {
-        logger.info("Recovering authenticating user");
+        logger.info("Recovering (or importing) authenticating user");
+        String username = readUsernameFromCredential(sdJwt);
 
+        // Recover authenticating user
+        UserModel user = KeycloakModelUtils.findUserByNameOrEmail(
+                context.getSession(),
+                context.getRealm(),
+                username
+        );
+
+        // Import user if not found
+        if (user == null) {
+            // TODO: Improve user import strategy. Extend AbstractIdpAuthenticator?
+            user = context.getSession().users().addUser(context.getRealm(), username);
+
+            if (user != null) {
+                user.setEnabled(true);
+                logger.infof("Imported user '%s' from SD-JWT credential", username);
+            } else {
+                logger.errorf("Failed to import user '%s' from SD-JWT credential into Keycloak", username);
+            }
+        }
+
+        return user;
+    }
+
+    private String readUsernameFromCredential(SdJwtVP sdJwt) {
         // Read username from SD-JWT
         JsonNode issuerSignedJwtPayload = sdJwt.getIssuerSignedJWT().getPayload();
         JsonNode username = issuerSignedJwtPayload.get(OAuth2Constants.USERNAME);
@@ -126,12 +151,7 @@ public class SdJwtAuthenticator implements Authenticator {
             Objects.requireNonNull(username, "Disclosing a username is a presentation requirement");
         }
 
-        // Recover authenticating user
-        return KeycloakModelUtils.findUserByNameOrEmail(
-                context.getSession(),
-                context.getRealm(),
-                username.asText()
-        );
+        return username.asText();
     }
 
     private JsonNode readSelectivelyDisclosedUsername(SdJwtVP sdJwt) {
@@ -167,11 +187,11 @@ public class SdJwtAuthenticator implements Authenticator {
     }
 
     private void failDenyingAuthenticatingUser(AuthenticationFlowContext context) {
-        logger.info("Presented SD-JWT will be rejected for associated user is unknown");
+        logger.info("Presented SD-JWT will be rejected for associated user is unknown and could not be imported");
 
         var errorRep = new OAuth2ErrorRepresentation(
                 Errors.USER_NOT_FOUND,
-                "User with presented SD-JWT unknown"
+                "User with presented SD-JWT unknown and could not be imported"
         );
 
         context.failure(
