@@ -750,30 +750,16 @@ public class OID4VCIssuerEndpoint {
         List<String> allProofs = new ArrayList<>();
 
         Proofs proofs = credentialRequestVO.getProofs();
-        Proof proof = credentialRequestVO.getProof();
-        
-        // Validate that both proof and proofs are not provided at the same time
-        if (proofs != null && proof != null) {
-            throw new BadRequestException(getErrorResponse(ErrorType.INVALID_PROOF,
-                    "Both 'proof' and 'proofs' fields cannot be provided simultaneously. Use 'proofs' for multiple proofs or 'proof' for a single proof."));
+        if (proofs == null) {
+            return allProofs; // No proofs provided
         }
 
-        if (proofs != null) {
-            // Handle proofs array format
-            if (proofs.getJwt() == null || proofs.getJwt().isEmpty()) {
-                throw new BadRequestException(getErrorResponse(ErrorType.INVALID_PROOF,
-                        "The 'proofs' object must contain exactly one proof type with non-empty array."));
-            }
-            allProofs.addAll(proofs.getJwt());
-        } else if (proof != null) {
-            // Handle single proof format
-            if (proof.getJwt() == null || proof.getJwt().trim().isEmpty()) {
-                throw new BadRequestException(getErrorResponse(ErrorType.INVALID_PROOF,
-                        "The 'proof' object must contain a non-empty JWT."));
-            }
-            allProofs.add(proof.getJwt());
+        if (proofs.getJwt() == null || proofs.getJwt().isEmpty()) {
+            throw new BadRequestException(getErrorResponse(ErrorType.INVALID_PROOF,
+                    "The 'proofs' object must contain exactly one proof type with non-empty array."));
         }
-        
+
+        allProofs.addAll(proofs.getJwt());
         return allProofs;
     }
 
