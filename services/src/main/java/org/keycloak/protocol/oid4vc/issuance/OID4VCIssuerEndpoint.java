@@ -77,6 +77,7 @@ import org.keycloak.protocol.oid4vc.model.CredentialResponse;
 import org.keycloak.protocol.oid4vc.model.CredentialResponseEncryption;
 import org.keycloak.protocol.oid4vc.model.CredentialResponseEncryptionMetadata;
 import org.keycloak.protocol.oid4vc.model.CredentialsOffer;
+import org.keycloak.protocol.oid4vc.model.Proof;
 import org.keycloak.services.ErrorResponseException;
 import org.keycloak.protocol.oid4vc.model.ErrorResponse;
 import org.keycloak.protocol.oid4vc.model.ErrorType;
@@ -578,7 +579,24 @@ public class OID4VCIssuerEndpoint {
         }
 
         try {
-            return JsonSerialization.mapper.readValue(requestPayload, CredentialRequest.class);
+            CredentialRequest credentialRequest = JsonSerialization.mapper.readValue(requestPayload, CredentialRequest.class);
+
+            // Convert proof to proofs if proof is provided but proofs is not
+            if (credentialRequest.getProof() != null && credentialRequest.getProofs() == null) {
+                LOGGER.debugf("Converting single 'proof' field to 'proofs' array for backward compatibility");
+                Proof singleProof = credentialRequest.getProof();
+                Proofs proofsArray = new Proofs();
+                
+                // Convert single proof to proofs array format
+                if (singleProof.getJwt() != null) {
+                    proofsArray.setJwt(List.of(singleProof.getJwt()));
+                }
+                
+                credentialRequest.setProofs(proofsArray);
+                credentialRequest.setProof(null); // Clear the proof field to avoid confusion
+            }
+            
+            return credentialRequest;
         } catch (JsonProcessingException e) {
             String errorMessage = "Failed to parse JSON request: " + e.getMessage();
             LOGGER.debug(errorMessage);
@@ -658,7 +676,24 @@ public class OID4VCIssuerEndpoint {
 
         // Parse decrypted content to CredentialRequest
         try {
-            return JsonSerialization.mapper.readValue(content, CredentialRequest.class);
+            CredentialRequest credentialRequest = JsonSerialization.mapper.readValue(content, CredentialRequest.class);
+
+            // Convert proof to proofs if proof is provided but proofs is not
+            if (credentialRequest.getProof() != null && credentialRequest.getProofs() == null) {
+                LOGGER.debugf("Converting single 'proof' field to 'proofs' array for backward compatibility");
+                Proof singleProof = credentialRequest.getProof();
+                Proofs proofsArray = new Proofs();
+                
+                // Convert single proof to proofs array format
+                if (singleProof.getJwt() != null) {
+                    proofsArray.setJwt(List.of(singleProof.getJwt()));
+                }
+                
+                credentialRequest.setProofs(proofsArray);
+                credentialRequest.setProof(null); // Clear the proof field to avoid confusion
+            }
+            
+            return credentialRequest;
         } catch (JsonProcessingException e) {
             throw new JWEException("Failed to parse decrypted JWE payload: " + e.getMessage());
         }
@@ -715,16 +750,30 @@ public class OID4VCIssuerEndpoint {
         List<String> allProofs = new ArrayList<>();
 
         Proofs proofs = credentialRequestVO.getProofs();
-        if (proofs == null) {
-            return allProofs; // No proofs provided
-        }
-
-        if (proofs.getJwt() == null || proofs.getJwt().isEmpty()) {
+        Proof proof = credentialRequestVO.getProof();
+        
+        // Validate that both proof and proofs are not provided at the same time
+        if (proofs != null && proof != null) {
             throw new BadRequestException(getErrorResponse(ErrorType.INVALID_PROOF,
-                    "The 'proofs' object must contain exactly one proof type with non-empty array."));
+                    "Both 'proof' and 'proofs' fields cannot be provided simultaneously. Use 'proofs' for multiple proofs or 'proof' for a single proof."));
         }
 
-        allProofs.addAll(proofs.getJwt());
+        if (proofs != null) {
+            // Handle proofs array format
+            if (proofs.getJwt() == null || proofs.getJwt().isEmpty()) {
+                throw new BadRequestException(getErrorResponse(ErrorType.INVALID_PROOF,
+                        "The 'proofs' object must contain exactly one proof type with non-empty array."));
+            }
+            allProofs.addAll(proofs.getJwt());
+        } else if (proof != null) {
+            // Handle single proof format
+            if (proof.getJwt() == null || proof.getJwt().trim().isEmpty()) {
+                throw new BadRequestException(getErrorResponse(ErrorType.INVALID_PROOF,
+                        "The 'proof' object must contain a non-empty JWT."));
+            }
+            allProofs.add(proof.getJwt());
+        }
+        
         return allProofs;
     }
 
