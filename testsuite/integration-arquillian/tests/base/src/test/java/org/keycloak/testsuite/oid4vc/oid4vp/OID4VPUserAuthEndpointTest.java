@@ -18,25 +18,35 @@
 package org.keycloak.testsuite.oid4vc.oid4vp;
 
 import jakarta.ws.rs.core.Response;
+import org.apache.http.HttpHeaders;
 import org.apache.http.HttpResponse;
 import org.apache.http.HttpStatus;
 import org.apache.http.NameValuePair;
 import org.apache.http.client.entity.UrlEncodedFormEntity;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
+import org.apache.http.client.utils.URIBuilder;
 import org.apache.http.client.utils.URLEncodedUtils;
+import org.apache.http.impl.client.BasicCookieStore;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClientBuilder;
+import org.apache.http.impl.cookie.BasicClientCookie;
 import org.apache.http.message.BasicNameValuePair;
 import org.apache.http.util.EntityUtils;
+import org.jboss.resteasy.specimpl.ResteasyUriInfo;
 import org.junit.Before;
 import org.junit.Test;
 import org.keycloak.OAuth2Constants;
+import org.keycloak.OAuthErrorException;
 import org.keycloak.TokenVerifier;
 import org.keycloak.common.Profile;
+import org.keycloak.common.VerificationException;
 import org.keycloak.common.util.KeycloakUriBuilder;
 import org.keycloak.jose.jwk.JWK;
 import org.keycloak.jose.jws.JWSInput;
 import org.keycloak.jose.jws.JWSInputException;
 import org.keycloak.keys.Attributes;
+import org.keycloak.models.UserModel;
 import org.keycloak.protocol.oid4vc.oid4vp.OID4VPUserAuthEndpointFactory;
 import org.keycloak.protocol.oid4vc.oid4vp.authenticator.SdJwtAuthenticatorFactory;
 import org.keycloak.protocol.oid4vc.oid4vp.model.RequestObject;
@@ -53,11 +63,13 @@ import org.keycloak.representations.AccessToken;
 import org.keycloak.representations.idm.AuthenticatorConfigRepresentation;
 import org.keycloak.representations.idm.ComponentExportRepresentation;
 import org.keycloak.representations.idm.OAuth2ErrorRepresentation;
+import org.keycloak.testsuite.ActionURIUtils;
 import org.keycloak.testsuite.arquillian.annotation.EnableFeature;
 import org.keycloak.testsuite.oid4vc.issuance.signing.OID4VCIssuerEndpointTest;
 import org.keycloak.testsuite.oid4vc.oid4vp.utils.SdJwtVPTestUtils;
 import org.keycloak.testsuite.util.oauth.AccessTokenResponse;
 import org.keycloak.util.JsonSerialization;
+import org.openqa.selenium.Cookie;
 
 import java.io.IOException;
 import java.net.URI;
@@ -66,15 +78,19 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.keycloak.models.utils.DefaultAuthenticationFlows.OID4VP_AUTH_FLOW;
 import static org.keycloak.protocol.oid4vc.oid4vp.OID4VPUserAuthEndpoint.REQUEST_JWT_PATH;
 import static org.keycloak.protocol.oid4vc.oid4vp.OID4VPUserAuthEndpointBase.pruneAuthSessionId;
 import static org.keycloak.protocol.oid4vc.oid4vp.authenticator.SdJwtAuthenticatorFactory.VCT_CONFIG_DEFAULT;
+import static org.keycloak.services.resources.LoginActionsService.AUTHENTICATE_PATH;
+import static org.keycloak.services.resources.LoginActionsService.OID4VP_AUTH_LOGIN_PATH;
 
 /**
  * Testing OpenID4VP user authentication via presentation of SD-JWT identity credentials.
@@ -84,10 +100,9 @@ import static org.keycloak.protocol.oid4vc.oid4vp.authenticator.SdJwtAuthenticat
 @EnableFeature(value = Profile.Feature.OID4VC_VPAUTH, skipRestart = true)
 public class OID4VPUserAuthEndpointTest extends OID4VCIssuerEndpointTest {
 
-    private static final String TEST_USER = "test-user@localhost";
-    private static final String TEST_CLIENT_ID = "test-app";
-    private static final String TEST_CLIENT_SECRET = "password";
-    private static final String SD_JWT_AUTH_CONFIG = "sd-jwt-auth-config";
+    public static final String TEST_USER = "test-user@localhost";
+    public static final String TEST_CLIENT_ID = "test-app";
+    public static final String SD_JWT_AUTH_CONFIG = "sd-jwt-auth-config";
 
     private SdJwtVPTestUtils sdJwtVPTestUtils;
 
@@ -209,6 +224,40 @@ public class OID4VPUserAuthEndpointTest extends OID4VCIssuerEndpointTest {
         // Proceed to authentication (Base64-encoded VP token)
         TestOpts opts = TestOpts.getDefault().setShouldBase64EncodeVpToken(true);
         testSuccessfulAuthentication(sdJwt, opts);
+    }
+
+    @Test
+    public void shouldAuthenticateSuccessfully_UnknownUser() throws Exception {
+        // Request a SD-JWT credential from Keycloak to use for authentication
+        String testUser = "unknown-user";
+        String sdJwt = sdJwtVPTestUtils.requestSdJwtCredential(VCT_CONFIG_DEFAULT, testUser);
+
+        // Proceed to authentication
+        testSuccessfulAuthentication(sdJwt, TestOpts.getDefault().setTestUser(testUser));
+
+        // Assert that "unknown-user" was imported
+        testingClient.server(TEST_REALM_NAME).run(session -> {
+            UserModel user = session.users().getUserByUsername(
+                    session.getContext().getRealm(),
+                    testUser
+            );
+
+            assertNotNull("User 'unknown-user' should have been imported", user);
+        });
+    }
+
+    @Test
+    public void shouldFailAuthentication_IfInvalidClient() throws Exception {
+        URI uri = new URIBuilder(getOid4vpEndpoint("/request"))
+                .addParameter("client_id", "unknown-client")
+                .build();
+
+        HttpGet httpGet = new HttpGet(uri);
+        HttpResponse response = httpClient.execute(httpGet);
+        assertEquals(HttpStatus.SC_BAD_REQUEST, response.getStatusLine().getStatusCode());
+
+        OAuth2ErrorRepresentation errorRep = parseErrorResponse(response);
+        assertEquals(OAuthErrorException.INVALID_CLIENT, errorRep.getError());
     }
 
     @Test
@@ -340,20 +389,6 @@ public class OID4VPUserAuthEndpointTest extends OID4VCIssuerEndpointTest {
     }
 
     @Test
-    public void shouldFailAuthentication_UnknownUser() throws Exception {
-        // Request a SD-JWT credential from Keycloak to use for authentication
-        String sdJwt = sdJwtVPTestUtils.requestSdJwtCredential(VCT_CONFIG_DEFAULT, "unknown-user");
-
-        // Proceed to authentication
-        testFailingAuthentication(
-                sdJwt, TestOpts.getDefault(),
-                HttpStatus.SC_UNAUTHORIZED,
-                ProcessingError.VP_TOKEN_AUTH_ERROR.getErrorString(),
-                "USER_NOT_FOUND: User with presented SD-JWT unknown"
-        );
-    }
-
-    @Test
     public void shouldFailAuthentication_SdJwtWithUnexpectedVct() throws Exception {
         // Request SD-JWT credentials from Keycloak to use for authentication
         String sdJwt = sdJwtVPTestUtils.requestSdJwtCredential("https://this-vct-is-not-expected.com", TEST_USER);
@@ -422,7 +457,7 @@ public class OID4VPUserAuthEndpointTest extends OID4VCIssuerEndpointTest {
     /**
      * Helper for successful flows.
      */
-    private void testSuccessfulAuthentication(String sdJwt, TestOpts opts) throws Exception {
+    private String testSuccessfulAuthentication(String sdJwt, TestOpts opts) throws Exception {
         // Retrieve an authorization request
         AuthorizationContext authContext = requestAuthorizationRequest();
         RequestObject requestObject = resolveRequestObject(authContext.getAuthorizationRequest());
@@ -439,13 +474,22 @@ public class OID4VPUserAuthEndpointTest extends OID4VCIssuerEndpointTest {
         // Exchange authorization code for access token
         String authCode = statusPayload.getAuthorizationCode();
         assertNotNull("Authorization code should not be null", authCode);
+        if (opts.shouldRetrieveAccessToken()) {
+            assertAuthenticatingUser(opts, authCode);
+        }
+
+        // Bubble up authorization code
+        return authCode;
+    }
+
+    private void assertAuthenticatingUser(TestOpts opts, String authCode) throws VerificationException {
         AccessTokenResponse tokenResponse = oauth.doAccessTokenRequest(authCode);
         AccessToken accessToken = TokenVerifier
                 .create(tokenResponse.getAccessToken(), AccessToken.class)
                 .getToken();
 
         // Assert authenticating user
-        assertEquals(TEST_USER, accessToken.getPreferredUsername());
+        assertEquals(opts.getTestUser(), accessToken.getPreferredUsername());
     }
 
     /**
@@ -571,12 +615,12 @@ public class OID4VPUserAuthEndpointTest extends OID4VCIssuerEndpointTest {
      * A request is sent to the endpoint for this purpose.
      */
     private AuthorizationContext requestAuthorizationRequest() throws Exception {
-        String url = getOid4vpEndpoint("/request");
-        List<BasicNameValuePair> params = getClientAuthParams();
+        URI uri = new URIBuilder(getOid4vpEndpoint("/request"))
+                .addParameter("client_id", TEST_CLIENT_ID)
+                .build();
 
-        HttpPost httpPost = new HttpPost(url);
-        httpPost.setEntity(new UrlEncodedFormEntity(params));
-        HttpResponse response = httpClient.execute(httpPost);
+        HttpGet httpGet = new HttpGet(uri);
+        HttpResponse response = httpClient.execute(httpGet);
         assertEquals(HttpStatus.SC_OK, response.getStatusLine().getStatusCode());
 
         return parseAuthorizationContext(response);
@@ -721,11 +765,55 @@ public class OID4VPUserAuthEndpointTest extends OID4VCIssuerEndpointTest {
                 .toString();
     }
 
-    private static List<BasicNameValuePair> getClientAuthParams() {
-        return new ArrayList<>(List.of(
-                new BasicNameValuePair(OAuth2Constants.CLIENT_ID, TEST_CLIENT_ID),
-                new BasicNameValuePair(OAuth2Constants.CLIENT_SECRET, TEST_CLIENT_SECRET)
-        ));
+    @Test
+    public void shouldAuthenticateSuccessfully_InOIDCFlow() throws Exception {
+        // Request a valid SD-JWT credential from Keycloak to use for authentication
+        String sdJwt = sdJwtVPTestUtils.requestSdJwtCredential(VCT_CONFIG_DEFAULT, TEST_USER);
+
+        // Proceed to authentication
+        TestOpts opts = TestOpts.getDefault().setShouldRetrieveAccessToken(false);
+        String authCode = testSuccessfulAuthentication(sdJwt, opts);
+        BasicNameValuePair codeParam = new BasicNameValuePair(OAuth2Constants.CODE, authCode);
+
+        // Collect OIDC session data
+        oauth.openLoginForm();
+        String actionURI = Objects
+                .requireNonNull(ActionURIUtils.getActionURIFromPageSource(driver.getPageSource()))
+                .replace(AUTHENTICATE_PATH, OID4VP_AUTH_LOGIN_PATH);
+
+        // Continue OIDC flow with auth code
+        try (CloseableHttpClient httpClient = HttpClientBuilder.create()
+                .setDefaultCookieStore(getCookieStore())
+                .build()) {
+            HttpPost httpPost = new HttpPost(actionURI);
+            httpPost.setEntity(new UrlEncodedFormEntity(List.of(codeParam)));
+            HttpResponse httpResponse = httpClient.execute(httpPost);
+            assertEquals(HttpStatus.SC_MOVED_TEMPORARILY, httpResponse.getStatusLine().getStatusCode());
+
+            String redirectUri = httpResponse.getFirstHeader(HttpHeaders.LOCATION).getValue();
+            assertTrue(redirectUri.startsWith(oauth.getRedirectUri()));
+
+            // Extract the authorization code from the redirect URI
+            ResteasyUriInfo uriInfo = new ResteasyUriInfo(URI.create(redirectUri));
+            String freshAuthCode = uriInfo.getQueryParameters().getFirst(OAuth2Constants.CODE);
+            assertAuthenticatingUser(opts, freshAuthCode);
+            assertNotEquals("New code must be issued", authCode, freshAuthCode);
+        }
+    }
+
+    private BasicCookieStore getCookieStore() {
+        BasicCookieStore cookieStore = new BasicCookieStore();
+
+        for (Cookie seleniumCookie : driver.manage().getCookies()) {
+            BasicClientCookie clientCookie = new BasicClientCookie(seleniumCookie.getName(), seleniumCookie.getValue());
+            clientCookie.setDomain(seleniumCookie.getDomain());
+            clientCookie.setPath(seleniumCookie.getPath());
+            clientCookie.setSecure(seleniumCookie.isSecure());
+            clientCookie.setExpiryDate(seleniumCookie.getExpiry());
+            cookieStore.addCookie(clientCookie);
+        }
+
+        return cookieStore;
     }
 
     /**
@@ -733,13 +821,24 @@ public class OID4VPUserAuthEndpointTest extends OID4VCIssuerEndpointTest {
      */
     static class TestOpts {
 
-        boolean shouldBase64EncodeVpToken;
-        String overridePresentationDefinitionId;
-        Descriptor.Format overrideDescriptorFormat;
-        String overrideDescriptorPath;
+        private String testUser = TEST_USER;
+        private boolean shouldBase64EncodeVpToken;
+        private boolean shouldRetrieveAccessToken = true;
+        private String overridePresentationDefinitionId;
+        private Descriptor.Format overrideDescriptorFormat;
+        private String overrideDescriptorPath;
 
         public static TestOpts getDefault() {
             return new TestOpts();
+        }
+
+        public String getTestUser() {
+            return testUser;
+        }
+
+        public TestOpts setTestUser(String testUser) {
+            this.testUser = testUser;
+            return this;
         }
 
         public boolean getShouldBase64EncodeVpToken() {
@@ -748,6 +847,15 @@ public class OID4VPUserAuthEndpointTest extends OID4VCIssuerEndpointTest {
 
         public TestOpts setShouldBase64EncodeVpToken(boolean shouldBase64EncodeVpToken) {
             this.shouldBase64EncodeVpToken = shouldBase64EncodeVpToken;
+            return this;
+        }
+
+        public boolean shouldRetrieveAccessToken() {
+            return shouldRetrieveAccessToken;
+        }
+
+        public TestOpts setShouldRetrieveAccessToken(boolean retrieveAccessToken) {
+            this.shouldRetrieveAccessToken = retrieveAccessToken;
             return this;
         }
 

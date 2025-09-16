@@ -16,6 +16,8 @@ Backward compatibility is not guaranteed, and future updates may introduce break
 - Enabling user authentication over OpenID4VP
 - Initiating the flow by retrieving an authentication request
 - Polling for the status of the authentication session
+- Complete OIDC login with OpenID4VP authentication
+- Configuring the verifier policy for OpenID4VP authentication
 
 === Enabling user authentication over OpenID4VP
 
@@ -31,14 +33,12 @@ The second `oid4vc-vci` feature must equally be activated because the feature re
 
 === Initiating the flow by retrieving an authentication request
 
-To retrieve an authentication request, send a POST request to the `/oid4vp-auth/request` endpoint.
-The request must be sent form-urlencoded and embed credentials for client authentication.
+To retrieve an authentication request, send a GET request to the `/oid4vp-auth/request` endpoint.
+The request must carry a `client_id` query parameter to indicate the client to link with the authentication session.
 
 [source,bash]
 ----
-POST /realms/<realm>/oid4vp-auth/request
-Content-Type: application/x-www-form-urlencoded
-client_id=<client_id>&client_secret=<client_secret>
+GET /realms/<realm>/oid4vp-auth/request?client_id=<client_id>
 ----
 
 The endpoint returns an object containing:
@@ -94,3 +94,12 @@ In case of an error, the response contains error details.
   "error_description": "<error_description>"
 }
 ----
+
+=== Complete OIDC login with OpenID4VP authentication
+
+The integration of OpenID4VP authentication into the OIDC login flow is readily available provided you enable the `keycloak.v2+oid4vp` login theme that supports the feature.
+
+=== Configuring the verifier policy for OpenID4VP authentication
+
+Find the built-in authentication flow dedicated to OpenID4VP authentication under authentication flows in the admin console.
+The single SdJwt authenticator in the flow is pre-configured with sensible defaults that can be adjusted to meet specific needs, including: the accepted credential types, the maximum age of VP tokens presented, and other parameters governing the verifier policy.

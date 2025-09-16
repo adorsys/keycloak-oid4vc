@@ -8,5 +8,8 @@
     }, {
         "name" : "keycloak.v2",
         "types": [ "login" ]
+    }, {
+        "name" : "keycloak.v2+oid4vp",
+        "types": [ "login" ]
     }]
 }
