@@ -46,6 +46,9 @@ public class CredentialRequest {
     @JsonProperty("proofs")
     private Proofs proofs;
 
+    @JsonProperty("proof")
+    private Proof proof;
+
     // See: https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#name-format-identifier-3
     @JsonProperty("credential_definition")
     private CredentialDefinition credentialDefinition;
@@ -77,6 +80,15 @@ public class CredentialRequest {
 
     public CredentialRequest setProofs(Proofs proofs) {
         this.proofs = proofs;
+        return this;
+    }
+
+    public Proof getProof() {
+        return proof;
+    }
+
+    public CredentialRequest setProof(Proof proof) {
+        this.proof = proof;
         return this;
     }
 
