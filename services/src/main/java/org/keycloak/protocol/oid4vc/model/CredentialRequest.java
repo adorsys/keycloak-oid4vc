@@ -17,6 +17,7 @@
 
 package org.keycloak.protocol.oid4vc.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -35,6 +36,7 @@ import java.util.Optional;
  * @author <a href="https://github.com/wistefan">Stefan Wiedemann</a>
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class CredentialRequest {
 
     @JsonProperty("credential_configuration_id")
@@ -48,9 +50,6 @@ public class CredentialRequest {
 
     @JsonProperty("proof")
     private Proof proof;
-
-    @JsonProperty("vct")
-    private String vct;
 
     // See: https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#name-format-identifier-3
     @JsonProperty("credential_definition")
@@ -94,15 +93,6 @@ public class CredentialRequest {
 
     public CredentialRequest setProof(Proof proof) {
         this.proof = proof;
-        return this;
-    }
-
-    public String getVct () {
-        return vct;
-    }
-
-    public CredentialRequest setVct (String vct) {
-        this.vct = vct;
         return this;
     }
 
