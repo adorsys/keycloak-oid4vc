@@ -291,6 +291,39 @@ public abstract class OAuth2GrantTypeBase implements OAuth2GrantType {
         return null;
     }
 
+    /**
+     * Process authorization_details from scopes when authorization_details parameter is not present in the token request.
+     * This is used in Pre-Authorized Code Flow where scopes are used to determine which credentials to issue.
+     *
+     * @param userSession      the user session
+     * @param clientSessionCtx the client session context
+     * @return the authorization details response if processing was successful, null otherwise
+     */
+    protected List<AuthorizationDetailsResponse> processAuthorizationDetailsFromScopes(UserSessionModel userSession, ClientSessionContext clientSessionCtx) {
+        try {
+            // Get the scope parameter from form parameters
+            String scopeParam = formParams.getFirst(OAuth2Constants.SCOPE);
+            if (scopeParam == null || scopeParam.trim().isEmpty()) {
+                logger.debug("No scope parameter found, cannot generate authorization_details from scopes");
+                return null;
+            }
+
+            return session.getKeycloakSessionFactory()
+                    .getProviderFactoriesStream(AuthorizationDetailsProcessor.class)
+                    .sorted((f1, f2) -> f2.order() - f1.order())
+                    .map(f -> session.getProvider(AuthorizationDetailsProcessor.class, f.getId()))
+                    .filter(processor -> processor instanceof org.keycloak.protocol.oid4vc.issuance.OID4VCAuthorizationDetailsProcessor)
+                    .map(processor -> (org.keycloak.protocol.oid4vc.issuance.OID4VCAuthorizationDetailsProcessor) processor)
+                    .map(processor -> processor.processFromScopes(userSession, clientSessionCtx, scopeParam))
+                    .filter(authzDetailsResponse -> authzDetailsResponse != null)
+                    .findFirst()
+                    .orElse(null);
+        } catch (RuntimeException e) {
+            logger.warnf(e, "Error when processing authorization_details from scopes");
+            return null; // Don't throw exception, just return null to continue without authorization_details
+        }
+    }
+
     @Override
     public void close() {
     }

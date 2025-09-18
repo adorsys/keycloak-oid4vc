@@ -199,6 +199,7 @@ public class OID4VCAuthorizationDetailsProcessor implements AuthorizationDetails
         String credentialConfigurationId = detail.getCredentialConfigurationId();
 
         // Try to reuse identifier from authorizationDetailsResponse in client session context
+        @SuppressWarnings("unchecked")
         List<AuthorizationDetailsResponse> previousResponses = clientSessionCtx.getAttribute(AUTHORIZATION_DETAILS_RESPONSE, List.class);
         List<String> credentialIdentifiers = null;
         if (previousResponses != null) {
@@ -249,6 +250,108 @@ public class OID4VCAuthorizationDetailsProcessor implements AuthorizationDetails
 
             // Include claims in response
             responseDetail.setClaims(detail.getClaims());
+        }
+
+        return responseDetail;
+    }
+
+    /**
+     * Process authorization_details from scopes when authorization_details parameter is not present in the token request.
+     * This method generates authorization_details based on the scopes in the token request.
+     *
+     * @param userSession      the user session
+     * @param clientSessionCtx the client session context
+     * @param scopeParam       the scope parameter from the token request
+     * @return the authorization details response if processing was successful, null otherwise
+     */
+    public List<AuthorizationDetailsResponse> processFromScopes(UserSessionModel userSession, ClientSessionContext clientSessionCtx, String scopeParam) {
+        if (scopeParam == null || scopeParam.trim().isEmpty()) {
+            logger.debug("No scope parameter found, cannot generate authorization_details from scopes");
+            return null;
+        }
+
+        // Get supported credentials
+        Map<String, SupportedCredentialConfiguration> supportedCredentials = OID4VCIssuerWellKnownProvider.getSupportedCredentials(session);
+        if (supportedCredentials == null || supportedCredentials.isEmpty()) {
+            logger.debug("No supported credentials found, cannot generate authorization_details from scopes");
+            return null;
+        }
+
+        // Parse scopes and find matching credential configurations
+        List<AuthorizationDetailsResponse> authDetailsResponse = new ArrayList<>();
+        String[] scopes = scopeParam.split("\\s+");
+
+        for (String scope : scopes) {
+            scope = scope.trim();
+            if (scope.isEmpty() || "openid".equals(scope)) {
+                continue; // Skip empty scopes and openid scope
+            }
+
+            // Find credential configuration that matches this scope
+            SupportedCredentialConfiguration matchingConfig = null;
+            for (SupportedCredentialConfiguration config : supportedCredentials.values()) {
+                if (scope.equals(config.getScope())) {
+                    matchingConfig = config;
+                    break;
+                }
+            }
+
+            if (matchingConfig != null) {
+                // Generate authorization details response for this scope
+                AuthorizationDetailsResponse responseDetail = buildAuthorizationDetailResponseFromScope(
+                        matchingConfig, userSession, clientSessionCtx);
+                if (responseDetail != null) {
+                    authDetailsResponse.add(responseDetail);
+                }
+            } else {
+                logger.debugf("No credential configuration found for scope: %s", scope);
+            }
+        }
+
+        if (authDetailsResponse.isEmpty()) {
+            logger.debug("No valid credential configurations found for the provided scopes");
+            return null;
+        }
+
+        return authDetailsResponse;
+    }
+
+    /**
+     * Build authorization details response from a scope/credential configuration.
+     *
+     * @param config           the supported credential configuration
+     * @param userSession      the user session
+     * @param clientSessionCtx the client session context
+     * @return the authorization details response
+     */
+    private AuthorizationDetailsResponse buildAuthorizationDetailResponseFromScope(
+            SupportedCredentialConfiguration config, UserSessionModel userSession, ClientSessionContext clientSessionCtx) {
+
+        String credentialConfigurationId = config.getId();
+
+        // Generate credential identifiers
+        List<String> credentialIdentifiers = new ArrayList<>();
+        credentialIdentifiers.add(UUID.randomUUID().toString());
+
+        OID4VCAuthorizationDetailsResponse responseDetail = new OID4VCAuthorizationDetailsResponse();
+        responseDetail.setType(OPENID_CREDENTIAL_TYPE);
+        responseDetail.setCredentialConfigurationId(credentialConfigurationId);
+        responseDetail.setCredentialIdentifiers(credentialIdentifiers);
+
+        // Store credential context mapping using credential identifier as key
+        for (String credentialIdentifier : credentialIdentifiers) {
+            String contextKey = "CREDENTIAL_CONTEXT_" + credentialIdentifier;
+            try {
+                // Store the complete credential context for later retrieval
+                Map<String, Object> credentialContext = Map.of(
+                        "credentialConfigurationId", credentialConfigurationId,
+                        "type", OPENID_CREDENTIAL_TYPE,
+                        "scope", config.getScope()
+                );
+                userSession.setNote(contextKey, JsonSerialization.writeValueAsString(credentialContext));
+            } catch (Exception e) {
+                logger.warnf(e, "Failed to store credential context for identifier %s", credentialIdentifier);
+            }
         }
 
         return responseDetail;

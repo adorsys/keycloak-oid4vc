@@ -104,6 +104,11 @@ public class PreAuthorizedCodeGrantType extends OAuth2GrantTypeBase {
         // Process authorization_details using provider discovery
         List<AuthorizationDetailsResponse> authorizationDetailsResponse = processAuthorizationDetails(clientSession.getUserSession(), sessionContext);
 
+        // If no authorization_details were processed from the request, try to generate them from scopes
+        if (authorizationDetailsResponse == null || authorizationDetailsResponse.isEmpty()) {
+            authorizationDetailsResponse = processAuthorizationDetailsFromScopes(clientSession.getUserSession(), sessionContext);
+        }
+
         AccessTokenResponse tokenResponse;
         try {
             tokenResponse = responseBuilder.build();
