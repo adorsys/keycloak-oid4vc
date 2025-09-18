@@ -87,6 +87,7 @@ public class KeycloakDeploymentDependentResource extends CRUDKubernetesDependent
     public static final String HTTP_MANAGEMENT_SCHEME = "http-management-scheme";
 
     public static final String POD_IP = "POD_IP";
+    public static final String HOST_IP_SPI_OPTION = "KC_SPI_CACHE_EMBEDDED_DEFAULT_MACHINE_NAME";
 
     private static final List<String> COPY_ENV = Arrays.asList("HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY");
 
@@ -184,8 +185,8 @@ public class KeycloakDeploymentDependentResource extends CRUDKubernetesDependent
         baseDeployment.getMetadata().getAnnotations().put(Constants.KEYCLOAK_UPDATE_REASON_ANNOTATION, ContextUtils.getUpdateReason(context));
 
         return switch (updateType.get()) {
-            case ROLLING -> handleRollingUpdate(baseDeployment, context, primary);
-            case RECREATE -> handleRecreateUpdate(existingDeployment, baseDeployment, kcContainer, context);
+            case ROLLING -> handleRollingUpdate(baseDeployment);
+            case RECREATE -> handleRecreateUpdate(existingDeployment, baseDeployment, kcContainer);
         };
     }
 
@@ -352,39 +353,25 @@ public class KeycloakDeploymentDependentResource extends CRUDKubernetesDependent
                         && (customImage.isPresent() || operatorConfig.keycloak().startOptimized())) {
             containerBuilder.addToArgs(OPTIMIZED_ARG);
         }
-        // Set bind address as this is required for JGroups to form a cluster in IPv6 envionments
+        // Set bind address as this is required for JGroups to form a cluster in IPv6 environments
         containerBuilder.addToArgs(0, "-Djgroups.bind.address=$(%s)".formatted(POD_IP));
 
-        boolean tls = isTlsConfigured(keycloakCR);
-        String protocol = tls ? "HTTPS" : "HTTP";
-        int port = -1;
-
-        if (readConfigurationValue(HTTP_MANAGEMENT_HEALTH_ENABLED, keycloakCR, context).map(Boolean::valueOf).orElse(true)) {
-            port = HttpManagementSpec.managementPort(keycloakCR);
-            if (readConfigurationValue(HTTP_MANAGEMENT_SCHEME, keycloakCR, context).filter("http"::equals).isPresent()) {
-                protocol = "HTTP";
-            }
-        } else {
-            port = tls ? HttpSpec.httpsPort(keycloakCR) : HttpSpec.httpPort(keycloakCR);
-        }
+        var healthEnabled = readConfigurationValue(HTTP_MANAGEMENT_HEALTH_ENABLED, keycloakCR, context).map(Boolean::valueOf).orElse(true);
+        ManagementEndpoint endpoint = managementEndpoint(keycloakCR, context, healthEnabled);
 
         // probes
         var readinessOptionalSpec = Optional.ofNullable(keycloakCR.getSpec().getReadinessProbeSpec());
         var livenessOptionalSpec = Optional.ofNullable(keycloakCR.getSpec().getLivenessProbeSpec());
         var startupOptionalSpec = Optional.ofNullable(keycloakCR.getSpec().getStartupProbeSpec());
-        var relativePath = readConfigurationValue(Constants.KEYCLOAK_HTTP_MANAGEMENT_RELATIVE_PATH_KEY, keycloakCR, context)
-                .or(() -> readConfigurationValue(Constants.KEYCLOAK_HTTP_RELATIVE_PATH_KEY, keycloakCR, context))
-                .map(path -> !path.endsWith("/") ? path + "/" : path)
-                .orElse("/");
 
         if (!containerBuilder.hasReadinessProbe()) {
             containerBuilder.withNewReadinessProbe()
                 .withPeriodSeconds(readinessOptionalSpec.map(ProbeSpec::getProbePeriodSeconds).orElse(10))
                 .withFailureThreshold(readinessOptionalSpec.map(ProbeSpec::getProbeFailureThreshold).orElse(3))
                 .withNewHttpGet()
-                .withScheme(protocol)
-                .withNewPort(port)
-                .withPath(relativePath + "health/ready")
+                .withScheme(endpoint.protocol)
+                .withNewPort(endpoint.port)
+                .withPath(endpoint.relativePath + "health/ready")
                 .endHttpGet()
                 .endReadinessProbe();
         }
@@ -393,9 +380,9 @@ public class KeycloakDeploymentDependentResource extends CRUDKubernetesDependent
                 .withPeriodSeconds(livenessOptionalSpec.map(ProbeSpec::getProbePeriodSeconds).orElse(10))
                 .withFailureThreshold(livenessOptionalSpec.map(ProbeSpec::getProbeFailureThreshold).orElse(3))
                 .withNewHttpGet()
-                .withScheme(protocol)
-                .withNewPort(port)
-                .withPath(relativePath + "health/live")
+                .withScheme(endpoint.protocol)
+                .withNewPort(endpoint.port)
+                .withPath(endpoint.relativePath + "health/live")
                 .endHttpGet()
                 .endLivenessProbe();
         }
@@ -404,9 +391,9 @@ public class KeycloakDeploymentDependentResource extends CRUDKubernetesDependent
                 .withPeriodSeconds(startupOptionalSpec.map(ProbeSpec::getProbePeriodSeconds).orElse(1))
                 .withFailureThreshold(startupOptionalSpec.map(ProbeSpec::getProbeFailureThreshold).orElse(600))
                 .withNewHttpGet()
-                .withScheme(protocol)
-                .withNewPort(port)
-                .withPath(relativePath + "health/started")
+                .withScheme(endpoint.protocol)
+                .withNewPort(endpoint.port)
+                .withPath(endpoint.relativePath + "health/started")
                 .endHttpGet()
                 .endStartupProbe();
         }
@@ -592,6 +579,12 @@ public class KeycloakDeploymentDependentResource extends CRUDKubernetesDependent
         envVars.add(new EnvVarBuilder().withName(POD_IP).withNewValueFrom().withNewFieldRef()
                 .withFieldPath("status.podIP").withApiVersion("v1").endFieldRef().endValueFrom().build());
 
+        // Both status.hostIP or spec.nodeName would be fine here.
+        // In theory, status.hostIP is a smaller value and, as this value is tagged in all JGroups messages, it should have a lower overhead.
+        // Using spec.nodeName to avoid exposing the IP addresses in the logs.
+        envVars.add(new EnvVarBuilder().withName(HOST_IP_SPI_OPTION).withNewValueFrom().withNewFieldRef()
+                .withFieldPath("spec.nodeName").withApiVersion("v1").endFieldRef().endValueFrom().build());
+
         return envVars;
     }
 
@@ -599,7 +592,7 @@ public class KeycloakDeploymentDependentResource extends CRUDKubernetesDependent
         return keycloak.getMetadata().getName();
     }
 
-    protected Optional<String> readConfigurationValue(String key, Keycloak keycloakCR, Context<Keycloak> context) {
+    private static Optional<String> readConfigurationValue(String key, Keycloak keycloakCR, Context<Keycloak> context) {
         return Optional.ofNullable(keycloakCR.getSpec()).map(KeycloakSpec::getAdditionalOptions)
                 .flatMap(l -> l.stream().filter(sc -> sc.getName().equals(key)).findFirst().map(serverConfigValue -> {
             if (serverConfigValue.getValue() != null) {
@@ -620,15 +613,14 @@ public class KeycloakDeploymentDependentResource extends CRUDKubernetesDependent
         }));
     }
 
-    private static StatefulSet handleRollingUpdate(StatefulSet desired, Context<Keycloak> context, Keycloak primary) {
+    private static StatefulSet handleRollingUpdate(StatefulSet desired) {
         // return the desired stateful set since Kubernetes does a rolling in-place update by default.
         Log.debug("Performing a rolling update");
         desired.getMetadata().getAnnotations().put(Constants.KEYCLOAK_RECREATE_UPDATE_ANNOTATION, Boolean.FALSE.toString());
         return desired;
     }
 
-    private static StatefulSet handleRecreateUpdate(StatefulSet actual, StatefulSet desired, Container kcContainer,
-            Context<Keycloak> context) {
+    private static StatefulSet handleRecreateUpdate(StatefulSet actual, StatefulSet desired, Container kcContainer) {
         desired.getMetadata().getAnnotations().put(Constants.KEYCLOAK_RECREATE_UPDATE_ANNOTATION, Boolean.TRUE.toString());
 
         if (Optional.ofNullable(actual.getStatus().getReplicas()).orElse(0) == 0) {
@@ -652,4 +644,27 @@ public class KeycloakDeploymentDependentResource extends CRUDKubernetesDependent
         toUpdate.getMetadata().getAnnotations().put(Constants.KEYCLOAK_UPDATE_REVISION_ANNOTATION, revision);
     }
 
+    record ManagementEndpoint(String relativePath, String protocol, int port) {}
+
+    static ManagementEndpoint managementEndpoint(Keycloak keycloakCR, Context<Keycloak> context, boolean useMgmtProtocolPort) {
+        boolean tls = isTlsConfigured(keycloakCR);
+        String protocol = tls ? "HTTPS" : "HTTP";
+        int port;
+
+        if (useMgmtProtocolPort) {
+            port = HttpManagementSpec.managementPort(keycloakCR);
+            if (readConfigurationValue(HTTP_MANAGEMENT_SCHEME, keycloakCR, context).filter("http"::equals).isPresent()) {
+                protocol = "HTTP";
+            }
+        } else {
+            port = tls ? HttpSpec.httpsPort(keycloakCR) : HttpSpec.httpPort(keycloakCR);
+        }
+
+        var relativePath = readConfigurationValue(Constants.KEYCLOAK_HTTP_MANAGEMENT_RELATIVE_PATH_KEY, keycloakCR, context)
+              .or(() -> readConfigurationValue(Constants.KEYCLOAK_HTTP_RELATIVE_PATH_KEY, keycloakCR, context))
+              .map(path -> !path.endsWith("/") ? path + "/" : path)
+              .orElse("/");
+
+        return new ManagementEndpoint(relativePath, protocol, port);
+    }
 }

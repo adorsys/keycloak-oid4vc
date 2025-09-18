@@ -1,12 +1,11 @@
 import { expect, test } from "@playwright/test";
-import { login } from "../utils/login.ts";
+import { createTestBed } from "../support/testbed.ts";
 import adminClient from "../utils/AdminClient.ts";
 import { goToClientScopes } from "../utils/sidebar.ts";
 import { clickSaveButton } from "../utils/form.ts";
 import { clickTableToolbarItem } from "../utils/table.ts";
-
-// Test data constants
-const TEST_CLIENT_SCOPE_NAME = `oid4vci-test-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+import { login } from "../utils/login.ts";
+import { toClientScopes } from "../../src/client-scopes/routes/ClientScopes.tsx";
 
 // OID4VCI field selectors
 const OID4VCI_FIELDS = {
@@ -26,53 +25,20 @@ const TEST_VALUES = {
   FORMAT: "jwt_vc",
 } as const;
 
-test.beforeAll(async () => {
-  // Clean up any existing test client scope
-  if (await adminClient.existsClientScope(TEST_CLIENT_SCOPE_NAME)) {
-    await adminClient.deleteClientScope(TEST_CLIENT_SCOPE_NAME);
-  }
-});
-
-test.afterAll(async () => {
-  // Clean up the test client scope
-  if (await adminClient.existsClientScope(TEST_CLIENT_SCOPE_NAME)) {
-    await adminClient.deleteClientScope(TEST_CLIENT_SCOPE_NAME);
-  }
-});
-
-test.beforeEach(async ({ page }) => {
-  await login(page);
-});
-
-// Helper functions for OID4VCI feature checks
-const isOid4vciFeatureEnabled = async (): Promise<boolean> => {
-  const serverInfo = await adminClient.getServerInfo();
-  const oid4vciFeature = serverInfo.features?.find(
-    (feature: any) => feature.name === "OID4VC_VCI",
-  );
-  return oid4vciFeature?.enabled || false;
-};
-
-const isRealmVerifiableCredentialsEnabled = async (): Promise<boolean> => {
-  const realm = await adminClient.getRealm("master");
-  return realm?.verifiableCredentialsEnabled === true;
-};
-
-// Global feature check - if disabled, all tests should skip
-const checkGlobalFeature = async () => {
-  const isFeatureEnabled = await isOid4vciFeatureEnabled();
-  if (!isFeatureEnabled) {
-    test.skip(true, "OID4VCI global feature is not enabled");
-  }
-  return isFeatureEnabled;
+// Helper function for realm-level feature check
+const isRealmVerifiableCredentialsEnabled = async (
+  realm: string,
+): Promise<boolean> => {
+  const realmData = await adminClient.getRealm(realm);
+  return realmData?.verifiableCredentialsEnabled === true;
 };
 
 test.describe("OID4VCI Client Scope Functionality", () => {
-  test("should display OID4VCI fields when protocol is selected and feature enabled", async ({
+  test("should display OID4VCI fields when protocol is selected and realm feature enabled", async ({
     page,
   }) => {
-    // Check global feature first - skip all tests if disabled
-    await checkGlobalFeature();
+    const realm = await createTestBed();
+    await login(page, { to: toClientScopes({ realm }) });
 
     await goToClientScopes(page);
     await page.waitForLoadState("domcontentloaded");
@@ -101,8 +67,8 @@ test.describe("OID4VCI Client Scope Functionality", () => {
       "OpenID for Verifiable Credentials",
     );
 
-    // Check for OID4VCI fields or alert based on realm feature status
-    const isRealmEnabled = await isRealmVerifiableCredentialsEnabled();
+    // Check realm feature status to determine what should be visible
+    const isRealmEnabled = await isRealmVerifiableCredentialsEnabled(realm);
 
     if (isRealmEnabled) {
       // Realm feature is enabled - expect OID4VCI fields
@@ -133,11 +99,11 @@ test.describe("OID4VCI Client Scope Functionality", () => {
   test("should save and persist OID4VCI field values when realm feature is enabled", async ({
     page,
   }) => {
-    // Check global feature first - skip all tests if disabled
-    await checkGlobalFeature();
+    const realm = await createTestBed();
+    const testClientScopeName = `oid4vci-test-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
     // Check realm feature - skip if disabled (can't test save functionality)
-    const isRealmEnabled = await isRealmVerifiableCredentialsEnabled();
+    const isRealmEnabled = await isRealmVerifiableCredentialsEnabled(realm);
     if (!isRealmEnabled) {
       test.skip(
         true,
@@ -145,6 +111,8 @@ test.describe("OID4VCI Client Scope Functionality", () => {
       );
       return;
     }
+
+    await login(page, { to: toClientScopes({ realm }) });
 
     await goToClientScopes(page);
     await page.waitForLoadState("domcontentloaded");
@@ -179,21 +147,23 @@ test.describe("OID4VCI Client Scope Functionality", () => {
     await page.getByRole("option", { name: TEST_VALUES.FORMAT }).click();
 
     // Fill in the name field
-    await page.getByTestId("name").fill(TEST_CLIENT_SCOPE_NAME);
+    await page.getByTestId("name").fill(testClientScopeName);
 
     // Save the client scope
     await clickSaveButton(page);
     await expect(page.getByText("Client scope created")).toBeVisible();
 
     // Verify the client scope was created with correct attributes
-    await page.goto("/admin/master/console/#/realms/master/client-scopes");
+    await page.goto(
+      `/admin/${realm}/console/#${toClientScopes({ realm }).pathname}`,
+    );
     await page.waitForLoadState("domcontentloaded");
 
     await page
       .getByPlaceholder("Search for client scope")
-      .fill(TEST_CLIENT_SCOPE_NAME);
+      .fill(testClientScopeName);
 
-    await page.getByRole("row", { name: TEST_CLIENT_SCOPE_NAME }).click();
+    await page.getByRole("row", { name: testClientScopeName }).click();
 
     // Verify OID4VCI fields contain saved values
     await expect(
@@ -216,11 +186,10 @@ test.describe("OID4VCI Client Scope Functionality", () => {
   test("should show alert when OID4VCI protocol selected but realm feature disabled", async ({
     page,
   }) => {
-    // Check global feature first - skip all tests if disabled
-    await checkGlobalFeature();
+    const realm = await createTestBed();
 
     // Check realm feature - skip if enabled (can't test disabled scenario)
-    const isRealmEnabled = await isRealmVerifiableCredentialsEnabled();
+    const isRealmEnabled = await isRealmVerifiableCredentialsEnabled(realm);
     if (isRealmEnabled) {
       test.skip(
         true,
@@ -228,6 +197,8 @@ test.describe("OID4VCI Client Scope Functionality", () => {
       );
       return;
     }
+
+    await login(page, { to: toClientScopes({ realm }) });
 
     // Navigate to client scopes
     await goToClientScopes(page);
@@ -259,8 +230,8 @@ test.describe("OID4VCI Client Scope Functionality", () => {
   test("should not display OID4VCI fields when protocol is not OID4VCI", async ({
     page,
   }) => {
-    // Check global feature first - skip all tests if disabled
-    await checkGlobalFeature();
+    const realm = await createTestBed();
+    await login(page, { to: toClientScopes({ realm }) });
 
     await goToClientScopes(page);
     await page.waitForLoadState("domcontentloaded");
@@ -301,8 +272,8 @@ test.describe("OID4VCI Client Scope Functionality", () => {
   test("should handle OID4VCI protocol selection correctly", async ({
     page,
   }) => {
-    // Check global feature first - skip all tests if disabled
-    await checkGlobalFeature();
+    const realm = await createTestBed();
+    await login(page, { to: toClientScopes({ realm }) });
 
     await goToClientScopes(page);
     await page.waitForLoadState("domcontentloaded");
@@ -340,7 +311,7 @@ test.describe("OID4VCI Client Scope Functionality", () => {
     );
 
     // Check realm feature status to determine what should be visible
-    const isRealmEnabled = await isRealmVerifiableCredentialsEnabled();
+    const isRealmEnabled = await isRealmVerifiableCredentialsEnabled(realm);
 
     if (isRealmEnabled) {
       // Should see OID4VCI fields

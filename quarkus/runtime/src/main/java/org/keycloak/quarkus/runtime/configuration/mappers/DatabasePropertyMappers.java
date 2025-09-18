@@ -28,14 +28,12 @@ import static org.keycloak.quarkus.runtime.configuration.MicroProfileConfigProvi
 import static org.keycloak.quarkus.runtime.configuration.mappers.DatabasePropertyMappers.Datasources.appendDatasourceMappers;
 import static org.keycloak.quarkus.runtime.configuration.mappers.PropertyMapper.fromOption;
 
-final class DatabasePropertyMappers {
+final class DatabasePropertyMappers implements PropertyMapperGrouping {
     private static final Logger log = Logger.getLogger(DatabasePropertyMappers.class);
 
-    private DatabasePropertyMappers() {
-    }
-
-    public static PropertyMapper<?>[] getDatabasePropertyMappers() {
-        var mappers = new PropertyMapper<?>[]{
+    @Override
+    public List<PropertyMapper<?>> getPropertyMappers() {
+        List<PropertyMapper<?>> mappers = List.of(
                 fromOption(DatabaseOptions.DB_DIALECT)
                         .mapFrom(DatabaseOptions.DB, DatabasePropertyMappers::transformDialect)
                         .build(),
@@ -96,6 +94,11 @@ final class DatabasePropertyMappers {
                         .to("quarkus.datasource.jdbc.max-size")
                         .paramLabel("size")
                         .build(),
+                fromOption(DatabaseOptions.DB_POOL_MAX_LIFETIME)
+                        .to("quarkus.datasource.jdbc.max-lifetime")
+                        .mapFrom(DB, DatabasePropertyMappers::transformPoolMaxLifetime)
+                        .paramLabel("duration")
+                        .build(),
                 fromOption(DatabaseOptions.DB_SQL_JPA_DEBUG)
                         .build(),
                 fromOption(DatabaseOptions.DB_SQL_LOG_SLOW_QUERIES)
@@ -106,7 +109,7 @@ final class DatabasePropertyMappers {
                         .build(),
                 fromOption(DB_URL_PATH)
                         .build()
-        };
+        );
 
         return appendDatasourceMappers(mappers, Map.of(
                 // Inherit options from the DB mappers
@@ -181,13 +184,22 @@ final class DatabasePropertyMappers {
         return isDevModeDatabase(database) ? "1" : getParentPoolMinSize.get();
     }
 
+    private static String transformPoolMaxLifetime(String db, ConfigSourceInterceptorContext context) {
+        Database.Vendor vendor = Database.getVendor(db).orElseThrow();
+        return switch (vendor) {
+            // Default to max lifetime slightly less than the default `wait_timeout` of 8 hours
+            case MYSQL, MARIADB -> "PT7H50M";
+            default -> "";
+        };
+    }
+
     public static final class Datasources {
 
         /**
          * Automatically create mappers for datasource options
          */
-        static PropertyMapper<?>[] appendDatasourceMappers(PropertyMapper<?>[] mappers, Map<Option<?>, Consumer<PropertyMapper.Builder<?>>> transformDatasourceMappers) {
-            List<PropertyMapper<?>> datasourceMappers = new ArrayList<>(OPTIONS_DATASOURCES.size() + mappers.length);
+        static List<PropertyMapper<?>> appendDatasourceMappers(List<PropertyMapper<?>> mappers, Map<Option<?>, Consumer<PropertyMapper.Builder<?>>> transformDatasourceMappers) {
+            List<PropertyMapper<?>> datasourceMappers = new ArrayList<>(OPTIONS_DATASOURCES.size() + mappers.size());
 
             for (var parent : mappers) {
                 var parentOption = parent.getOption();
@@ -225,9 +237,9 @@ final class DatabasePropertyMappers {
                 datasourceMappers.add(created.build());
             }
 
-            datasourceMappers.addAll(List.of(mappers));
+            datasourceMappers.addAll(mappers);
 
-            return datasourceMappers.toArray(new PropertyMapper[0]);
+            return datasourceMappers;
         }
 
         private static String transformDatasourceTo(String to) {

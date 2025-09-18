@@ -1001,7 +1001,9 @@ public class IdentityBrokerService implements IdentityProvider.AuthenticationCal
             return redirectToErrorWhenLinkingFailed(authSession, Messages.IDENTITY_PROVIDER_ALREADY_LINKED, idpDisplayName);
         }
 
-        if (!authenticatedUser.hasRole(this.realmModel.getClientByClientId(Constants.ACCOUNT_MANAGEMENT_CLIENT_ID).getRole(AccountRoles.MANAGE_ACCOUNT))) {
+        RoleModel manageAccountRole = this.realmModel.getClientByClientId(Constants.ACCOUNT_MANAGEMENT_CLIENT_ID).getRole(AccountRoles.MANAGE_ACCOUNT);
+        RoleModel manageAccountLinkRole = this.realmModel.getClientByClientId(Constants.ACCOUNT_MANAGEMENT_CLIENT_ID).getRole(AccountRoles.MANAGE_ACCOUNT_LINKS);
+        if (!authenticatedUser.hasRole(manageAccountRole) && !authenticatedUser.hasRole(manageAccountLinkRole)) {
             return redirectToErrorPage(authSession, Response.Status.FORBIDDEN, Messages.INSUFFICIENT_PERMISSION);
         }
 
@@ -1342,18 +1344,19 @@ public class IdentityBrokerService implements IdentityProvider.AuthenticationCal
 
     public static IdentityProvider<?> getIdentityProvider(KeycloakSession session, String alias) {
         IdentityProviderModel identityProviderModel = session.identityProviders().getByAlias(alias);
+        IdentityProvider<?> identityProvider = getIdentityProvider(session, identityProviderModel);
+        if (identityProvider == null) {
+            throw new IdentityBrokerException("Identity Provider [" + alias + "] not found.");
+        }
+        return identityProvider;
+    }
 
+    public static IdentityProvider<?> getIdentityProvider(KeycloakSession session, IdentityProviderModel identityProviderModel) {
         if (identityProviderModel != null) {
             IdentityProviderFactory<?> providerFactory = getIdentityProviderFactory(session, identityProviderModel);
-
-            if (providerFactory == null) {
-                throw new IdentityBrokerException("Could not find factory for identity provider [" + alias + "].");
-            }
-
-            return providerFactory.create(session, identityProviderModel);
+            return providerFactory != null ? providerFactory.create(session, identityProviderModel) : null;
         }
-
-        throw new IdentityBrokerException("Identity Provider [" + alias + "] not found.");
+        return null;
     }
 
     private static IdentityProviderFactory<?> getIdentityProviderFactory(KeycloakSession session, IdentityProviderModel model) {
