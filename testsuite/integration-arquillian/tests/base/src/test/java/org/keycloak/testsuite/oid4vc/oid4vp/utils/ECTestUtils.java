@@ -47,7 +47,7 @@ public class ECTestUtils {
         return jwk;
     }
 
-    static KeyWrapper getEcKeyWrapper(JWK jwk) throws NoSuchAlgorithmException, InvalidKeySpecException {
+    public static KeyWrapper getEcKeyWrapper(JWK jwk) throws NoSuchAlgorithmException, InvalidKeySpecException {
         if (jwk.getKeyType() == null || !jwk.getKeyType().equals(KeyType.EC)) {
             throw new IllegalArgumentException("Only EC keys are supported");
         }

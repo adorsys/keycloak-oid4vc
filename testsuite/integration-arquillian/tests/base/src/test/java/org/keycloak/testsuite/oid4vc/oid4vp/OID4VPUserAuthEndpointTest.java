@@ -82,6 +82,7 @@ import java.util.Objects;
 import java.util.UUID;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
@@ -156,6 +157,24 @@ public class OID4VPUserAuthEndpointTest extends OID4VCIssuerEndpointTest {
         String expectedSessionId = pruneAuthSessionId(authContext.getTransactionId());
         String actualSessionId = pruneAuthSessionId(requestObject.getState());
         assertEquals(expectedSessionId, actualSessionId);
+    }
+
+    @Test
+    public void shouldProduceSpaceFreeSignedJwt_ForLissiWalletCompat() throws Exception {
+        // Retrieve an authorization request
+        AuthorizationContext authContext = requestAuthorizationRequest();
+        String authRequest = authContext.getAuthorizationRequest();
+
+        // Resolve the request_uri parameter from the authorization request
+        String signedReqJwt = resolveSignedRequestObject(authRequest);
+
+        // Assert no space in the JWT prior to Base64 encoding
+        String[] parts = signedReqJwt.split("\\.");
+        assertTrue("Invalid JWT format", parts.length >= 2);
+        String headerJson = new String(Base64.getUrlDecoder().decode(parts[0]));
+        assertFalse("No space allowed", headerJson.matches(".*\\s.*"));
+        String payloadJson = new String(Base64.getUrlDecoder().decode(parts[1]));
+        assertFalse("No space allowed", payloadJson.matches(".*\\s.*"));
     }
 
     @Test
@@ -631,6 +650,16 @@ public class OID4VPUserAuthEndpointTest extends OID4VCIssuerEndpointTest {
      * A request is sent to the request_uri dereferencing endpoint to retrieve the request object.     *
      */
     private RequestObject resolveRequestObject(String authRequest) throws IOException, JWSInputException {
+        String signedRequestJwt = resolveSignedRequestObject(authRequest);
+        JWSInput jwsInput = new JWSInput(signedRequestJwt);
+        return jwsInput.readJsonContent(RequestObject.class);
+    }
+
+    /**
+     * Resolve the request object associated with the authorization request.
+     * A request is sent to the request_uri dereferencing endpoint to retrieve the request object.     *
+     */
+    private String resolveSignedRequestObject(String authRequest) throws IOException {
         // Extract the request_uri parameter
         String requestUri = URLEncodedUtils.parse(authRequest, StandardCharsets.UTF_8).stream()
                 .filter(p -> p.getName().equals("request_uri"))
@@ -644,9 +673,7 @@ public class OID4VPUserAuthEndpointTest extends OID4VCIssuerEndpointTest {
         assertEquals(HttpStatus.SC_OK, response.getStatusLine().getStatusCode());
 
         // Parse and return the expected JWT response
-        String signedRequestJwt = EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8);
-        JWSInput jwsInput = new JWSInput(signedRequestJwt);
-        return jwsInput.readJsonContent(RequestObject.class);
+        return EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8);
     }
 
     /**
