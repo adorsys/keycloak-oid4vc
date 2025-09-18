@@ -18,6 +18,7 @@
 package org.keycloak.protocol.oid4vc.oid4vp.service;
 
 import org.jboss.logging.Logger;
+import org.keycloak.common.util.CertificateUtils;
 import org.keycloak.crypto.KeyWrapper;
 import org.keycloak.crypto.SignatureProvider;
 import org.keycloak.crypto.SignatureSignerContext;
@@ -38,8 +39,14 @@ import org.keycloak.protocol.oid4vc.oid4vp.model.dto.AuthorizationContext;
 import org.keycloak.protocol.oid4vc.oid4vp.model.dto.AuthorizationContextStatus;
 import org.keycloak.sessions.AuthenticationSessionModel;
 
+import javax.naming.ldap.LdapName;
+import javax.naming.ldap.Rdn;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.security.KeyPair;
+import java.security.PrivateKey;
+import java.security.PublicKey;
+import java.security.cert.X509Certificate;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.List;
@@ -57,6 +64,7 @@ public class AuthorizationRequestService {
     private static final Logger logger = Logger.getLogger(AuthorizationRequestService.class);
 
     public final static String AUTH_REQ_JWT = "oauth-authz-req+jwt";
+    public final static String X509_ATTR_CN = "CN";
 
     // The number of bytes to generate for secure random strings,
     // including request IDs, transaction IDs, and nonces (doubled).
@@ -200,8 +208,49 @@ public class AuthorizationRequestService {
 
         return new JWSBuilder()
                 .type(AUTH_REQ_JWT)
-                .x5c(List.of(signingKey.getCertificate()))
+                .x5c(List.of(getSelfSignedCertificate()))
                 .jsonContent(requestObject)
                 .sign(signer);
+    }
+
+    private X509Certificate getSelfSignedCertificate() {
+        X509Certificate cert = signingKey.getCertificate();
+        if (cert == null) {
+            throw new IllegalStateException("Signing key has no certificate");
+        }
+
+        String clientId = clientMetadata.getClientId();
+        KeyPair keyPair = new KeyPair(
+                (PublicKey) signingKey.getPublicKey(),
+                (PrivateKey) signingKey.getPrivateKey()
+        );
+
+        // Generate a new self-signed certificate with SAN matching client ID
+        try {
+            return CertificateUtils.generateV3Certificate(
+                    keyPair,
+                    keyPair.getPrivate(),
+                    cert,
+                    getIssuerCN(cert),
+                    List.of(clientId)
+            );
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to regenerate certificate with SAN", e);
+        }
+    }
+
+    private static String getIssuerCN(X509Certificate cert) {
+        try {
+            String dn = cert.getIssuerX500Principal().getName();
+            LdapName ldapDN = new LdapName(dn);
+            for (Rdn rdn : ldapDN.getRdns()) {
+                if (rdn.getType().equalsIgnoreCase(X509_ATTR_CN)) {
+                    return rdn.getValue().toString();
+                }
+            }
+            return null;
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to extract issuer CN from certificate", e);
+        }
     }
 }
