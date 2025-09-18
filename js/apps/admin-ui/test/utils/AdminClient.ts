@@ -668,6 +668,10 @@ class AdminClient {
     );
   }
 
+  async getServerInfo() {
+    await this.#login();
+    return await this.#client.serverInfo.find();
+  }
   async findUserByUsername(
     realm: string,
     username: string,
@@ -680,7 +684,6 @@ class AdminClient {
       exact: true,
       max: 1,
     });
-
     return users[0];
   }
 }
