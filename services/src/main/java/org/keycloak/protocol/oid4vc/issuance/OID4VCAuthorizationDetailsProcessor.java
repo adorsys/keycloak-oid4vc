@@ -255,106 +255,144 @@ public class OID4VCAuthorizationDetailsProcessor implements AuthorizationDetails
         return responseDetail;
     }
 
+
     /**
-     * Process authorization_details from scopes when authorization_details parameter is not present in the token request.
-     * This method generates authorization_details based on the scopes in the token request.
+     * Process authorization_details from the credential offer when authorization_details parameter is not present in the token request.
+     * This method generates authorization_details based on the credential_configuration_ids from the credential offer.
      *
      * @param userSession      the user session
      * @param clientSessionCtx the client session context
-     * @param scopeParam       the scope parameter from the token request
+     * @param clientSession    the client session that contains the credential offer information
      * @return the authorization details response if processing was successful, null otherwise
      */
-    public List<AuthorizationDetailsResponse> processFromScopes(UserSessionModel userSession, ClientSessionContext clientSessionCtx, String scopeParam) {
-        if (scopeParam == null || scopeParam.trim().isEmpty()) {
-            logger.debug("No scope parameter found, cannot generate authorization_details from scopes");
-            return null;
-        }
+    public List<AuthorizationDetailsResponse> processFromCredentialOffer(UserSessionModel userSession, ClientSessionContext clientSessionCtx, org.keycloak.models.AuthenticatedClientSessionModel clientSession) {
+        logger.info("Processing authorization_details from credential offer");
 
         // Get supported credentials
         Map<String, SupportedCredentialConfiguration> supportedCredentials = OID4VCIssuerWellKnownProvider.getSupportedCredentials(session);
         if (supportedCredentials == null || supportedCredentials.isEmpty()) {
-            logger.debug("No supported credentials found, cannot generate authorization_details from scopes");
+            logger.info("No supported credentials found, cannot generate authorization_details from credential offer");
             return null;
         }
 
-        // Parse scopes and find matching credential configurations
-        List<AuthorizationDetailsResponse> authDetailsResponse = new ArrayList<>();
-        String[] scopes = scopeParam.split("\\s+");
+        logger.infof("Found %d supported credential configurations: %s",
+                supportedCredentials.size(),
+                supportedCredentials.keySet().stream().collect(java.util.stream.Collectors.joining(", ")));
 
-        for (String scope : scopes) {
-            scope = scope.trim();
-            if (scope.isEmpty() || "openid".equals(scope)) {
-                continue; // Skip empty scopes and openid scope
-            }
+        // Extract credential_configuration_ids from the credential offer
+        List<String> credentialConfigurationIds = extractCredentialConfigurationIds(clientSession);
 
-            // Find credential configuration that matches this scope
-            SupportedCredentialConfiguration matchingConfig = null;
-            for (SupportedCredentialConfiguration config : supportedCredentials.values()) {
-                if (scope.equals(config.getScope())) {
-                    matchingConfig = config;
-                    break;
-                }
-            }
-
-            if (matchingConfig != null) {
-                // Generate authorization details response for this scope
-                AuthorizationDetailsResponse responseDetail = buildAuthorizationDetailResponseFromScope(
-                        matchingConfig, userSession, clientSessionCtx);
-                if (responseDetail != null) {
-                    authDetailsResponse.add(responseDetail);
-                }
-            } else {
-                logger.debugf("No credential configuration found for scope: %s", scope);
-            }
-        }
-
-        if (authDetailsResponse.isEmpty()) {
-            logger.debug("No valid credential configurations found for the provided scopes");
+        if (credentialConfigurationIds == null || credentialConfigurationIds.isEmpty()) {
+            logger.info("No credential_configuration_ids found in credential offer, cannot generate authorization_details");
             return null;
         }
 
-        return authDetailsResponse;
+        logger.infof("Found credential_configuration_ids in credential offer: %s", credentialConfigurationIds);
+
+        // Generate authorization_details for each credential configuration
+        List<AuthorizationDetailsResponse> authorizationDetailsList = new ArrayList<>();
+
+        for (String credentialConfigurationId : credentialConfigurationIds) {
+            SupportedCredentialConfiguration config = supportedCredentials.get(credentialConfigurationId);
+            if (config == null) {
+                logger.warnf("Credential configuration '%s' not found in supported credentials, skipping", credentialConfigurationId);
+                continue;
+            }
+
+            // Generate a unique credential identifier for this configuration
+            String credentialIdentifier = UUID.randomUUID().toString();
+
+            // Store the mapping between credential identifier and configuration ID
+            // This will be used later when processing credential requests
+            String mappingKey = "credential_identifier_" + credentialIdentifier;
+            clientSession.setNote(mappingKey, credentialConfigurationId);
+
+            // Also store in user session for consistency and easier retrieval
+            String userContextKey = "CREDENTIAL_CONTEXT_" + credentialIdentifier;
+            try {
+                Map<String, Object> credentialContext = Map.of(
+                        "credentialConfigurationId", credentialConfigurationId,
+                        "type", OPENID_CREDENTIAL_TYPE
+                );
+                userSession.setNote(userContextKey, JsonSerialization.writeValueAsString(credentialContext));
+                logger.debugf("Stored credential context in user session for identifier '%s'", credentialIdentifier);
+            } catch (Exception e) {
+                logger.warnf(e, "Failed to store credential context in user session for identifier '%s'", credentialIdentifier);
+            }
+
+            logger.debugf("Generated credential identifier '%s' for configuration '%s'",
+                    credentialIdentifier, credentialConfigurationId);
+
+            OID4VCAuthorizationDetailsResponse authDetail = new OID4VCAuthorizationDetailsResponse();
+            authDetail.setType(OPENID_CREDENTIAL_TYPE);
+            authDetail.setCredentialConfigurationId(credentialConfigurationId);
+            authDetail.setCredentialIdentifiers(List.of(credentialIdentifier));
+
+            authorizationDetailsList.add(authDetail);
+        }
+
+        if (authorizationDetailsList.isEmpty()) {
+            logger.debug("No valid credential configurations found, cannot generate authorization_details");
+            return null;
+        }
+
+        logger.debugf("Generated authorization_details for %d credential configurations", authorizationDetailsList.size());
+        return authorizationDetailsList;
     }
 
     /**
-     * Build authorization details response from a scope/credential configuration.
-     *
-     * @param config           the supported credential configuration
-     * @param userSession      the user session
-     * @param clientSessionCtx the client session context
-     * @return the authorization details response
+     * Extract credential_configuration_ids from the credential offer stored in client session
      */
-    private AuthorizationDetailsResponse buildAuthorizationDetailResponseFromScope(
-            SupportedCredentialConfiguration config, UserSessionModel userSession, ClientSessionContext clientSessionCtx) {
+    private List<String> extractCredentialConfigurationIds(org.keycloak.models.AuthenticatedClientSessionModel clientSession) {
+        logger.debugf("Searching for credential offer data in client session notes. Available notes: %s",
+                clientSession.getNotes().keySet());
 
-        String credentialConfigurationId = config.getId();
-
-        // Generate credential identifiers
-        List<String> credentialIdentifiers = new ArrayList<>();
-        credentialIdentifiers.add(UUID.randomUUID().toString());
-
-        OID4VCAuthorizationDetailsResponse responseDetail = new OID4VCAuthorizationDetailsResponse();
-        responseDetail.setType(OPENID_CREDENTIAL_TYPE);
-        responseDetail.setCredentialConfigurationId(credentialConfigurationId);
-        responseDetail.setCredentialIdentifiers(credentialIdentifiers);
-
-        // Store credential context mapping using credential identifier as key
-        for (String credentialIdentifier : credentialIdentifiers) {
-            String contextKey = "CREDENTIAL_CONTEXT_" + credentialIdentifier;
+        // First, try to get credential configuration IDs from the predictable location
+        String credentialConfigIdsJson = clientSession.getNote("CREDENTIAL_CONFIGURATION_IDS");
+        if (credentialConfigIdsJson != null) {
+            logger.debugf("Found credential configuration IDs in predictable location");
             try {
-                // Store the complete credential context for later retrieval
-                Map<String, Object> credentialContext = Map.of(
-                        "credentialConfigurationId", credentialConfigurationId,
-                        "type", OPENID_CREDENTIAL_TYPE,
-                        "scope", config.getScope()
-                );
-                userSession.setNote(contextKey, JsonSerialization.writeValueAsString(credentialContext));
+                @SuppressWarnings("unchecked")
+                List<String> configIds = JsonSerialization.readValue(credentialConfigIdsJson, List.class);
+                logger.debugf("Successfully parsed credential configuration IDs: %s", configIds);
+                return configIds;
             } catch (Exception e) {
-                logger.warnf(e, "Failed to store credential context for identifier %s", credentialIdentifier);
+                logger.warnf("Failed to parse credential configuration IDs from predictable location: %s", e.getMessage());
             }
         }
 
-        return responseDetail;
+        // Fallback: Look for credential offer data in client session notes
+        // The credential offer is stored with a random sessionCode as the key
+        logger.debugf("Credential configuration IDs not found in predictable location, searching through session notes");
+        for (String noteKey : clientSession.getNotes().keySet()) {
+            // Skip predictable location and VC-Issuance-Flow notes as they're handled separately
+            if ("CREDENTIAL_CONFIGURATION_IDS".equals(noteKey) || "VC-Issuance-Flow".equals(noteKey)) {
+                continue;
+            }
+
+            try {
+                String noteValue = clientSession.getNote(noteKey);
+                if (noteValue != null && noteValue.contains("credential_configuration_ids")) {
+                    logger.debugf("Found potential credential offer data in note '%s'", noteKey);
+
+                    // Parse the credential offer JSON to extract credential_configuration_ids
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> offerData = JsonSerialization.readValue(noteValue, Map.class);
+                    Object configIdsObj = offerData.get("credential_configuration_ids");
+                    if (configIdsObj instanceof List) {
+                        @SuppressWarnings("unchecked")
+                        List<String> configIds = (List<String>) configIdsObj;
+                        logger.debugf("Found credential_configuration_ids in client session note '%s': %s", noteKey, configIds);
+                        return configIds;
+                    }
+                }
+            } catch (Exception e) {
+                logger.debugf("Failed to parse credential offer data from note %s: %s", noteKey, e.getMessage());
+            }
+        }
+
+        logger.debugf("No credential_configuration_ids found in credential offer");
+        return null;
     }
 
     @Override

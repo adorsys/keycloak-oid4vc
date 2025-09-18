@@ -322,6 +322,11 @@ public class OID4VCIssuerEndpoint {
         String sessionCode = generateCodeForSession(expiration, clientSession);
         try {
             clientSession.setNote(sessionCode, JsonSerialization.mapper.writeValueAsString(theOffer));
+            
+            // Also store the credential configuration IDs in a predictable location for token processing
+            String credentialConfigIdsJson = JsonSerialization.mapper.writeValueAsString(theOffer.getCredentialConfigurationIds());
+            clientSession.setNote("CREDENTIAL_CONFIGURATION_IDS", credentialConfigIdsJson);
+            LOGGER.debugf("Stored credential configuration IDs for token processing: %s", credentialConfigIdsJson);
         } catch (JsonProcessingException e) {
             LOGGER.errorf("Could not convert the offer POJO to JSON: %s", e.getMessage());
             throw new BadRequestException(getErrorResponse(ErrorType.INVALID_CREDENTIAL_REQUEST));
@@ -525,15 +530,47 @@ public class OID4VCIssuerEndpoint {
                     throw new BadRequestException(getErrorResponse(ErrorType.UNKNOWN_CREDENTIAL_IDENTIFIER));
                 }
             } else {
-                // No stored context found, try to use credential_identifier as a direct scope name
-                try {
-                    requestedCredential = credentialRequestVO.findCredentialScope(session).orElseThrow(() -> {
-                        LOGGER.errorf("Credential scope not found for identifier: %s", credentialRequestVO.getCredentialIdentifier());
-                        return new BadRequestException(getErrorResponse(ErrorType.UNKNOWN_CREDENTIAL_IDENTIFIER));
-                    });
-                } catch (Exception e) {
-                    LOGGER.errorf(e, "Failed to find credential scope for identifier: %s", credentialRequestVO.getCredentialIdentifier());
-                    throw new BadRequestException(getErrorResponse(ErrorType.UNKNOWN_CREDENTIAL_IDENTIFIER));
+                // No stored context found, try to retrieve from client session mapping
+                String mappingKey = "credential_identifier_" + credentialRequestVO.getCredentialIdentifier();
+                String mappedCredentialConfigurationId = authResult.getSession().getNote(mappingKey);
+
+                if (mappedCredentialConfigurationId != null) {
+                    LOGGER.debugf("Found credential configuration ID mapping for identifier %s: %s",
+                            credentialRequestVO.getCredentialIdentifier(), mappedCredentialConfigurationId);
+
+                    // Use the mapped credential configuration ID
+                    Map<String, SupportedCredentialConfiguration> supportedCredentials = OID4VCIssuerWellKnownProvider.getSupportedCredentials(session);
+                    if (supportedCredentials.containsKey(mappedCredentialConfigurationId)) {
+                        SupportedCredentialConfiguration config = supportedCredentials.get(mappedCredentialConfigurationId);
+                        ClientModel client = session.getContext().getClient();
+                        Map<String, ClientScopeModel> clientScopes = client.getClientScopes(false);
+                        ClientScopeModel clientScope = clientScopes.get(config.getScope());
+
+                        if (clientScope != null) {
+                            requestedCredential = new CredentialScopeModel(clientScope);
+                            LOGGER.debugf("Successfully mapped credential identifier %s to configuration %s",
+                                    credentialRequestVO.getCredentialIdentifier(), mappedCredentialConfigurationId);
+                        } else {
+                            LOGGER.errorf("Client scope not found for mapped credential configuration: %s", config.getScope());
+                            throw new BadRequestException(getErrorResponse(ErrorType.UNKNOWN_CREDENTIAL_CONFIGURATION));
+                        }
+                    } else {
+                        LOGGER.errorf("Mapped credential configuration not found: %s", mappedCredentialConfigurationId);
+                        throw new BadRequestException(getErrorResponse(ErrorType.UNKNOWN_CREDENTIAL_CONFIGURATION));
+                    }
+                } else {
+                    // No mapping found, try to use credential_identifier as a direct scope name
+                    LOGGER.debugf("No mapping found for credential identifier %s, trying direct scope lookup",
+                            credentialRequestVO.getCredentialIdentifier());
+                    try {
+                        requestedCredential = credentialRequestVO.findCredentialScope(session).orElseThrow(() -> {
+                            LOGGER.errorf("Credential scope not found for identifier: %s", credentialRequestVO.getCredentialIdentifier());
+                            return new BadRequestException(getErrorResponse(ErrorType.UNKNOWN_CREDENTIAL_IDENTIFIER));
+                        });
+                    } catch (Exception e) {
+                        LOGGER.errorf(e, "Failed to find credential scope for identifier: %s", credentialRequestVO.getCredentialIdentifier());
+                        throw new BadRequestException(getErrorResponse(ErrorType.UNKNOWN_CREDENTIAL_IDENTIFIER));
+                    }
                 }
             }
         } else if (credentialRequestVO.getCredentialConfigurationId() != null) {
