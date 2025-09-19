@@ -26,12 +26,12 @@ import org.keycloak.models.RealmModel;
 import org.keycloak.models.UserSessionModel;
 import org.keycloak.models.session.UserSessionPersisterProvider;
 import org.keycloak.models.sessions.infinispan.PersistentUserSessionProvider;
-import org.keycloak.models.sessions.infinispan.SessionFunction;
 import org.keycloak.models.sessions.infinispan.UserSessionAdapter;
 import org.keycloak.models.sessions.infinispan.entities.AuthenticatedClientSessionEntity;
 import org.keycloak.models.sessions.infinispan.entities.AuthenticatedClientSessionStore;
 import org.keycloak.models.sessions.infinispan.util.SessionTimeouts;
 
+import java.util.Collection;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.ArrayBlockingQueue;
@@ -45,18 +45,21 @@ public class ClientSessionPersistentChangelogBasedTransaction extends Persistent
     private final UserSessionPersistentChangelogBasedTransaction userSessionTx;
 
     public ClientSessionPersistentChangelogBasedTransaction(KeycloakSession session,
-                                                            Cache<UUID, SessionEntityWrapper<AuthenticatedClientSessionEntity>> cache,
-                                                            Cache<UUID, SessionEntityWrapper<AuthenticatedClientSessionEntity>> offlineCache,
-                                                            SessionFunction<AuthenticatedClientSessionEntity> lifespanMsLoader,
-                                                            SessionFunction<AuthenticatedClientSessionEntity> maxIdleTimeMsLoader,
-                                                            SessionFunction<AuthenticatedClientSessionEntity> offlineLifespanMsLoader,
-                                                            SessionFunction<AuthenticatedClientSessionEntity> offlineMaxIdleTimeMsLoader,
-                                                            UserSessionPersistentChangelogBasedTransaction userSessionTx,
                                                             ArrayBlockingQueue<PersistentUpdate> batchingQueue,
-                                                            SerializeExecutionsByKey<UUID> serializerOnline,
-                                                            SerializeExecutionsByKey<UUID> serializerOffline) {
-        super(session, CLIENT_SESSION_CACHE_NAME, cache, offlineCache, lifespanMsLoader, maxIdleTimeMsLoader, offlineLifespanMsLoader, offlineMaxIdleTimeMsLoader, batchingQueue, serializerOnline, serializerOffline);
+                                                            CacheHolder<UUID, AuthenticatedClientSessionEntity> cacheHolder,
+                                                            CacheHolder<UUID, AuthenticatedClientSessionEntity> offlineCacheHolder,
+                                                            UserSessionPersistentChangelogBasedTransaction userSessionTx) {
+        super(session, CLIENT_SESSION_CACHE_NAME, batchingQueue, cacheHolder, offlineCacheHolder);
         this.userSessionTx = userSessionTx;
+    }
+
+    public void setUserSessionId(Collection<UUID> keys, String userSessionId, boolean offline) {
+        keys.stream().map(getUpdates(offline)::get)
+                .filter(Objects::nonNull)
+                .map(SessionUpdatesList::getEntityWrapper)
+                .map(SessionEntityWrapper::getEntity)
+                .filter(Objects::nonNull)
+                .forEach(authenticatedClientSessionEntity -> authenticatedClientSessionEntity.setUserSessionId(userSessionId));
     }
 
     public SessionEntityWrapper<AuthenticatedClientSessionEntity> get(RealmModel realm, ClientModel client, UserSessionModel userSession, UUID key, boolean offline) {
@@ -182,6 +185,7 @@ public class ClientSessionPersistentChangelogBasedTransaction extends Persistent
         if (imported != null) {
             LOG.debugf("Client-session already imported by another transaction. userSessionId=%s, clientSessionId=%s, clientId=%s, offline=%s",
                     userSession.getId(), clientSessionId, client.getId(), offline);
+            imported.getEntity().setUserSessionId(userSession.getId());
             return imported;
         }
 

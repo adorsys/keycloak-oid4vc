@@ -58,8 +58,6 @@ public class CredentialRequest {
     @JsonProperty("credential_response_encryption")
     private CredentialResponseEncryption credentialResponseEncryption;
 
-    private String format;
-
     public String getCredentialIdentifier() {
         return credentialIdentifier;
     }
@@ -111,15 +109,6 @@ public class CredentialRequest {
 
     public CredentialRequest setCredentialResponseEncryption(CredentialResponseEncryption credentialResponseEncryption) {
         this.credentialResponseEncryption = credentialResponseEncryption;
-        return this;
-    }
-
-    public String getFormat() {
-        return format;
-    }
-
-    public CredentialRequest setFormat(String format) {
-        this.format = format;
         return this;
     }
 
