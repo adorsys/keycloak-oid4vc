@@ -41,13 +41,14 @@ public interface CertificateUtilsProvider {
      * @param caPrivateKey the CA private key
      * @param caCert the CA certificate
      * @param subject the subject name
+     * @param subjectAltNames the subject alternative names
      * 
      * @return the x509 certificate
      * 
      * @throws Exception the exception
      */
     public X509Certificate generateV3Certificate(KeyPair keyPair, PrivateKey caPrivateKey, X509Certificate caCert,
-            String subject) throws Exception;
+            String subject, List<String> subjectAltNames) throws Exception;
 
     /**
      * Generate version 1 self signed {@link java.security.cert.X509Certificate}..

@@ -43,6 +43,7 @@ import org.keycloak.common.Profile;
 import org.keycloak.common.VerificationException;
 import org.keycloak.common.util.KeycloakUriBuilder;
 import org.keycloak.jose.jwk.JWK;
+import org.keycloak.jose.jws.JWSHeader;
 import org.keycloak.jose.jws.JWSInput;
 import org.keycloak.jose.jws.JWSInputException;
 import org.keycloak.keys.Attributes;
@@ -71,17 +72,22 @@ import org.keycloak.testsuite.util.oauth.AccessTokenResponse;
 import org.keycloak.util.JsonSerialization;
 import org.openqa.selenium.Cookie;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.security.cert.CertificateFactory;
+import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
@@ -156,6 +162,55 @@ public class OID4VPUserAuthEndpointTest extends OID4VCIssuerEndpointTest {
         String expectedSessionId = pruneAuthSessionId(authContext.getTransactionId());
         String actualSessionId = pruneAuthSessionId(requestObject.getState());
         assertEquals(expectedSessionId, actualSessionId);
+    }
+
+    @Test
+    public void shouldProduceSpaceFreeSignedJwt_ForLissiWalletCompat() throws Exception {
+        // Retrieve an authorization request
+        AuthorizationContext authContext = requestAuthorizationRequest();
+        String authRequest = authContext.getAuthorizationRequest();
+
+        // Resolve the request_uri parameter from the authorization request
+        String signedReqJwt = resolveSignedRequestObject(authRequest);
+
+        // Assert no space in the JWT prior to Base64 encoding
+        String[] parts = signedReqJwt.split("\\.");
+        assertTrue("Invalid JWT format", parts.length >= 2);
+        String headerJson = new String(Base64.getUrlDecoder().decode(parts[0]));
+        assertFalse("No space allowed", headerJson.matches(".*\\s.*"));
+        String payloadJson = new String(Base64.getUrlDecoder().decode(parts[1]));
+        assertFalse("No space allowed", payloadJson.matches(".*\\s.*"));
+    }
+
+    @Test
+    public void shouldAttachX5CwithClientIdAsSAN() throws Exception {
+        // Retrieve an authorization request
+        AuthorizationContext authContext = requestAuthorizationRequest();
+        String authRequest = authContext.getAuthorizationRequest();
+
+        // Resolve the request_uri parameter from the authorization request
+        String signedReqJwt = resolveSignedRequestObject(authRequest);
+        JWSInput jwsInput = new JWSInput(signedReqJwt);
+
+        // Extract X5C leaf certificate from JWT header
+        JWSHeader header = jwsInput.getHeader();
+        String certStr = header.getX5c().get(0);
+        byte[] certBytes = Base64.getDecoder().decode(certStr);
+        CertificateFactory cf = CertificateFactory.getInstance("X.509");
+        X509Certificate cert = (X509Certificate) cf.generateCertificate(new ByteArrayInputStream(certBytes));
+
+        // Assert SAN was attached to X5C
+        Collection<?> sans = cert.getSubjectAlternativeNames();
+        assertNotNull("Certificate should contain SAN extension", sans);
+        assertEquals("Certificate should have one SAN entry", 1, sans.size());
+
+        // Assert SAN in X5C if of type DNS (2)
+        List<?> sanEntry = (List<?>) sans.stream().toList().get(0);
+        assertEquals("Must be of SAN type DNS", 2, sanEntry.get(0));
+
+        // Assert SAN in X5C matches client ID
+        String clientId = suiteContext.getAuthServerInfo().getContextRoot().getHost();
+        assertEquals("DNS SAN must match client ID", clientId, sanEntry.get(1));
     }
 
     @Test
@@ -631,6 +686,16 @@ public class OID4VPUserAuthEndpointTest extends OID4VCIssuerEndpointTest {
      * A request is sent to the request_uri dereferencing endpoint to retrieve the request object.     *
      */
     private RequestObject resolveRequestObject(String authRequest) throws IOException, JWSInputException {
+        String signedRequestJwt = resolveSignedRequestObject(authRequest);
+        JWSInput jwsInput = new JWSInput(signedRequestJwt);
+        return jwsInput.readJsonContent(RequestObject.class);
+    }
+
+    /**
+     * Resolve the request object associated with the authorization request.
+     * A request is sent to the request_uri dereferencing endpoint to retrieve the request object.     *
+     */
+    private String resolveSignedRequestObject(String authRequest) throws IOException {
         // Extract the request_uri parameter
         String requestUri = URLEncodedUtils.parse(authRequest, StandardCharsets.UTF_8).stream()
                 .filter(p -> p.getName().equals("request_uri"))
@@ -644,9 +709,7 @@ public class OID4VPUserAuthEndpointTest extends OID4VCIssuerEndpointTest {
         assertEquals(HttpStatus.SC_OK, response.getStatusLine().getStatusCode());
 
         // Parse and return the expected JWT response
-        String signedRequestJwt = EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8);
-        JWSInput jwsInput = new JWSInput(signedRequestJwt);
-        return jwsInput.readJsonContent(RequestObject.class);
+        return EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8);
     }
 
     /**

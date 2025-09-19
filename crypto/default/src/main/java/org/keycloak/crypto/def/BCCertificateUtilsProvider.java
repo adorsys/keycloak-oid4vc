@@ -66,6 +66,7 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * The Class CertificateUtils provides utility functions for generation of V1 and V3 {@link X509Certificate}
@@ -79,14 +80,15 @@ public class BCCertificateUtilsProvider implements CertificateUtilsProvider {
     /**
      * Generates version 3 {@link X509Certificate}.
      *
-     * @param keyPair      the key pair
-     * @param caPrivateKey the CA private key
-     * @param caCert       the CA certificate
-     * @param subject      the subject name
+     * @param keyPair         the key pair
+     * @param caPrivateKey    the CA private key
+     * @param caCert          the CA certificate
+     * @param subject         the subject name
+     * @param subjectAltNames the subject alternative names
      * @return the x509 certificate
      */
     public X509Certificate generateV3Certificate(KeyPair keyPair, PrivateKey caPrivateKey, X509Certificate caCert,
-                                                 String subject) {
+                                                 String subject, List<String> subjectAltNames) {
         try {
             X500Name subjectDN = new X500Name("CN=" + subject);
 
@@ -127,6 +129,14 @@ public class BCCertificateUtilsProvider implements CertificateUtilsProvider {
 
             // Basic Constraints
             certGen.addExtension(Extension.basicConstraints, true, new BasicConstraints(0));
+
+            // Subject Alternative Names
+            GeneralName[] names = Optional.ofNullable(subjectAltNames)
+                    .orElseGet(Collections::emptyList).stream()
+                    .filter(s -> s != null && !s.isBlank())
+                    .map(san -> new GeneralName(GeneralName.dNSName, san))
+                    .toArray(GeneralName[]::new);
+            certGen.addExtension(Extension.subjectAlternativeName, false, new GeneralNames(names));
 
             // Content Signer
             ContentSigner sigGen;
