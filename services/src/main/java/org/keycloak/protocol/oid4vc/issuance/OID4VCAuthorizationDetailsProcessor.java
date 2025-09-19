@@ -22,6 +22,7 @@ import org.jboss.logging.Logger;
 import org.keycloak.models.ClientSessionContext;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.UserSessionModel;
+import org.keycloak.models.AuthenticatedClientSessionModel;
 import org.keycloak.protocol.oid4vc.model.AuthorizationDetail;
 import org.keycloak.protocol.oid4vc.model.ClaimsDescription;
 import org.keycloak.protocol.oid4vc.model.SupportedCredentialConfiguration;
@@ -221,7 +222,16 @@ public class OID4VCAuthorizationDetailsProcessor implements AuthorizationDetails
         responseDetail.setCredentialConfigurationId(credentialConfigurationId);
         responseDetail.setCredentialIdentifiers(credentialIdentifiers);
 
-        // Store claims and credential context in user session notes for later use during credential issuance
+        // Store credential identifier mapping in client session for later use during credential issuance
+        AuthenticatedClientSessionModel clientSession = clientSessionCtx.getClientSession();
+        for (String credentialIdentifier : credentialIdentifiers) {
+            // Store the mapping between credential identifier and configuration ID in client session
+            String mappingKey = "credential_identifier_" + credentialIdentifier;
+            clientSession.setNote(mappingKey, credentialConfigurationId);
+            logger.debugf("Stored credential identifier mapping: %s -> %s", credentialIdentifier, credentialConfigurationId);
+        }
+
+        // Store claims in user session for later use during credential issuance
         if (detail.getClaims() != null) {
             // Store claims with a unique key based on credential configuration ID
             String claimsKey = "AUTHORIZATION_DETAILS_CLAIMS_" + credentialConfigurationId;
@@ -231,27 +241,97 @@ public class OID4VCAuthorizationDetailsProcessor implements AuthorizationDetails
                 logger.warnf(e, "Failed to store claims in user session for credential configuration %s", credentialConfigurationId);
             }
 
-            // Store credential context mapping using credential identifier as key
-            for (String credentialIdentifier : credentialIdentifiers) {
-                String contextKey = "CREDENTIAL_CONTEXT_" + credentialIdentifier;
-                try {
-                    // Store the complete credential context for later retrieval
-                    Map<String, Object> credentialContext = Map.of(
-                            "credentialConfigurationId", credentialConfigurationId,
-                            "claims", detail.getClaims(),
-                            "type", OPENID_CREDENTIAL_TYPE
-                    );
-                    userSession.setNote(contextKey, JsonSerialization.writeValueAsString(credentialContext));
-                } catch (Exception e) {
-                    logger.warnf(e, "Failed to store credential context for identifier %s", credentialIdentifier);
-                }
-            }
-
             // Include claims in response
             responseDetail.setClaims(detail.getClaims());
         }
 
         return responseDetail;
+    }
+
+
+    /**
+     * Process authorization_details from the credential offer when authorization_details parameter is not present in the token request.
+     * This method generates authorization_details based on the credential_configuration_ids from the credential offer.
+     *
+     * @param userSession      the user session
+     * @param clientSessionCtx the client session context
+     * @param clientSession    the client session that contains the credential offer information
+     * @return the authorization details response if processing was successful, null otherwise
+     */
+    public List<AuthorizationDetailsResponse> processFromCredentialOffer(UserSessionModel userSession, ClientSessionContext clientSessionCtx, AuthenticatedClientSessionModel clientSession) {
+        logger.info("Processing authorization_details from credential offer");
+
+        // Get supported credentials
+        Map<String, SupportedCredentialConfiguration> supportedCredentials = OID4VCIssuerWellKnownProvider.getSupportedCredentials(session);
+        if (supportedCredentials == null || supportedCredentials.isEmpty()) {
+            logger.info("No supported credentials found, cannot generate authorization_details from credential offer");
+            return null;
+        }
+
+        // Extract credential_configuration_ids from the credential offer
+        List<String> credentialConfigurationIds = extractCredentialConfigurationIds(clientSession);
+
+        if (credentialConfigurationIds == null || credentialConfigurationIds.isEmpty()) {
+            logger.info("No credential_configuration_ids found in credential offer, cannot generate authorization_details");
+            return null;
+        }
+
+        // Generate authorization_details for each credential configuration
+        List<AuthorizationDetailsResponse> authorizationDetailsList = new ArrayList<>();
+
+        for (String credentialConfigurationId : credentialConfigurationIds) {
+            SupportedCredentialConfiguration config = supportedCredentials.get(credentialConfigurationId);
+            if (config == null) {
+                logger.warnf("Credential configuration '%s' not found in supported credentials, skipping", credentialConfigurationId);
+                continue;
+            }
+
+            String credentialIdentifier = UUID.randomUUID().toString();
+
+            // Store the mapping between credential identifier and configuration ID in client session
+            // This will be used later when processing credential requests
+            String mappingKey = "credential_identifier_" + credentialIdentifier;
+            clientSession.setNote(mappingKey, credentialConfigurationId);
+
+            logger.debugf("Generated credential identifier '%s' for configuration '%s'",
+                    credentialIdentifier, credentialConfigurationId);
+
+            OID4VCAuthorizationDetailsResponse authDetail = new OID4VCAuthorizationDetailsResponse();
+            authDetail.setType(OPENID_CREDENTIAL_TYPE);
+            authDetail.setCredentialConfigurationId(credentialConfigurationId);
+            authDetail.setCredentialIdentifiers(List.of(credentialIdentifier));
+
+            authorizationDetailsList.add(authDetail);
+        }
+
+        if (authorizationDetailsList.isEmpty()) {
+            logger.debug("No valid credential configurations found, cannot generate authorization_details");
+            return null;
+        }
+
+        return authorizationDetailsList;
+    }
+
+    /**
+     * Extract credential_configuration_ids from the credential offer stored in client session
+     */
+    private List<String> extractCredentialConfigurationIds(AuthenticatedClientSessionModel clientSession) {
+        // Get credential configuration IDs from the predictable location
+        // This is stored when the credential offer is created in getCredentialOfferURI
+        String credentialConfigIdsJson = clientSession.getNote("CREDENTIAL_CONFIGURATION_IDS");
+        if (credentialConfigIdsJson != null) {
+            logger.debugf("Found credential configuration IDs in predictable location");
+            try {
+                List<String> configIds = JsonSerialization.readValue(credentialConfigIdsJson, List.class);
+                logger.debugf("Successfully parsed credential configuration IDs: %s", configIds);
+                return configIds;
+            } catch (Exception e) {
+                logger.warnf("Failed to parse credential configuration IDs from predictable location: %s", e.getMessage());
+            }
+        }
+
+        logger.debugf("No credential_configuration_ids found in predictable location");
+        return null;
     }
 
     @Override
