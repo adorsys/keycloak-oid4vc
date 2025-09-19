@@ -109,9 +109,7 @@ public class PreAuthorizedCodeGrantType extends OAuth2GrantTypeBase {
 
         // If no authorization_details were processed from the request, try to generate them from credential offer
         if (authorizationDetailsResponse == null || authorizationDetailsResponse.isEmpty()) {
-            LOGGER.info("No authorization_details from request, trying to generate from credential offer");
             authorizationDetailsResponse = processAuthorizationDetailsFromCredentialOffer(clientSession.getUserSession(), sessionContext, clientSession);
-            LOGGER.infof("Credential offer authorization_details processing result: %s", authorizationDetailsResponse);
         }
 
         AccessTokenResponse tokenResponse;

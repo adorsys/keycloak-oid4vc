@@ -457,21 +457,10 @@ public abstract class OID4VCAuthorizationDetailsFlowTestBase extends OID4VCIssue
         // The system should generate authorization_details based on credential_configuration_ids from the credential offer
         String credentialConfigId = getCredentialClientScope().getAttributes().get(CredentialScopeModel.CONFIGURATION_ID);
 
-        System.out.println("=== TEST: Pre-Authorized Code with Credential Offer-Based Authorization Details ===");
-        System.out.println("Credential Configuration ID from offer: " + credentialConfigId);
-        System.out.println("Credential Offer credential_configuration_ids: " + ctx.credentialsOffer.getCredentialConfigurationIds());
-
         HttpPost postPreAuthorizedCode = new HttpPost(ctx.openidConfig.getTokenEndpoint());
         List<NameValuePair> parameters = new LinkedList<>();
         parameters.add(new BasicNameValuePair(OAuth2Constants.GRANT_TYPE, PreAuthorizedCodeGrantTypeFactory.GRANT_TYPE));
         parameters.add(new BasicNameValuePair(PreAuthorizedCodeGrantTypeFactory.CODE_REQUEST_PARAM, ctx.credentialsOffer.getGrants().getPreAuthorizedCode().getPreAuthorizedCode()));
-        // Note: No authorization_details parameter is sent, no scope parameter needed
-
-        System.out.println("Token Request Parameters:");
-        System.out.println("  grant_type: " + PreAuthorizedCodeGrantTypeFactory.GRANT_TYPE);
-        System.out.println("  pre-authorized_code: " + ctx.credentialsOffer.getGrants().getPreAuthorizedCode().getPreAuthorizedCode());
-        System.out.println("  authorization_details: NOT PROVIDED (this is the key test case)");
-        System.out.println("  scope: NOT PROVIDED (not needed for credential offer-based flow)");
 
         UrlEncodedFormEntity formEntity = new UrlEncodedFormEntity(parameters, StandardCharsets.UTF_8);
         postPreAuthorizedCode.setEntity(formEntity);
@@ -493,11 +482,6 @@ public abstract class OID4VCAuthorizationDetailsFlowTestBase extends OID4VCIssue
                 String expectedConfigId = ctx.credentialsOffer.getCredentialConfigurationIds().get(i);
                 OID4VCAuthorizationDetailsResponse authDetailResponse = authDetailsResponse.get(i);
 
-                System.out.println("Generated Authorization Details " + (i + 1) + ":");
-                System.out.println("  type: " + authDetailResponse.getType());
-                System.out.println("  credential_configuration_id: " + authDetailResponse.getCredentialConfigurationId());
-                System.out.println("  credential_identifiers: " + authDetailResponse.getCredentialIdentifiers());
-
                 assertEquals(OPENID_CREDENTIAL_TYPE, authDetailResponse.getType());
                 assertEquals("Credential configuration ID should match the one from the offer",
                         expectedConfigId, authDetailResponse.getCredentialConfigurationId());
@@ -509,7 +493,6 @@ public abstract class OID4VCAuthorizationDetailsFlowTestBase extends OID4VCIssue
                 assertFalse("Identifier should not be empty", credentialIdentifier.isEmpty());
                 try {
                     UUID.fromString(credentialIdentifier);
-                    System.out.println("  Generated credential identifier is valid UUID: " + credentialIdentifier);
                 } catch (IllegalArgumentException e) {
                     fail("Identifier should be a valid UUID, but was: " + credentialIdentifier);
                 }
@@ -524,21 +507,11 @@ public abstract class OID4VCAuthorizationDetailsFlowTestBase extends OID4VCIssue
 
         String credentialConfigId = getCredentialClientScope().getAttributes().get(CredentialScopeModel.CONFIGURATION_ID);
 
-        System.out.println("=== TEST: Complete Flow with Credential Offer-Based Authorization Details ===");
-        System.out.println("Credential Configuration ID from offer: " + credentialConfigId);
-        System.out.println("Credential Offer credential_configuration_ids: " + ctx.credentialsOffer.getCredentialConfigurationIds());
-
         // Step 1: Request token without authorization_details parameter (no scope needed)
         HttpPost postPreAuthorizedCode = new HttpPost(ctx.openidConfig.getTokenEndpoint());
         List<NameValuePair> parameters = new LinkedList<>();
         parameters.add(new BasicNameValuePair(OAuth2Constants.GRANT_TYPE, PreAuthorizedCodeGrantTypeFactory.GRANT_TYPE));
         parameters.add(new BasicNameValuePair(PreAuthorizedCodeGrantTypeFactory.CODE_REQUEST_PARAM, ctx.credentialsOffer.getGrants().getPreAuthorizedCode().getPreAuthorizedCode()));
-
-        System.out.println("Step 1 - Token Request Parameters:");
-        System.out.println("  grant_type: " + PreAuthorizedCodeGrantTypeFactory.GRANT_TYPE);
-        System.out.println("  pre-authorized_code: " + ctx.credentialsOffer.getGrants().getPreAuthorizedCode().getPreAuthorizedCode());
-        System.out.println("  authorization_details: NOT PROVIDED (generated from credential offer)");
-        System.out.println("  scope: NOT PROVIDED (not needed for credential offer-based flow)");
 
         UrlEncodedFormEntity formEntity = new UrlEncodedFormEntity(parameters, StandardCharsets.UTF_8);
         postPreAuthorizedCode.setEntity(formEntity);
@@ -548,9 +521,6 @@ public abstract class OID4VCAuthorizationDetailsFlowTestBase extends OID4VCIssue
         try (CloseableHttpResponse tokenResponse = httpClient.execute(postPreAuthorizedCode)) {
             assertEquals(HttpStatus.SC_OK, tokenResponse.getStatusLine().getStatusCode());
             String responseBody = IOUtils.toString(tokenResponse.getEntity().getContent(), StandardCharsets.UTF_8);
-
-            System.out.println("Step 1 - Token Response Status: " + tokenResponse.getStatusLine().getStatusCode());
-            System.out.println("Step 1 - Token Response Body: " + responseBody);
 
             List<OID4VCAuthorizationDetailsResponse> authDetailsResponse = parseAuthorizationDetails(responseBody);
             assertNotNull("authorization_details should be present in the response", authDetailsResponse);
@@ -565,12 +535,6 @@ public abstract class OID4VCAuthorizationDetailsFlowTestBase extends OID4VCIssue
             credentialIdentifier = authDetailResponse.getCredentialIdentifiers().get(0);
             usedCredentialConfigId = authDetailResponse.getCredentialConfigurationId();
             assertNotNull("Credential identifier should not be null", credentialIdentifier);
-
-            System.out.println("Step 1 - Generated Authorization Details:");
-            System.out.println("  type: " + authDetailResponse.getType());
-            System.out.println("  credential_configuration_id: " + authDetailResponse.getCredentialConfigurationId());
-            System.out.println("  credential_identifiers: " + authDetailResponse.getCredentialIdentifiers());
-            System.out.println("  Using credential identifier for next step: " + credentialIdentifier);
         }
 
         // Step 2: Request the actual credential using ONLY the identifier (no credential_configuration_id)
@@ -582,24 +546,13 @@ public abstract class OID4VCAuthorizationDetailsFlowTestBase extends OID4VCIssue
         CredentialRequest credentialRequest = new CredentialRequest();
         credentialRequest.setFormat(getCredentialFormat());
         credentialRequest.setCredentialIdentifier(credentialIdentifier);
-        // Explicitly NOT setting credential_configuration_id to test the mapping functionality
 
         String requestBody = JsonSerialization.writeValueAsString(credentialRequest);
         postCredential.setEntity(new StringEntity(requestBody, StandardCharsets.UTF_8));
 
-        System.out.println("Step 2 - Credential Request (testing identifier mapping):");
-        System.out.println("  format: " + getCredentialFormat());
-        System.out.println("  credential_identifier: " + credentialIdentifier);
-        System.out.println("  credential_configuration_id: NOT PROVIDED (testing mapping lookup)");
-        System.out.println("  Expected credential_configuration_id: " + usedCredentialConfigId);
-        System.out.println("  Request Body: " + requestBody);
-
         try (CloseableHttpResponse credentialResponse = httpClient.execute(postCredential)) {
             assertEquals(HttpStatus.SC_OK, credentialResponse.getStatusLine().getStatusCode());
             String responseBody = IOUtils.toString(credentialResponse.getEntity().getContent(), StandardCharsets.UTF_8);
-
-            System.out.println("Step 2 - Credential Response Status: " + credentialResponse.getStatusLine().getStatusCode());
-            System.out.println("Step 2 - Credential Response Body: " + responseBody);
 
             // Parse the credential response
             CredentialResponse parsedResponse = JsonSerialization.readValue(responseBody, CredentialResponse.class);
@@ -615,12 +568,6 @@ public abstract class OID4VCAuthorizationDetailsFlowTestBase extends OID4VCIssue
             Object credentialObj = credentialWrapper.getCredential();
             assertNotNull("Credential object should not be null", credentialObj);
 
-            System.out.println("Step 3 - Credential Issuance Success:");
-            System.out.println("  ✓ Credential was successfully issued using identifier: " + credentialIdentifier);
-            System.out.println("  ✓ Credential configuration ID mapping worked correctly: " + usedCredentialConfigId);
-            System.out.println("  ✓ Credential format: " + getCredentialFormat());
-            System.out.println("  ✓ Credential object type: " + credentialObj.getClass().getSimpleName());
-
             // Verify the credential structure based on format
             verifyCredentialStructure(credentialObj);
         }
@@ -630,9 +577,6 @@ public abstract class OID4VCAuthorizationDetailsFlowTestBase extends OID4VCIssue
     public void testMultipleCredentialConfigurationsFromOffer() throws Exception {
         String token = getBearerToken(oauth, client, getCredentialClientScope().getName());
         Oid4vcTestContext ctx = prepareOid4vcTestContext(token);
-
-        System.out.println("=== TEST: Multiple Credential Configurations from Credential Offer ===");
-        System.out.println("Credential Offer credential_configuration_ids: " + ctx.credentialsOffer.getCredentialConfigurationIds());
 
         // Verify that the credential offer has multiple configurations (if supported by the test setup)
         assertTrue("Credential offer should have at least one credential configuration",
@@ -645,20 +589,12 @@ public abstract class OID4VCAuthorizationDetailsFlowTestBase extends OID4VCIssue
         parameters.add(new BasicNameValuePair(OAuth2Constants.GRANT_TYPE, PreAuthorizedCodeGrantTypeFactory.GRANT_TYPE));
         parameters.add(new BasicNameValuePair(PreAuthorizedCodeGrantTypeFactory.CODE_REQUEST_PARAM, ctx.credentialsOffer.getGrants().getPreAuthorizedCode().getPreAuthorizedCode()));
 
-        System.out.println("Token Request Parameters:");
-        System.out.println("  grant_type: " + PreAuthorizedCodeGrantTypeFactory.GRANT_TYPE);
-        System.out.println("  pre-authorized_code: " + ctx.credentialsOffer.getGrants().getPreAuthorizedCode().getPreAuthorizedCode());
-        System.out.println("  authorization_details: NOT PROVIDED (should be generated from credential offer)");
-
         UrlEncodedFormEntity formEntity = new UrlEncodedFormEntity(parameters, StandardCharsets.UTF_8);
         postPreAuthorizedCode.setEntity(formEntity);
 
         try (CloseableHttpResponse tokenResponse = httpClient.execute(postPreAuthorizedCode)) {
             assertEquals(HttpStatus.SC_OK, tokenResponse.getStatusLine().getStatusCode());
             String responseBody = IOUtils.toString(tokenResponse.getEntity().getContent(), StandardCharsets.UTF_8);
-
-            System.out.println("Token Response Status: " + tokenResponse.getStatusLine().getStatusCode());
-            System.out.println("Token Response Body: " + responseBody);
 
             List<OID4VCAuthorizationDetailsResponse> authDetailsResponse = parseAuthorizationDetails(responseBody);
             assertNotNull("authorization_details should be present in the response", authDetailsResponse);
@@ -667,17 +603,10 @@ public abstract class OID4VCAuthorizationDetailsFlowTestBase extends OID4VCIssue
             assertEquals("Should have authorization_details for each credential configuration in the offer",
                     ctx.credentialsOffer.getCredentialConfigurationIds().size(), authDetailsResponse.size());
 
-            System.out.println("Generated " + authDetailsResponse.size() + " authorization_details entries:");
-
             // Verify each authorization detail
             for (int i = 0; i < authDetailsResponse.size(); i++) {
                 OID4VCAuthorizationDetailsResponse authDetail = authDetailsResponse.get(i);
                 String expectedConfigId = ctx.credentialsOffer.getCredentialConfigurationIds().get(i);
-
-                System.out.println("  Authorization Detail " + (i + 1) + ":");
-                System.out.println("    type: " + authDetail.getType());
-                System.out.println("    credential_configuration_id: " + authDetail.getCredentialConfigurationId());
-                System.out.println("    credential_identifiers: " + authDetail.getCredentialIdentifiers());
 
                 // Verify structure
                 assertEquals("Type should be openid_credential", OPENID_CREDENTIAL_TYPE, authDetail.getType());
@@ -693,7 +622,6 @@ public abstract class OID4VCAuthorizationDetailsFlowTestBase extends OID4VCIssue
                 assertFalse("Credential identifier should not be empty", credentialIdentifier.isEmpty());
                 try {
                     UUID.fromString(credentialIdentifier);
-                    System.out.println("    ✓ Valid UUID: " + credentialIdentifier);
                 } catch (IllegalArgumentException e) {
                     fail("Credential identifier should be a valid UUID, but was: " + credentialIdentifier);
                 }
@@ -705,223 +633,6 @@ public abstract class OID4VCAuthorizationDetailsFlowTestBase extends OID4VCIssue
                     .collect(Collectors.toSet());
             assertEquals("All credential identifiers should be unique",
                     authDetailsResponse.size(), allIdentifiers.size());
-
-            System.out.println("✓ All credential identifiers are unique");
-            System.out.println("✓ Successfully generated authorization_details for " + authDetailsResponse.size() + " credential configurations");
-        }
-    }
-
-    @Test
-    public void testCredentialIdentifierMappingInCredentialRequest() throws Exception {
-        String token = getBearerToken(oauth, client, getCredentialClientScope().getName());
-        Oid4vcTestContext ctx = prepareOid4vcTestContext(token);
-
-        System.out.println("=== TEST: Credential Identifier Mapping in Credential Request ===");
-        System.out.println("Credential Offer credential_configuration_ids: " + ctx.credentialsOffer.getCredentialConfigurationIds());
-
-        // Step 1: Request token without authorization_details parameter to generate them from credential offer
-        HttpPost postPreAuthorizedCode = new HttpPost(ctx.openidConfig.getTokenEndpoint());
-        List<NameValuePair> parameters = new LinkedList<>();
-        parameters.add(new BasicNameValuePair(OAuth2Constants.GRANT_TYPE, PreAuthorizedCodeGrantTypeFactory.GRANT_TYPE));
-        parameters.add(new BasicNameValuePair(PreAuthorizedCodeGrantTypeFactory.CODE_REQUEST_PARAM, ctx.credentialsOffer.getGrants().getPreAuthorizedCode().getPreAuthorizedCode()));
-
-        System.out.println("Step 1 - Token Request (generating authorization_details from credential offer):");
-        System.out.println("  grant_type: " + PreAuthorizedCodeGrantTypeFactory.GRANT_TYPE);
-        System.out.println("  pre-authorized_code: " + ctx.credentialsOffer.getGrants().getPreAuthorizedCode().getPreAuthorizedCode());
-        System.out.println("  authorization_details: NOT PROVIDED (generated from credential offer)");
-
-        UrlEncodedFormEntity formEntity = new UrlEncodedFormEntity(parameters, StandardCharsets.UTF_8);
-        postPreAuthorizedCode.setEntity(formEntity);
-
-        String credentialIdentifier = null;
-        String expectedCredentialConfigId = null;
-        try (CloseableHttpResponse tokenResponse = httpClient.execute(postPreAuthorizedCode)) {
-            assertEquals(HttpStatus.SC_OK, tokenResponse.getStatusLine().getStatusCode());
-            String responseBody = IOUtils.toString(tokenResponse.getEntity().getContent(), StandardCharsets.UTF_8);
-
-            System.out.println("Step 1 - Token Response Status: " + tokenResponse.getStatusLine().getStatusCode());
-            System.out.println("Step 1 - Token Response Body: " + responseBody);
-
-            List<OID4VCAuthorizationDetailsResponse> authDetailsResponse = parseAuthorizationDetails(responseBody);
-            assertNotNull("authorization_details should be present in the response", authDetailsResponse);
-            assertEquals("Should have authorization_details for each credential configuration in the offer",
-                    ctx.credentialsOffer.getCredentialConfigurationIds().size(), authDetailsResponse.size());
-
-            // Use the first authorization detail for credential request
-            OID4VCAuthorizationDetailsResponse authDetailResponse = authDetailsResponse.get(0);
-            assertNotNull("Credential identifiers should be present", authDetailResponse.getCredentialIdentifiers());
-            assertEquals(1, authDetailResponse.getCredentialIdentifiers().size());
-
-            credentialIdentifier = authDetailResponse.getCredentialIdentifiers().get(0);
-            expectedCredentialConfigId = authDetailResponse.getCredentialConfigurationId();
-            assertNotNull("Credential identifier should not be null", credentialIdentifier);
-
-            System.out.println("Step 1 - Generated Authorization Details:");
-            System.out.println("  type: " + authDetailResponse.getType());
-            System.out.println("  credential_configuration_id: " + expectedCredentialConfigId);
-            System.out.println("  credential_identifiers: " + authDetailResponse.getCredentialIdentifiers());
-            System.out.println("  Using credential identifier for credential request: " + credentialIdentifier);
-        }
-
-        // Step 2: Request the actual credential using ONLY the credential identifier (no credential_configuration_id)
-        // This tests that the mapping from credential identifier to credential configuration ID works correctly
-        HttpPost postCredential = new HttpPost(ctx.credentialIssuer.getCredentialEndpoint());
-        postCredential.addHeader(HttpHeaders.AUTHORIZATION, "Bearer " + token);
-        postCredential.addHeader(HttpHeaders.CONTENT_TYPE, "application/json");
-
-        CredentialRequest credentialRequest = new CredentialRequest();
-        credentialRequest.setFormat(getCredentialFormat());
-        credentialRequest.setCredentialIdentifier(credentialIdentifier);
-        // Explicitly NOT setting credential_configuration_id to test the mapping
-
-        String requestBody = JsonSerialization.writeValueAsString(credentialRequest);
-        postCredential.setEntity(new StringEntity(requestBody, StandardCharsets.UTF_8));
-
-        System.out.println("Step 2 - Credential Request (testing identifier mapping):");
-        System.out.println("  format: " + getCredentialFormat());
-        System.out.println("  credential_identifier: " + credentialIdentifier);
-        System.out.println("  credential_configuration_id: NOT PROVIDED (testing mapping lookup)");
-        System.out.println("  Expected credential_configuration_id: " + expectedCredentialConfigId);
-        System.out.println("  Request Body: " + requestBody);
-
-        try (CloseableHttpResponse credentialResponse = httpClient.execute(postCredential)) {
-            assertEquals(HttpStatus.SC_OK, credentialResponse.getStatusLine().getStatusCode());
-            String responseBody = IOUtils.toString(credentialResponse.getEntity().getContent(), StandardCharsets.UTF_8);
-
-            System.out.println("Step 2 - Credential Response Status: " + credentialResponse.getStatusLine().getStatusCode());
-            System.out.println("Step 2 - Credential Response Body: " + responseBody);
-
-            // Parse the credential response
-            CredentialResponse parsedResponse = JsonSerialization.readValue(responseBody, CredentialResponse.class);
-            assertNotNull("Credential response should not be null", parsedResponse);
-            assertNotNull("Credentials should be present", parsedResponse.getCredentials());
-            assertEquals("Should have exactly one credential", 1, parsedResponse.getCredentials().size());
-
-            // Step 3: Verify that the issued credential structure is valid
-            CredentialResponse.Credential credentialWrapper = parsedResponse.getCredentials().get(0);
-            assertNotNull("Credential wrapper should not be null", credentialWrapper);
-
-            // The credential is stored as Object, so we need to cast it
-            Object credentialObj = credentialWrapper.getCredential();
-            assertNotNull("Credential object should not be null", credentialObj);
-
-            System.out.println("Step 3 - Credential Issuance Success:");
-            System.out.println("  ✓ Credential was successfully issued using identifier: " + credentialIdentifier);
-            System.out.println("  ✓ Credential configuration ID mapping worked correctly: " + expectedCredentialConfigId);
-            System.out.println("  ✓ Credential format: " + getCredentialFormat());
-            System.out.println("  ✓ Credential object type: " + credentialObj.getClass().getSimpleName());
-
-            // Verify the credential structure based on format
-            verifyCredentialStructure(credentialObj);
-
-            System.out.println("✓ SUCCESS: Credential identifier mapping works correctly in credential requests");
-        }
-    }
-
-    @Test
-    public void testCredentialIdentifierMappingFallbackMechanism() throws Exception {
-        String token = getBearerToken(oauth, client, getCredentialClientScope().getName());
-        Oid4vcTestContext ctx = prepareOid4vcTestContext(token);
-
-        System.out.println("=== TEST: Credential Identifier Mapping Fallback Mechanism ===");
-        System.out.println("Credential Offer credential_configuration_ids: " + ctx.credentialsOffer.getCredentialConfigurationIds());
-
-        // Step 1: Request token without authorization_details parameter to generate them from credential offer
-        HttpPost postPreAuthorizedCode = new HttpPost(ctx.openidConfig.getTokenEndpoint());
-        List<NameValuePair> parameters = new LinkedList<>();
-        parameters.add(new BasicNameValuePair(OAuth2Constants.GRANT_TYPE, PreAuthorizedCodeGrantTypeFactory.GRANT_TYPE));
-        parameters.add(new BasicNameValuePair(PreAuthorizedCodeGrantTypeFactory.CODE_REQUEST_PARAM, ctx.credentialsOffer.getGrants().getPreAuthorizedCode().getPreAuthorizedCode()));
-
-        System.out.println("Step 1 - Token Request (generating authorization_details from credential offer):");
-        System.out.println("  grant_type: " + PreAuthorizedCodeGrantTypeFactory.GRANT_TYPE);
-        System.out.println("  pre-authorized_code: " + ctx.credentialsOffer.getGrants().getPreAuthorizedCode().getPreAuthorizedCode());
-        System.out.println("  authorization_details: NOT PROVIDED (generated from credential offer)");
-
-        UrlEncodedFormEntity formEntity = new UrlEncodedFormEntity(parameters, StandardCharsets.UTF_8);
-        postPreAuthorizedCode.setEntity(formEntity);
-
-        String credentialIdentifier = null;
-        String expectedCredentialConfigId = null;
-        try (CloseableHttpResponse tokenResponse = httpClient.execute(postPreAuthorizedCode)) {
-            assertEquals(HttpStatus.SC_OK, tokenResponse.getStatusLine().getStatusCode());
-            String responseBody = IOUtils.toString(tokenResponse.getEntity().getContent(), StandardCharsets.UTF_8);
-
-            System.out.println("Step 1 - Token Response Status: " + tokenResponse.getStatusLine().getStatusCode());
-            System.out.println("Step 1 - Token Response Body: " + responseBody);
-
-            List<OID4VCAuthorizationDetailsResponse> authDetailsResponse = parseAuthorizationDetails(responseBody);
-            assertNotNull("authorization_details should be present in the response", authDetailsResponse);
-            assertEquals("Should have authorization_details for each credential configuration in the offer",
-                    ctx.credentialsOffer.getCredentialConfigurationIds().size(), authDetailsResponse.size());
-
-            // Use the first authorization detail for credential request
-            OID4VCAuthorizationDetailsResponse authDetailResponse = authDetailsResponse.get(0);
-            assertNotNull("Credential identifiers should be present", authDetailResponse.getCredentialIdentifiers());
-            assertEquals(1, authDetailResponse.getCredentialIdentifiers().size());
-
-            credentialIdentifier = authDetailResponse.getCredentialIdentifiers().get(0);
-            expectedCredentialConfigId = authDetailResponse.getCredentialConfigurationId();
-            assertNotNull("Credential identifier should not be null", credentialIdentifier);
-
-            System.out.println("Step 1 - Generated Authorization Details:");
-            System.out.println("  type: " + authDetailResponse.getType());
-            System.out.println("  credential_configuration_id: " + expectedCredentialConfigId);
-            System.out.println("  credential_identifiers: " + authDetailResponse.getCredentialIdentifiers());
-            System.out.println("  Using credential identifier for credential request: " + credentialIdentifier);
-        }
-
-        // Step 2: Request the actual credential using ONLY the credential identifier
-        // This tests that the fallback mechanism works when the primary storage method is not available
-        HttpPost postCredential = new HttpPost(ctx.credentialIssuer.getCredentialEndpoint());
-        postCredential.addHeader(HttpHeaders.AUTHORIZATION, "Bearer " + token);
-        postCredential.addHeader(HttpHeaders.CONTENT_TYPE, "application/json");
-
-        CredentialRequest credentialRequest = new CredentialRequest();
-        credentialRequest.setFormat(getCredentialFormat());
-        credentialRequest.setCredentialIdentifier(credentialIdentifier);
-        // Explicitly NOT setting credential_configuration_id to test the fallback mechanism
-
-        String requestBody = JsonSerialization.writeValueAsString(credentialRequest);
-        postCredential.setEntity(new StringEntity(requestBody, StandardCharsets.UTF_8));
-
-        System.out.println("Step 2 - Credential Request (testing fallback mechanism):");
-        System.out.println("  format: " + getCredentialFormat());
-        System.out.println("  credential_identifier: " + credentialIdentifier);
-        System.out.println("  credential_configuration_id: NOT PROVIDED (testing fallback lookup)");
-        System.out.println("  Expected credential_configuration_id: " + expectedCredentialConfigId);
-        System.out.println("  Request Body: " + requestBody);
-
-        try (CloseableHttpResponse credentialResponse = httpClient.execute(postCredential)) {
-            assertEquals(HttpStatus.SC_OK, credentialResponse.getStatusLine().getStatusCode());
-            String responseBody = IOUtils.toString(credentialResponse.getEntity().getContent(), StandardCharsets.UTF_8);
-
-            System.out.println("Step 2 - Credential Response Status: " + credentialResponse.getStatusLine().getStatusCode());
-            System.out.println("Step 2 - Credential Response Body: " + responseBody);
-
-            // Parse the credential response
-            CredentialResponse parsedResponse = JsonSerialization.readValue(responseBody, CredentialResponse.class);
-            assertNotNull("Credential response should not be null", parsedResponse);
-            assertNotNull("Credentials should be present", parsedResponse.getCredentials());
-            assertEquals("Should have exactly one credential", 1, parsedResponse.getCredentials().size());
-
-            // Step 3: Verify that the issued credential structure is valid
-            CredentialResponse.Credential credentialWrapper = parsedResponse.getCredentials().get(0);
-            assertNotNull("Credential wrapper should not be null", credentialWrapper);
-
-            // The credential is stored as Object, so we need to cast it
-            Object credentialObj = credentialWrapper.getCredential();
-            assertNotNull("Credential object should not be null", credentialObj);
-
-            System.out.println("Step 3 - Credential Issuance Success:");
-            System.out.println("  ✓ Credential was successfully issued using identifier: " + credentialIdentifier);
-            System.out.println("  ✓ Fallback mechanism worked correctly: " + expectedCredentialConfigId);
-            System.out.println("  ✓ Credential format: " + getCredentialFormat());
-            System.out.println("  ✓ Credential object type: " + credentialObj.getClass().getSimpleName());
-
-            // Verify the credential structure based on format
-            verifyCredentialStructure(credentialObj);
-
-            System.out.println("✓ SUCCESS: Credential identifier fallback mechanism works correctly");
         }
     }
 

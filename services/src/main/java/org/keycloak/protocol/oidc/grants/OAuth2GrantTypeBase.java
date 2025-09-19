@@ -314,7 +314,7 @@ public abstract class OAuth2GrantTypeBase implements OAuth2GrantType {
                     .orElse(null);
         } catch (RuntimeException e) {
             logger.warnf(e, "Error when processing authorization_details from credential offer");
-            return null; // Don't throw exception, just return null to continue without authorization_details
+            return null;
         }
     }
 

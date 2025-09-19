@@ -22,6 +22,7 @@ import org.jboss.logging.Logger;
 import org.keycloak.models.ClientSessionContext;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.UserSessionModel;
+import org.keycloak.models.AuthenticatedClientSessionModel;
 import org.keycloak.protocol.oid4vc.model.AuthorizationDetail;
 import org.keycloak.protocol.oid4vc.model.ClaimsDescription;
 import org.keycloak.protocol.oid4vc.model.SupportedCredentialConfiguration;
@@ -199,7 +200,6 @@ public class OID4VCAuthorizationDetailsProcessor implements AuthorizationDetails
         String credentialConfigurationId = detail.getCredentialConfigurationId();
 
         // Try to reuse identifier from authorizationDetailsResponse in client session context
-        @SuppressWarnings("unchecked")
         List<AuthorizationDetailsResponse> previousResponses = clientSessionCtx.getAttribute(AUTHORIZATION_DETAILS_RESPONSE, List.class);
         List<String> credentialIdentifiers = null;
         if (previousResponses != null) {
@@ -222,7 +222,16 @@ public class OID4VCAuthorizationDetailsProcessor implements AuthorizationDetails
         responseDetail.setCredentialConfigurationId(credentialConfigurationId);
         responseDetail.setCredentialIdentifiers(credentialIdentifiers);
 
-        // Store claims and credential context in user session notes for later use during credential issuance
+        // Store credential identifier mapping in client session for later use during credential issuance
+        AuthenticatedClientSessionModel clientSession = clientSessionCtx.getClientSession();
+        for (String credentialIdentifier : credentialIdentifiers) {
+            // Store the mapping between credential identifier and configuration ID in client session
+            String mappingKey = "credential_identifier_" + credentialIdentifier;
+            clientSession.setNote(mappingKey, credentialConfigurationId);
+            logger.debugf("Stored credential identifier mapping: %s -> %s", credentialIdentifier, credentialConfigurationId);
+        }
+
+        // Store claims in user session for later use during credential issuance
         if (detail.getClaims() != null) {
             // Store claims with a unique key based on credential configuration ID
             String claimsKey = "AUTHORIZATION_DETAILS_CLAIMS_" + credentialConfigurationId;
@@ -230,22 +239,6 @@ public class OID4VCAuthorizationDetailsProcessor implements AuthorizationDetails
                 userSession.setNote(claimsKey, JsonSerialization.writeValueAsString(detail.getClaims()));
             } catch (Exception e) {
                 logger.warnf(e, "Failed to store claims in user session for credential configuration %s", credentialConfigurationId);
-            }
-
-            // Store credential context mapping using credential identifier as key
-            for (String credentialIdentifier : credentialIdentifiers) {
-                String contextKey = "CREDENTIAL_CONTEXT_" + credentialIdentifier;
-                try {
-                    // Store the complete credential context for later retrieval
-                    Map<String, Object> credentialContext = Map.of(
-                            "credentialConfigurationId", credentialConfigurationId,
-                            "claims", detail.getClaims(),
-                            "type", OPENID_CREDENTIAL_TYPE
-                    );
-                    userSession.setNote(contextKey, JsonSerialization.writeValueAsString(credentialContext));
-                } catch (Exception e) {
-                    logger.warnf(e, "Failed to store credential context for identifier %s", credentialIdentifier);
-                }
             }
 
             // Include claims in response
@@ -265,7 +258,7 @@ public class OID4VCAuthorizationDetailsProcessor implements AuthorizationDetails
      * @param clientSession    the client session that contains the credential offer information
      * @return the authorization details response if processing was successful, null otherwise
      */
-    public List<AuthorizationDetailsResponse> processFromCredentialOffer(UserSessionModel userSession, ClientSessionContext clientSessionCtx, org.keycloak.models.AuthenticatedClientSessionModel clientSession) {
+    public List<AuthorizationDetailsResponse> processFromCredentialOffer(UserSessionModel userSession, ClientSessionContext clientSessionCtx, AuthenticatedClientSessionModel clientSession) {
         logger.info("Processing authorization_details from credential offer");
 
         // Get supported credentials
@@ -275,10 +268,6 @@ public class OID4VCAuthorizationDetailsProcessor implements AuthorizationDetails
             return null;
         }
 
-        logger.infof("Found %d supported credential configurations: %s",
-                supportedCredentials.size(),
-                supportedCredentials.keySet().stream().collect(java.util.stream.Collectors.joining(", ")));
-
         // Extract credential_configuration_ids from the credential offer
         List<String> credentialConfigurationIds = extractCredentialConfigurationIds(clientSession);
 
@@ -286,8 +275,6 @@ public class OID4VCAuthorizationDetailsProcessor implements AuthorizationDetails
             logger.info("No credential_configuration_ids found in credential offer, cannot generate authorization_details");
             return null;
         }
-
-        logger.infof("Found credential_configuration_ids in credential offer: %s", credentialConfigurationIds);
 
         // Generate authorization_details for each credential configuration
         List<AuthorizationDetailsResponse> authorizationDetailsList = new ArrayList<>();
@@ -299,26 +286,12 @@ public class OID4VCAuthorizationDetailsProcessor implements AuthorizationDetails
                 continue;
             }
 
-            // Generate a unique credential identifier for this configuration
             String credentialIdentifier = UUID.randomUUID().toString();
 
-            // Store the mapping between credential identifier and configuration ID
+            // Store the mapping between credential identifier and configuration ID in client session
             // This will be used later when processing credential requests
             String mappingKey = "credential_identifier_" + credentialIdentifier;
             clientSession.setNote(mappingKey, credentialConfigurationId);
-
-            // Also store in user session for consistency and easier retrieval
-            String userContextKey = "CREDENTIAL_CONTEXT_" + credentialIdentifier;
-            try {
-                Map<String, Object> credentialContext = Map.of(
-                        "credentialConfigurationId", credentialConfigurationId,
-                        "type", OPENID_CREDENTIAL_TYPE
-                );
-                userSession.setNote(userContextKey, JsonSerialization.writeValueAsString(credentialContext));
-                logger.debugf("Stored credential context in user session for identifier '%s'", credentialIdentifier);
-            } catch (Exception e) {
-                logger.warnf(e, "Failed to store credential context in user session for identifier '%s'", credentialIdentifier);
-            }
 
             logger.debugf("Generated credential identifier '%s' for configuration '%s'",
                     credentialIdentifier, credentialConfigurationId);
@@ -336,18 +309,15 @@ public class OID4VCAuthorizationDetailsProcessor implements AuthorizationDetails
             return null;
         }
 
-        logger.debugf("Generated authorization_details for %d credential configurations", authorizationDetailsList.size());
         return authorizationDetailsList;
     }
 
     /**
      * Extract credential_configuration_ids from the credential offer stored in client session
      */
-    private List<String> extractCredentialConfigurationIds(org.keycloak.models.AuthenticatedClientSessionModel clientSession) {
-        logger.debugf("Searching for credential offer data in client session notes. Available notes: %s",
-                clientSession.getNotes().keySet());
-
-        // First, try to get credential configuration IDs from the predictable location
+    private List<String> extractCredentialConfigurationIds(AuthenticatedClientSessionModel clientSession) {
+        // Get credential configuration IDs from the predictable location
+        // This is stored when the credential offer is created in getCredentialOfferURI
         String credentialConfigIdsJson = clientSession.getNote("CREDENTIAL_CONFIGURATION_IDS");
         if (credentialConfigIdsJson != null) {
             logger.debugf("Found credential configuration IDs in predictable location");
@@ -361,37 +331,7 @@ public class OID4VCAuthorizationDetailsProcessor implements AuthorizationDetails
             }
         }
 
-        // Fallback: Look for credential offer data in client session notes
-        // The credential offer is stored with a random sessionCode as the key
-        logger.debugf("Credential configuration IDs not found in predictable location, searching through session notes");
-        for (String noteKey : clientSession.getNotes().keySet()) {
-            // Skip predictable location and VC-Issuance-Flow notes as they're handled separately
-            if ("CREDENTIAL_CONFIGURATION_IDS".equals(noteKey) || "VC-Issuance-Flow".equals(noteKey)) {
-                continue;
-            }
-
-            try {
-                String noteValue = clientSession.getNote(noteKey);
-                if (noteValue != null && noteValue.contains("credential_configuration_ids")) {
-                    logger.debugf("Found potential credential offer data in note '%s'", noteKey);
-
-                    // Parse the credential offer JSON to extract credential_configuration_ids
-                    @SuppressWarnings("unchecked")
-                    Map<String, Object> offerData = JsonSerialization.readValue(noteValue, Map.class);
-                    Object configIdsObj = offerData.get("credential_configuration_ids");
-                    if (configIdsObj instanceof List) {
-                        @SuppressWarnings("unchecked")
-                        List<String> configIds = (List<String>) configIdsObj;
-                        logger.debugf("Found credential_configuration_ids in client session note '%s': %s", noteKey, configIds);
-                        return configIds;
-                    }
-                }
-            } catch (Exception e) {
-                logger.debugf("Failed to parse credential offer data from note %s: %s", noteKey, e.getMessage());
-            }
-        }
-
-        logger.debugf("No credential_configuration_ids found in credential offer");
+        logger.debugf("No credential_configuration_ids found in predictable location");
         return null;
     }
 
