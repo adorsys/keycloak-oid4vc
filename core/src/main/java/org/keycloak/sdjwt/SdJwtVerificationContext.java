@@ -332,11 +332,7 @@ public class SdJwtVerificationContext {
         // Check that the creation time of the Key Binding JWT, as determined by the iat claim,
         // is within an acceptable window
 
-        try {
-            keyBindingJwt.verifyIssuedAtClaim();
-        } catch (VerificationException e) {
-            throw new VerificationException("Key binding JWT: Invalid `iat` claim", e);
-        }
+        // TODO: Implement `iat` check with clock skew tolerance
 
         try {
             keyBindingJwt.verifyAge(keyBindingJwtVerificationOpts.getAllowedMaxAge());

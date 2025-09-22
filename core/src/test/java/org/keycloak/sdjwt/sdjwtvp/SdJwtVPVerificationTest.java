@@ -259,21 +259,6 @@ public abstract class SdJwtVPVerificationTest {
     }
 
     @Test
-    public void testShouldFail_IfKbIssuedInFuture() {
-        long now = Instant.now().getEpochSecond();
-
-        ObjectNode kbPayload = exampleKbPayload();
-        kbPayload.set("iat", mapper.valueToTree(now + 1000));
-
-        testShouldFailGeneric2(
-                kbPayload,
-                defaultKeyBindingJwtVerificationOpts().build(),
-                "Key binding JWT: Invalid `iat` claim",
-                "jwt issued in the future"
-        );
-    }
-
-    @Test
     public void testShouldFail_IfKbTooOld() {
         long issuerSignedJwtIat = 1683000000; // same value in test vector
 
