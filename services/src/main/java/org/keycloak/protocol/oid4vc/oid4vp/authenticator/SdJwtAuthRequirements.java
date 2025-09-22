@@ -44,7 +44,7 @@ public class SdJwtAuthRequirements {
 
     private final SdJwtCredentialConstrainer sdJwtCredentialConstrainer;
     private final String keycloakIssuerURI;
-    private final String expectedKbJwtAud;
+    private final Pattern expectedKbJwtAud;
 
     private final String expectedVct;
     private final int kbJwtMaxAllowedAge;
@@ -55,9 +55,11 @@ public class SdJwtAuthRequirements {
         logger.debugf("Collecting authentication requirements");
         this.sdJwtCredentialConstrainer = new SdJwtCredentialConstrainer();
 
-        // We'll need to enforce that only credentials produced by and for this audience pass through
+        // We'll need to enforce that only credentials produced by and for this audience pass through.
+        // The audience is the client ID of the verifier, but some wallets prepend a scheme.
         this.keycloakIssuerURI = OID4VCIssuerWellKnownProvider.getIssuer(context);
-        this.expectedKbJwtAud = context.getUri().getBaseUri().getHost();
+        String kbJwtAud = Pattern.quote(context.getUri().getBaseUri().getHost());
+        this.expectedKbJwtAud = Pattern.compile("(.*:)?%s".formatted(kbJwtAud));
 
         // Reading authenticator configs
         Map<String, String> config = (authConfig != null && authConfig.getConfig() != null)

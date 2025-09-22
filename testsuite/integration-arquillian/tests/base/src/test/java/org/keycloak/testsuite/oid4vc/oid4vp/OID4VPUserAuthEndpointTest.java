@@ -209,8 +209,7 @@ public class OID4VPUserAuthEndpointTest extends OID4VCIssuerEndpointTest {
         assertEquals("Must be of SAN type DNS", 2, sanEntry.get(0));
 
         // Assert SAN in X5C matches client ID
-        String clientId = suiteContext.getAuthServerInfo().getContextRoot().getHost();
-        assertEquals("DNS SAN must match client ID", clientId, sanEntry.get(1));
+        assertEquals("DNS SAN must match client ID", getVerifierClientId(), sanEntry.get(1));
     }
 
     @Test
@@ -278,6 +277,27 @@ public class OID4VPUserAuthEndpointTest extends OID4VCIssuerEndpointTest {
 
         // Proceed to authentication (Base64-encoded VP token)
         TestOpts opts = TestOpts.getDefault().setShouldBase64EncodeVpToken(true);
+        testSuccessfulAuthentication(sdJwt, opts);
+    }
+
+    @Test
+    public void shouldAuthenticateSuccessfully_NewDcSdJwtFormat() throws Exception {
+        // Request a valid SD-JWT credential from Keycloak to use for authentication
+        String sdJwt = sdJwtVPTestUtils.requestSdJwtCredential(VCT_CONFIG_DEFAULT, TEST_USER);
+
+        // Proceed to authentication (Use 'dc-sd+jwt' in presentation submission descriptor)
+        TestOpts opts = TestOpts.getDefault().setOverrideDescriptorFormat(Descriptor.Format.DC_SD_JWT);
+        testSuccessfulAuthentication(sdJwt, opts);
+    }
+
+    @Test
+    public void shouldAuthenticateSuccessfully_SchemedAud() throws Exception {
+        // Request a valid SD-JWT credential from Keycloak to use for authentication
+        String sdJwt = sdJwtVPTestUtils.requestSdJwtCredential(VCT_CONFIG_DEFAULT, TEST_USER);
+
+        // Proceed to authentication (Prefix aud with scheme)
+        String aud = "x509_san_dns:%s".formatted(getVerifierClientId());
+        TestOpts opts = TestOpts.getDefault().setOverridePresentationAud(aud);
         testSuccessfulAuthentication(sdJwt, opts);
     }
 
@@ -721,7 +741,9 @@ public class OID4VPUserAuthEndpointTest extends OID4VCIssuerEndpointTest {
         String sdJwtVpToken = sdJwtVPTestUtils.presentSdJwt(
                 sdJwt,
                 requestObject.getNonce(),
-                requestObject.getClientId(),
+                opts.getOverridePresentationAud() == null
+                        ? requestObject.getClientId()
+                        : opts.getOverridePresentationAud(),
                 SdJwtVPTestUtils.getUserJwk()
         );
 
@@ -828,6 +850,10 @@ public class OID4VPUserAuthEndpointTest extends OID4VCIssuerEndpointTest {
                 .toString();
     }
 
+    private String getVerifierClientId() {
+        return suiteContext.getAuthServerInfo().getContextRoot().getHost();
+    }
+
     @Test
     public void shouldAuthenticateSuccessfully_InOIDCFlow() throws Exception {
         // Request a valid SD-JWT credential from Keycloak to use for authentication
@@ -888,6 +914,7 @@ public class OID4VPUserAuthEndpointTest extends OID4VCIssuerEndpointTest {
         private boolean shouldBase64EncodeVpToken;
         private boolean shouldRetrieveAccessToken = true;
         private String overridePresentationDefinitionId;
+        private String overridePresentationAud;
         private Descriptor.Format overrideDescriptorFormat;
         private String overrideDescriptorPath;
 
@@ -928,6 +955,15 @@ public class OID4VPUserAuthEndpointTest extends OID4VCIssuerEndpointTest {
 
         public TestOpts setOverridePresentationDefinitionId(String overridePresentationDefinitionId) {
             this.overridePresentationDefinitionId = overridePresentationDefinitionId;
+            return this;
+        }
+
+        public String getOverridePresentationAud() {
+            return overridePresentationAud;
+        }
+
+        public TestOpts setOverridePresentationAud(String overridePresentationAud) {
+            this.overridePresentationAud = overridePresentationAud;
             return this;
         }
 
