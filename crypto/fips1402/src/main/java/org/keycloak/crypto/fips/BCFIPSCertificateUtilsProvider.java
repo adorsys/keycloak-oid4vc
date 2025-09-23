@@ -83,12 +83,17 @@ public class BCFIPSCertificateUtilsProvider implements CertificateUtilsProvider{
      * @param caPrivateKey the CA private key
      * @param caCert the CA certificate
      * @param subject the subject name
+     * @param subjectAltNames the subject alternative names
      *
      * @return the x509 certificate
      */
     public X509Certificate generateV3Certificate(KeyPair keyPair, PrivateKey caPrivateKey, X509Certificate caCert,
-            String subject) {
+            String subject, List<String> subjectAltNames) {
         try {
+            if (subjectAltNames != null && !subjectAltNames.isEmpty()) {
+                throw new UnsupportedOperationException("SANs not supported yet by this concrete provider");
+            }
+            
             X500Name subjectDN = new X500Name("CN=" + subject);
 
             // Serial Number

@@ -28,10 +28,12 @@ import org.keycloak.sdjwt.IssuerSignedJwtVerificationOpts;
 import org.keycloak.sdjwt.consumer.PresentationRequirements;
 import org.keycloak.sdjwt.consumer.SimplePresentationDefinition;
 import org.keycloak.sdjwt.vp.KeyBindingJwtVerificationOpts;
+import org.keycloak.utils.StringUtil;
 
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
  * Predefined presentation requirements on the SD-JWT VP token for authentication.
@@ -44,9 +46,11 @@ public class SdJwtAuthRequirements {
 
     private final SdJwtCredentialConstrainer sdJwtCredentialConstrainer;
     private final String keycloakIssuerURI;
-    private final String expectedKbJwtAud;
+    private final Pattern expectedKbJwtAud;
 
-    private final String expectedVct;
+    private final List<String> expectedVcts;
+    private final String expectedVctsPattern;
+
     private final int kbJwtMaxAllowedAge;
     private final boolean validateNotBeforeClaim;
     private final boolean validateExpirationClaim;
@@ -55,19 +59,21 @@ public class SdJwtAuthRequirements {
         logger.debugf("Collecting authentication requirements");
         this.sdJwtCredentialConstrainer = new SdJwtCredentialConstrainer();
 
-        // We'll need to enforce that only credentials produced by and for this audience pass through
+        // We'll need to enforce that only credentials produced by and for this audience pass through.
+        // The audience is the client ID of the verifier, but some wallets prepend a scheme.
         this.keycloakIssuerURI = OID4VCIssuerWellKnownProvider.getIssuer(context);
-        this.expectedKbJwtAud = context.getUri().getBaseUri().getHost();
+        String kbJwtAud = Pattern.quote(context.getUri().getBaseUri().getHost());
+        this.expectedKbJwtAud = Pattern.compile("(.*:)?%s".formatted(kbJwtAud));
 
         // Reading authenticator configs
         Map<String, String> config = (authConfig != null && authConfig.getConfig() != null)
                 ? authConfig.getConfig()
                 : Map.of();
 
-        this.expectedVct = config.getOrDefault(
+        this.expectedVcts = parseMultiStr(config.getOrDefault(
                 SdJwtAuthenticatorFactory.VCT_CONFIG,
                 SdJwtAuthenticatorFactory.VCT_CONFIG_DEFAULT
-        );
+        ));
 
         this.kbJwtMaxAllowedAge = Integer.parseInt(config.getOrDefault(
                 SdJwtAuthenticatorFactory.KBJWT_MAX_AGE_CONFIG,
@@ -83,10 +89,14 @@ public class SdJwtAuthRequirements {
                 SdJwtAuthenticatorFactory.ENFORCE_EXP_CLAIM_CONFIG,
                 String.valueOf(SdJwtAuthenticatorFactory.ENFORCE_EXP_CLAIM_CONFIG_DEFAULT)
         ));
+
+        this.expectedVctsPattern = expectedVcts.stream()
+                .map(vct -> Pattern.quote("\"" + vct + "\""))
+                .collect(Collectors.joining("|", "(", ")"));
     }
 
-    public String getExpectedVct() {
-        return expectedVct;
+    public List<String> getExpectedVcts() {
+        return expectedVcts;
     }
 
     public List<String> getRequiredClaims() {
@@ -107,7 +117,7 @@ public class SdJwtAuthRequirements {
         return definition
                 .addClaimRequirement(
                         SdJwtCredentialBuilder.VERIFIABLE_CREDENTIAL_TYPE_CLAIM,
-                        Pattern.quote("\"%s\"".formatted(getExpectedVct()))
+                        expectedVctsPattern
                 )
                 .addClaimRequirement(
                         SdJwtCredentialBuilder.ISSUER_CLAIM,
@@ -121,7 +131,7 @@ public class SdJwtAuthRequirements {
      */
     public PresentationDefinition getDIFPresentationDefinition() {
         return sdJwtCredentialConstrainer.generatePresentationDefinition(
-                getExpectedVct(),
+                getExpectedVcts(),
                 getRequiredClaims()
         );
     }
@@ -142,5 +152,11 @@ public class SdJwtAuthRequirements {
                 .withValidateNotBeforeClaim(validateNotBeforeClaim)
                 .withValidateExpirationClaim(validateExpirationClaim)
                 .build();
+    }
+
+    private List<String> parseMultiStr(String str) {
+        return StringUtil.isBlank(str)
+                ? List.of()
+                : List.of(str.split("\\s*,\\s*"));
     }
 }
