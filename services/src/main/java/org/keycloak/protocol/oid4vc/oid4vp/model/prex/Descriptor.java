@@ -172,7 +172,8 @@ public class Descriptor {
         LDP("ldp"),
         LDP_VC("ldp_vc"),
         LDP_VP("ldp_vp"),
-        VC_SD_JWT("vc+sd-jwt");
+        VC_SD_JWT("vc+sd-jwt"),
+        DC_SD_JWT("dc+sd-jwt");
         private final static Map<String, Format> CONSTANTS = new HashMap<String, Format>();
 
         static {
