@@ -120,11 +120,11 @@ public class JWSBuilder {
             builder.append("\"alg\":\"").append(sigAlgName).append("\"");
         }
 
-        if (type != null) builder.append(",\"typ\":\"").append(type).append("\"");
-        if (kid != null) builder.append(",\"kid\":\"").append(kid).append("\"");
-        if (x5t != null) builder.append(",\"x5t\":\"").append(x5t).append("\"");
+        if (type != null) builder.append(",\"typ\" : \"").append(type).append("\"");
+        if (kid != null) builder.append(",\"kid\" : \"").append(kid).append("\"");
+        if (x5t != null) builder.append(",\"x5t\" : \"").append(x5t).append("\"");
         if (x5c != null && !x5c.isEmpty()) {
-            builder.append(",\"x5c\":[");
+            builder.append(",\"x5c\" : [");
             for (int i = 0; i < x5c.size(); i++) {
                 String certificate = x5c.get(i);
                 if (i > 0) {
@@ -136,7 +136,7 @@ public class JWSBuilder {
         }
         if (jwk != null) {
             try {
-                builder.append(",\"jwk\":").append(JsonSerialization.mapper.writeValueAsString(jwk));
+                builder.append(",\"jwk\" : ").append(JsonSerialization.mapper.writeValueAsString(jwk));
             } catch (JsonProcessingException e) {
                 throw new RuntimeException(e);
             }

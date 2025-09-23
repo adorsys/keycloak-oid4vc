@@ -23,7 +23,6 @@ import org.keycloak.crypto.KeyWrapper;
 import org.keycloak.crypto.SignatureProvider;
 import org.keycloak.crypto.SignatureSignerContext;
 import org.keycloak.jose.jwe.JWEUtils;
-import org.keycloak.jose.jws.JWSBuilder;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
 import org.keycloak.models.utils.SessionExpiration;
@@ -37,6 +36,7 @@ import org.keycloak.protocol.oid4vc.oid4vp.model.ResponseMode;
 import org.keycloak.protocol.oid4vc.oid4vp.model.ResponseType;
 import org.keycloak.protocol.oid4vc.oid4vp.model.dto.AuthorizationContext;
 import org.keycloak.protocol.oid4vc.oid4vp.model.dto.AuthorizationContextStatus;
+import org.keycloak.protocol.oid4vc.oid4vp.utils.SpacephobicJwsBuilder;
 import org.keycloak.sessions.AuthenticationSessionModel;
 
 import javax.naming.ldap.LdapName;
@@ -206,7 +206,7 @@ public class AuthorizationRequestService {
                 .getEpochSecond();
         requestObject.issuedNow().exp(expiration);
 
-        return new JWSBuilder()
+        return new SpacephobicJwsBuilder()
                 .type(AUTH_REQ_JWT)
                 .x5c(List.of(getSelfSignedCertificate()))
                 .jsonContent(requestObject)
