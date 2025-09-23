@@ -109,6 +109,7 @@ public class OID4VPUserAuthEndpointTest extends OID4VCIssuerEndpointTest {
     public static final String TEST_USER = "test-user@localhost";
     public static final String TEST_CLIENT_ID = "test-app";
     public static final String SD_JWT_AUTH_CONFIG = "sd-jwt-auth-config";
+    public static final String VCT_CONFIG_ALT = "https://example.com/vct-alt";
 
     private SdJwtVPTestUtils sdJwtVPTestUtils;
 
@@ -120,7 +121,10 @@ public class OID4VPUserAuthEndpointTest extends OID4VCIssuerEndpointTest {
         // Create authenticator config that enforces exp claim validation
         AuthenticatorConfigRepresentation authConfig = new AuthenticatorConfigRepresentation();
         authConfig.setAlias(SD_JWT_AUTH_CONFIG);
-        authConfig.setConfig(Map.of(SdJwtAuthenticatorFactory.ENFORCE_EXP_CLAIM_CONFIG, "true"));
+        authConfig.setConfig(Map.of(
+                SdJwtAuthenticatorFactory.ENFORCE_EXP_CLAIM_CONFIG, "true",
+                SdJwtAuthenticatorFactory.VCT_CONFIG, "%s,%s".formatted(VCT_CONFIG_DEFAULT, VCT_CONFIG_ALT)
+        ));
 
         // Register the authenticator config
         var execution = testRealm().flows().getExecutions(OID4VP_AUTH_FLOW).get(0);
@@ -299,6 +303,15 @@ public class OID4VPUserAuthEndpointTest extends OID4VCIssuerEndpointTest {
         String aud = "x509_san_dns:%s".formatted(getVerifierClientId());
         TestOpts opts = TestOpts.getDefault().setOverridePresentationAud(aud);
         testSuccessfulAuthentication(sdJwt, opts);
+    }
+
+    @Test
+    public void shouldAuthenticateSuccessfully_OtherAcceptedVct() throws Exception {
+        // Request a valid SD-JWT credential from Keycloak to use for authentication
+        String sdJwt = sdJwtVPTestUtils.requestSdJwtCredential(VCT_CONFIG_ALT, TEST_USER);
+
+        // Proceed to authentication (Should pass with other accepted VCT)
+        testSuccessfulAuthentication(sdJwt, TestOpts.getDefault());
     }
 
     @Test

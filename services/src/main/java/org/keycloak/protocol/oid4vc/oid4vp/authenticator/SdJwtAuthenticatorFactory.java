@@ -56,10 +56,10 @@ public class SdJwtAuthenticatorFactory implements AuthenticatorFactory, OID4VPEn
 
         property = new ProviderConfigProperty();
         property.setName(VCT_CONFIG);
-        property.setLabel("Credential type allowed");
+        property.setLabel("Credential types allowed");
         property.setType(ProviderConfigProperty.STRING_TYPE);
         property.setDefaultValue(VCT_CONFIG_DEFAULT);
-        property.setHelpText("Only SD-JWTs of this type (vct) will be accepted by the authenticator.");
+        property.setHelpText("Only SD-JWTs of this comma-separated list of types (vct) will be accepted by the authenticator.");
         configProperties.add(property);
 
         property = new ProviderConfigProperty();

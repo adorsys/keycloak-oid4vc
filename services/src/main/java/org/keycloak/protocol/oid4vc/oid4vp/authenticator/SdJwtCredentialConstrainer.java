@@ -42,10 +42,10 @@ public class SdJwtCredentialConstrainer {
      * Constructs a presentation definition requiring the disclosure of some claims.
      */
     public PresentationDefinition generatePresentationDefinition(
-            String issuerVct,
+            List<String> issuerVcts,
             List<String> requiredClaims
     ) {
-        PresentationDefinition def = this.prebuildPresentationDefinition(issuerVct);
+        PresentationDefinition def = this.prebuildPresentationDefinition(issuerVcts);
 
         // Set a unique identifier
         def.setId(UUID.randomUUID().toString());
@@ -67,7 +67,7 @@ public class SdJwtCredentialConstrainer {
     /**
      * Constructs a template presentation definition specifying no claims to disclose.
      */
-    public PresentationDefinition prebuildPresentationDefinition(String issuerVct) {
+    public PresentationDefinition prebuildPresentationDefinition(List<String> issuerVcts) {
         PresentationDefinition template = new PresentationDefinition();
         template.setName(OID4VPUserAuthEndpointFactory.PROVIDER_ID);
 
@@ -83,9 +83,16 @@ public class SdJwtCredentialConstrainer {
         field.setPath(List.of(VCT_PATH));
         constraints.setFields(new ArrayList<>(List.of(field)));
 
+        List<Filter> anyOfFilters = issuerVcts.stream().map(vct -> {
+            Filter filter = new Filter();
+            filter.setType(Filter.SimpleTypes.STRING);
+            filter.setConst(vct);
+            return filter;
+        }).toList();
+
         Filter filter = new Filter();
         filter.setType(Filter.SimpleTypes.STRING);
-        filter.setConst(issuerVct);
+        filter.setAnyOf(anyOfFilters);
         field.setFilter(filter);
 
         return template;
