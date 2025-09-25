@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
-import org.keycloak.sdjwt.consumer.StatusListJwtFetcher;
+import org.keycloak.protocol.oid4vc.tokenstatus.http.StatusListJwtFetcher;
 import org.keycloak.protocol.oid4vc.tokenstatus.ReferencedTokenValidator;
 import org.keycloak.protocol.oid4vc.tokenstatus.ReferencedTokenValidator.ReferencedTokenValidationException;
 import org.keycloak.util.JsonSerialization;
