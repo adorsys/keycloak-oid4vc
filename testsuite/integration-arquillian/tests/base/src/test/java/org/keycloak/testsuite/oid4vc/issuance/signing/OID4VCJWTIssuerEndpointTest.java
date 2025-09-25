@@ -97,7 +97,7 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
                     authenticator.setTokenString(token);
 
                     OID4VCIssuerEndpoint oid4VCIssuerEndpoint = prepareIssuerEndpoint(session, authenticator);
-                    oid4VCIssuerEndpoint.getCredentialOfferURI("inexistent-id", OfferUriType.URI, 0, 0);
+                    oid4VCIssuerEndpoint.getCredentialOfferURIInternal("inexistent-id", OfferUriType.URI, 0, 0);
                 })));
     }
 
@@ -108,7 +108,7 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
                     AppAuthManager.BearerTokenAuthenticator authenticator = new AppAuthManager.BearerTokenAuthenticator(session);
                     authenticator.setTokenString(null);
                     OID4VCIssuerEndpoint oid4VCIssuerEndpoint = prepareIssuerEndpoint(session, authenticator);
-                    oid4VCIssuerEndpoint.getCredentialOfferURI("test-credential", OfferUriType.URI, 0, 0);
+                    oid4VCIssuerEndpoint.getCredentialOfferURIInternal("test-credential", OfferUriType.URI, 0, 0);
                 })));
     }
 
@@ -120,7 +120,7 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
                     authenticator.setTokenString("invalid-token");
                     OID4VCIssuerEndpoint oid4VCIssuerEndpoint = prepareIssuerEndpoint(session, authenticator);
                     Response response = oid4VCIssuerEndpoint
-                            .getCredentialOfferURI("test-credential", OfferUriType.URI, 0, 0);
+                            .getCredentialOfferURIInternal("test-credential", OfferUriType.URI, 0, 0);
                     assertEquals(MediaType.APPLICATION_JSON_TYPE, response.getMediaType());
                 })));
     }

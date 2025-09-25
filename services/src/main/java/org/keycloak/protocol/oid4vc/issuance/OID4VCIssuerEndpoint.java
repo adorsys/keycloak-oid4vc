@@ -27,6 +27,7 @@ import jakarta.ws.rs.BadRequestException;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DefaultValue;
 import jakarta.ws.rs.GET;
+import jakarta.ws.rs.OPTIONS;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
@@ -277,6 +278,43 @@ public class OID4VCIssuerEndpoint {
     }
 
     /**
+     * Configures CORS for credential offer URI endpoint with client-specific origin validation
+     *
+     * @return the authenticated client session
+     */
+    private AuthenticatedClientSessionModel configureCredentialOfferUriCors() {
+        AuthenticatedClientSessionModel clientSession = getAuthenticatedClientSession();
+
+        // Configure CORS with client-specific origins for security
+        cors = Cors.builder()
+                .auth()
+                .allowedMethods("GET")
+                .exposedHeaders(Cors.ACCESS_CONTROL_ALLOW_METHODS, "Content-Type");
+
+        // Set allowed origins based on client configuration
+        cors.allowedOrigins(session, clientSession.getClient());
+
+        return clientSession;
+    }
+
+    /**
+     * Handles CORS preflight requests for credential offer URI endpoint.
+     * Preflight requests return CORS headers for all origins (standard CORS behavior).
+     * The actual request will validate origins against client configuration.
+     */
+    @OPTIONS
+    @Path("credential-offer-uri")
+    public Response getCredentialOfferURIPreflight() {
+        cors = Cors.builder()
+                .auth()
+                .allowedMethods("GET", "OPTIONS")
+                .exposedHeaders(Cors.ACCESS_CONTROL_ALLOW_METHODS, "Content-Type")
+                .preflight();
+
+        return cors.add(Response.ok());
+    }
+
+    /**
      * Provides the URI to the OID4VCI compliant credentials offer
      */
     @GET
@@ -284,14 +322,28 @@ public class OID4VCIssuerEndpoint {
     @Path("credential-offer-uri")
     public Response getCredentialOfferURI(@QueryParam("credential_configuration_id") String vcId, @QueryParam("type") @DefaultValue("uri") OfferUriType type, @QueryParam("width") @DefaultValue("200") int width, @QueryParam("height") @DefaultValue("200") int height) {
 
-        AuthenticatedClientSessionModel clientSession = getAuthenticatedClientSession();
+        try {
+            return getCredentialOfferURIInternal(vcId, type, width, height);
+        } catch (BadRequestException e) {
+            // Handle authentication errors with proper CORS headers for HTTP requests
+            cors = Cors.builder()
+                    .auth()
+                    .allowedMethods("GET")
+                    .exposedHeaders(Cors.ACCESS_CONTROL_ALLOW_METHODS, "Content-Type")
+                    .allowAllOrigins();  // Allow all origins for error responses
+            throw new CorsErrorResponseException(
+                    cors,
+                    Errors.INVALID_TOKEN,
+                    "Invalid or missing token",
+                    Response.Status.BAD_REQUEST);
+        }
+    }
 
-        // Initialize CORS configuration and validate if the client is enabled for OID4VCI
-        cors = Cors.builder()
-                .auth()
-                .allowedMethods("GET")
-                .auth()
-                .exposedHeaders(Cors.ACCESS_CONTROL_ALLOW_METHODS);
+    /**
+     * Internal method for getting credential offer URI
+     */
+    public Response getCredentialOfferURIInternal(String vcId, OfferUriType type, int width, int height) {
+        AuthenticatedClientSessionModel clientSession = configureCredentialOfferUriCors();
 
         checkClientEnabled();
 
@@ -337,10 +389,9 @@ public class OID4VCIssuerEndpoint {
                 .setIssuer(OID4VCIssuerWellKnownProvider.getIssuer(session.getContext()) + "/protocol/" + OID4VCLoginProtocolFactory.PROTOCOL_ID + "/" + CREDENTIAL_OFFER_PATH)
                 .setNonce(sessionCode);
 
-        return Response.ok()
+        return cors.add(Response.ok()
                 .type(MediaType.APPLICATION_JSON)
-                .entity(credentialOfferURI)
-                .build();
+                .entity(credentialOfferURI));
     }
 
     private Response getOfferUriAsQr(String sessionCode, int width, int height) {
@@ -350,11 +401,34 @@ public class OID4VCIssuerEndpoint {
             BitMatrix bitMatrix = qrCodeWriter.encode("openid-credential-offer://?credential_offer_uri=" + encodedOfferUri, BarcodeFormat.QR_CODE, width, height);
             ByteArrayOutputStream bos = new ByteArrayOutputStream();
             MatrixToImageWriter.writeToStream(bitMatrix, "png", bos);
-            return Response.ok().type(RESPONSE_TYPE_IMG_PNG).entity(bos.toByteArray()).build();
+            return cors.add(Response.ok().type(RESPONSE_TYPE_IMG_PNG).entity(bos.toByteArray()));
         } catch (WriterException | IOException e) {
             LOGGER.warnf("Was not able to create a qr code of dimension %s:%s.", width, height, e);
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Was not able to generate qr.").build();
         }
+    }
+
+    /**
+     * Configures CORS for session-based endpoints that allow all origins
+     * Note: This endpoint allows all origins since it's accessed via session codes
+     * without authentication. The session code provides the security boundary.
+     */
+    private void configureSessionBasedCors() {
+        cors = Cors.builder()
+                .allowedMethods("GET", "OPTIONS")
+                .allowAllOrigins()
+                .exposedHeaders(Cors.ACCESS_CONTROL_ALLOW_METHODS, "Content-Type")
+                .preflight();
+    }
+
+    /**
+     * Handles CORS preflight requests for credential offer endpoint
+     */
+    @OPTIONS
+    @Path(CREDENTIAL_OFFER_PATH + "{sessionCode}")
+    public Response getCredentialOfferPreflight(@PathParam("sessionCode") String sessionCode) {
+        configureSessionBasedCors();
+        return cors.add(Response.ok());
     }
 
     /**
@@ -364,6 +438,8 @@ public class OID4VCIssuerEndpoint {
     @Produces(MediaType.APPLICATION_JSON)
     @Path(CREDENTIAL_OFFER_PATH + "{sessionCode}")
     public Response getCredentialOffer(@PathParam("sessionCode") String sessionCode) {
+        configureSessionBasedCors();
+
         if (sessionCode == null) {
             throw new BadRequestException(getErrorResponse(ErrorType.INVALID_CREDENTIAL_REQUEST));
         }
@@ -371,9 +447,8 @@ public class OID4VCIssuerEndpoint {
         CredentialsOffer credentialsOffer = getOfferFromSessionCode(sessionCode);
         LOGGER.debugf("Responding with offer: %s", credentialsOffer);
 
-        return Response.ok()
-                .entity(credentialsOffer)
-                .build();
+        return cors.add(Response.ok()
+                .entity(credentialsOffer));
     }
 
     private void checkScope(CredentialScopeModel requestedCredential) {
