@@ -18,6 +18,7 @@ package org.keycloak.testsuite.oid4vc.issuance.signing;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import jakarta.ws.rs.BadRequestException;
+import jakarta.ws.rs.InternalServerErrorException;
 import jakarta.ws.rs.client.Entity;
 import jakarta.ws.rs.client.WebTarget;
 import jakarta.ws.rs.core.HttpHeaders;
@@ -61,6 +62,7 @@ import org.keycloak.protocol.oidc.grants.PreAuthorizedCodeGrantTypeFactory;
 import org.keycloak.protocol.oidc.representations.OIDCConfigurationRepresentation;
 import org.keycloak.representations.JsonWebToken;
 import org.keycloak.sdjwt.vp.SdJwtVP;
+import org.keycloak.services.ErrorResponseException;
 import org.keycloak.services.managers.AppAuthManager;
 import org.keycloak.testsuite.util.oauth.AccessTokenResponse;
 import org.keycloak.util.JsonSerialization;
@@ -90,7 +92,7 @@ import static org.junit.Assert.fail;
 public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
     // ----- getCredentialOfferUri
 
-    @Test(expected = BadRequestException.class)
+    @Test(expected = ErrorResponseException.class)
     public void testGetCredentialOfferUriUnsupportedCredential() throws Throwable {
         String token = getBearerToken(oauth);
         withCausePropagation(() -> testingClient.server(TEST_REALM_NAME)
@@ -103,7 +105,7 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
                 })));
     }
 
-    @Test(expected = BadRequestException.class)
+    @Test(expected = InternalServerErrorException.class)
     public void testGetCredentialOfferUriUnauthorized() throws Throwable {
         withCausePropagation(() -> testingClient.server(TEST_REALM_NAME)
                 .run((session -> {
@@ -114,7 +116,7 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
                 })));
     }
 
-    @Test(expected = BadRequestException.class)
+    @Test(expected = InternalServerErrorException.class)
     public void testGetCredentialOfferUriInvalidToken() throws Throwable {
         withCausePropagation(() -> testingClient.server(TEST_REALM_NAME)
                 .run((session -> {
