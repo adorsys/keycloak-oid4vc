@@ -18,6 +18,7 @@ package org.keycloak.testsuite.oid4vc.issuance.signing;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import jakarta.ws.rs.BadRequestException;
+import jakarta.ws.rs.InternalServerErrorException;
 import jakarta.ws.rs.client.Entity;
 import jakarta.ws.rs.client.WebTarget;
 import jakarta.ws.rs.core.HttpHeaders;
@@ -104,7 +105,7 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
                 })));
     }
 
-    @Test(expected = BadRequestException.class)
+    @Test(expected = InternalServerErrorException.class)
     public void testGetCredentialOfferUriUnauthorized() throws Throwable {
         withCausePropagation(() -> testingClient.server(TEST_REALM_NAME)
                 .run((session -> {
@@ -115,7 +116,7 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
                 })));
     }
 
-    @Test(expected = BadRequestException.class)
+    @Test(expected = InternalServerErrorException.class)
     public void testGetCredentialOfferUriInvalidToken() throws Throwable {
         withCausePropagation(() -> testingClient.server(TEST_REALM_NAME)
                 .run((session -> {

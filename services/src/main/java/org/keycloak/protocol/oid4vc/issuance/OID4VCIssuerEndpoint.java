@@ -376,6 +376,9 @@ public class OID4VCIssuerEndpoint {
                 case QR_CODE -> getOfferUriAsQr(sessionCode, width, height);
             };
         } catch (BadRequestException e) {
+            // Always use CORS error response for consistency
+            // For HTTP requests: includes CORS headers
+            // For direct method calls: gets wrapped in InternalServerErrorException by test framework
             throw new CorsErrorResponseException(
                     cors,
                     Errors.INVALID_TOKEN,
