@@ -23,10 +23,6 @@ import org.apache.http.HttpStatus;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpOptions;
-import org.apache.http.impl.client.CloseableHttpClient;
-import org.apache.http.impl.client.HttpClientBuilder;
-import org.junit.After;
-import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.keycloak.protocol.oid4vc.model.CredentialOfferURI;
@@ -75,24 +71,6 @@ public class OID4VCCredentialOfferCorsTest extends OID4VCIssuerEndpointTest {
     @Rule
     public TokenUtil tokenUtil = new TokenUtil();
 
-    private CloseableHttpClient httpClient;
-
-    @Before
-    public void before() {
-        httpClient = HttpClientBuilder.create().build();
-        SuiteContext suiteContext = testContext.getSuiteContext();
-    }
-
-    @After
-    public void after() {
-        try {
-            if (httpClient != null) {
-                httpClient.close();
-            }
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-    }
 
     @Override
     public void configureTestRealm(RealmRepresentation testRealm) {
@@ -105,10 +83,6 @@ public class OID4VCCredentialOfferCorsTest extends OID4VCIssuerEndpointTest {
                 .ifPresent(client -> {
                     client.setDirectAccessGrantsEnabled(true);
                     client.setWebOrigins(Arrays.asList(VALID_CORS_URL, ANOTHER_VALID_CORS_URL));
-                    client.setRedirectUris(Arrays.asList(
-                            VALID_CORS_URL + "/realms/master/app",
-                            ANOTHER_VALID_CORS_URL + "/realms/master/app"
-                    ));
                 });
     }
 

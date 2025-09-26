@@ -61,6 +61,7 @@ import org.keycloak.protocol.oidc.grants.PreAuthorizedCodeGrantTypeFactory;
 import org.keycloak.protocol.oidc.representations.OIDCConfigurationRepresentation;
 import org.keycloak.representations.JsonWebToken;
 import org.keycloak.sdjwt.vp.SdJwtVP;
+import org.keycloak.services.ErrorResponseException;
 import org.keycloak.services.managers.AppAuthManager;
 import org.keycloak.testsuite.util.oauth.AccessTokenResponse;
 import org.keycloak.util.JsonSerialization;
@@ -90,7 +91,7 @@ import static org.junit.Assert.fail;
 public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
     // ----- getCredentialOfferUri
 
-    @Test(expected = BadRequestException.class)
+    @Test(expected = ErrorResponseException.class)
     public void testGetCredentialOfferUriUnsupportedCredential() throws Throwable {
         String token = getBearerToken(oauth);
         withCausePropagation(() -> testingClient.server(TEST_REALM_NAME)
@@ -99,7 +100,7 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
                     authenticator.setTokenString(token);
 
                     OID4VCIssuerEndpoint oid4VCIssuerEndpoint = prepareIssuerEndpoint(session, authenticator);
-                    oid4VCIssuerEndpoint.getCredentialOfferURIInternal("inexistent-id", OfferUriType.URI, 0, 0);
+                    oid4VCIssuerEndpoint.getCredentialOfferURI("inexistent-id", OfferUriType.URI, 0, 0);
                 })));
     }
 
@@ -110,7 +111,7 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
                     AppAuthManager.BearerTokenAuthenticator authenticator = new AppAuthManager.BearerTokenAuthenticator(session);
                     authenticator.setTokenString(null);
                     OID4VCIssuerEndpoint oid4VCIssuerEndpoint = prepareIssuerEndpoint(session, authenticator);
-                    oid4VCIssuerEndpoint.getCredentialOfferURIInternal("test-credential", OfferUriType.URI, 0, 0);
+                    oid4VCIssuerEndpoint.getCredentialOfferURI("test-credential", OfferUriType.URI, 0, 0);
                 })));
     }
 
@@ -122,7 +123,7 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
                     authenticator.setTokenString("invalid-token");
                     OID4VCIssuerEndpoint oid4VCIssuerEndpoint = prepareIssuerEndpoint(session, authenticator);
                     Response response = oid4VCIssuerEndpoint
-                            .getCredentialOfferURIInternal("test-credential", OfferUriType.URI, 0, 0);
+                            .getCredentialOfferURI("test-credential", OfferUriType.URI, 0, 0);
                     assertEquals(MediaType.APPLICATION_JSON_TYPE, response.getMediaType());
                 })));
     }

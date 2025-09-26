@@ -37,6 +37,9 @@ import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.Response;
 import org.apache.commons.io.IOUtils;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.client.methods.HttpOptions;
+import org.apache.http.client.methods.HttpPost;
 import org.jboss.logging.Logger;
 import org.keycloak.common.util.SecretGenerator;
 import org.keycloak.crypto.KeyUse;
@@ -299,26 +302,6 @@ public class OID4VCIssuerEndpoint {
     }
 
     /**
-     * Configures CORS for credential offer URI endpoint with client-specific origin validation
-     *
-     * @return the authenticated client session
-     */
-    private AuthenticatedClientSessionModel configureCredentialOfferUriCors() {
-        AuthenticatedClientSessionModel clientSession = getAuthenticatedClientSession();
-
-        // Configure CORS with client-specific origins for security
-        cors = Cors.builder()
-                .auth()
-                .allowedMethods("GET")
-                .exposedHeaders(Cors.ACCESS_CONTROL_ALLOW_METHODS, "Content-Type");
-
-        // Set allowed origins based on client configuration
-        cors.allowedOrigins(session, clientSession.getClient());
-
-        return clientSession;
-    }
-
-    /**
      * Handles CORS preflight requests for credential offer URI endpoint.
      * Preflight requests return CORS headers for all origins (standard CORS behavior).
      * The actual request will validate origins against client configuration.
@@ -326,12 +309,8 @@ public class OID4VCIssuerEndpoint {
     @OPTIONS
     @Path("credential-offer-uri")
     public Response getCredentialOfferURIPreflight() {
-        cors = Cors.builder()
-                .auth()
-                .allowedMethods("GET", "OPTIONS")
-                .exposedHeaders(Cors.ACCESS_CONTROL_ALLOW_METHODS, "Content-Type")
-                .preflight();
-
+        configureBasicAuthenticatedCors();
+        cors.preflight();
         return cors.add(Response.ok());
     }
 
@@ -342,74 +321,67 @@ public class OID4VCIssuerEndpoint {
     @Produces({MediaType.APPLICATION_JSON, RESPONSE_TYPE_IMG_PNG})
     @Path("credential-offer-uri")
     public Response getCredentialOfferURI(@QueryParam("credential_configuration_id") String vcId, @QueryParam("type") @DefaultValue("uri") OfferUriType type, @QueryParam("width") @DefaultValue("200") int width, @QueryParam("height") @DefaultValue("200") int height) {
+        configureBasicAuthenticatedCors();
 
         try {
-            return getCredentialOfferURIInternal(vcId, type, width, height);
+            AuthenticatedClientSessionModel clientSession = getAuthenticatedClientSession();
+            cors.allowedOrigins(session, clientSession.getClient());
+            checkClientEnabled();
+
+            Map<String, SupportedCredentialConfiguration> credentialsMap = OID4VCIssuerWellKnownProvider.getSupportedCredentials(session);
+            LOGGER.debugf("Get an offer for %s", vcId);
+            if (!credentialsMap.containsKey(vcId)) {
+                LOGGER.debugf("No credential with id %s exists.", vcId);
+                LOGGER.debugf("Supported credentials are %s.", credentialsMap);
+                throw new ErrorResponseException(
+                        ErrorType.INVALID_CREDENTIAL_REQUEST.toString(),
+                        "Invalid credential configuration ID",
+                        Response.Status.BAD_REQUEST);
+            }
+            SupportedCredentialConfiguration supportedCredentialConfiguration = credentialsMap.get(vcId);
+
+            // calculate the expiration of the preAuthorizedCode. The sessionCode will also expire at that time.
+            int expiration = timeProvider.currentTimeSeconds() + preAuthorizedCodeLifeSpan;
+            String preAuthorizedCode = generateAuthorizationCodeForClientSession(expiration, clientSession);
+
+            CredentialsOffer theOffer = new CredentialsOffer()
+                    .setCredentialIssuer(OID4VCIssuerWellKnownProvider.getIssuer(session.getContext()))
+                    .setCredentialConfigurationIds(List.of(supportedCredentialConfiguration.getId()))
+                    .setGrants(
+                            new PreAuthorizedGrant()
+                                    .setPreAuthorizedCode(
+                                            new PreAuthorizedCode()
+                                                    .setPreAuthorizedCode(preAuthorizedCode)));
+
+            String sessionCode = generateCodeForSession(expiration, clientSession);
+            try {
+                clientSession.setNote(sessionCode, JsonSerialization.mapper.writeValueAsString(theOffer));
+
+                // Store the credential configuration IDs in a predictable location for token processing
+                // This allows the authorization details processor to easily retrieve the configuration IDs
+                // without having to search through all session notes or parse the full credential offer
+                String credentialConfigIdsJson = JsonSerialization.mapper.writeValueAsString(theOffer.getCredentialConfigurationIds());
+                clientSession.setNote(CREDENTIAL_CONFIGURATION_IDS_NOTE, credentialConfigIdsJson);
+                LOGGER.debugf("Stored credential configuration IDs for token processing: %s", credentialConfigIdsJson);
+            } catch (JsonProcessingException e) {
+                LOGGER.errorf("Could not convert the offer POJO to JSON: %s", e.getMessage());
+                throw new ErrorResponseException(
+                        ErrorType.INVALID_CREDENTIAL_REQUEST.toString(),
+                        "Failed to process credential offer",
+                        Response.Status.BAD_REQUEST);
+            }
+
+            return switch (type) {
+                case URI -> getOfferUriAsUri(sessionCode);
+                case QR_CODE -> getOfferUriAsQr(sessionCode, width, height);
+            };
         } catch (BadRequestException e) {
-            // Handle authentication errors with proper CORS headers for HTTP requests
-            cors = Cors.builder()
-                    .auth()
-                    .allowedMethods("GET")
-                    .exposedHeaders(Cors.ACCESS_CONTROL_ALLOW_METHODS, "Content-Type")
-                    .allowAllOrigins();  // Allow all origins for error responses
             throw new CorsErrorResponseException(
                     cors,
                     Errors.INVALID_TOKEN,
                     "Invalid or missing token",
                     Response.Status.BAD_REQUEST);
         }
-    }
-
-    /**
-     * Internal method for getting credential offer URI
-     */
-    public Response getCredentialOfferURIInternal(String vcId, OfferUriType type, int width, int height) {
-        AuthenticatedClientSessionModel clientSession = configureCredentialOfferUriCors();
-
-        checkClientEnabled();
-
-        Map<String, SupportedCredentialConfiguration> credentialsMap = OID4VCIssuerWellKnownProvider.getSupportedCredentials(session);
-        LOGGER.debugf("Get an offer for %s", vcId);
-        if (!credentialsMap.containsKey(vcId)) {
-            LOGGER.debugf("No credential with id %s exists.", vcId);
-            LOGGER.debugf("Supported credentials are %s.", credentialsMap);
-            throw new BadRequestException(getErrorResponse(ErrorType.INVALID_CREDENTIAL_REQUEST));
-        }
-        SupportedCredentialConfiguration supportedCredentialConfiguration = credentialsMap.get(vcId);
-
-        // calculate the expiration of the preAuthorizedCode. The sessionCode will also expire at that time.
-        int expiration = timeProvider.currentTimeSeconds() + preAuthorizedCodeLifeSpan;
-        String preAuthorizedCode = generateAuthorizationCodeForClientSession(expiration, clientSession);
-
-        CredentialsOffer theOffer = new CredentialsOffer()
-                .setCredentialIssuer(OID4VCIssuerWellKnownProvider.getIssuer(session.getContext()))
-                .setCredentialConfigurationIds(List.of(supportedCredentialConfiguration.getId()))
-                .setGrants(
-                        new PreAuthorizedGrant()
-                                .setPreAuthorizedCode(
-                                        new PreAuthorizedCode()
-                                                .setPreAuthorizedCode(preAuthorizedCode)));
-
-        String sessionCode = generateCodeForSession(expiration, clientSession);
-        try {
-            clientSession.setNote(sessionCode, JsonSerialization.mapper.writeValueAsString(theOffer));
-
-            // Store the credential configuration IDs in a predictable location for token processing
-            // This allows the authorization details processor to easily retrieve the configuration IDs
-            // without having to search through all session notes or parse the full credential offer
-            String credentialConfigIdsJson = JsonSerialization.mapper.writeValueAsString(theOffer.getCredentialConfigurationIds());
-            clientSession.setNote(CREDENTIAL_CONFIGURATION_IDS_NOTE, credentialConfigIdsJson);
-            LOGGER.debugf("Stored credential configuration IDs for token processing: %s", credentialConfigIdsJson);
-        } catch (JsonProcessingException e) {
-            LOGGER.errorf("Could not convert the offer POJO to JSON: %s", e.getMessage());
-            throw new BadRequestException(getErrorResponse(ErrorType.INVALID_CREDENTIAL_REQUEST));
-        }
-
-        return switch (type) {
-            case URI -> getOfferUriAsUri(sessionCode);
-            case QR_CODE -> getOfferUriAsQr(sessionCode, width, height);
-        };
-
     }
 
     private Response getOfferUriAsUri(String sessionCode) {
@@ -437,15 +409,26 @@ public class OID4VCIssuerEndpoint {
     }
 
     /**
-     * Configures CORS for session-based endpoints that allow all origins
-     * Note: This endpoint allows all origins since it's accessed via session codes
+     * Configures basic CORS for error responses before authentication
+     */
+    private void configureBasicAuthenticatedCors() {
+        cors = Cors.builder()
+                .auth()
+                .allowedMethods(HttpGet.METHOD_NAME, HttpOptions.METHOD_NAME)
+                .exposedHeaders(Cors.ACCESS_CONTROL_ALLOW_METHODS, HttpHeaders.CONTENT_TYPE)
+                .allowAllOrigins();
+    }
+
+    /**
+     * Configures CORS for session-based endpoints that allow all origins.
+     * Note: These endpoints allow all origins since they're accessed via session codes
      * without authentication. The session code provides the security boundary.
      */
     private void configureSessionBasedCors() {
         cors = Cors.builder()
-                .allowedMethods("GET", "OPTIONS")
+                .allowedMethods(HttpGet.METHOD_NAME, HttpOptions.METHOD_NAME)
                 .allowAllOrigins()
-                .exposedHeaders(Cors.ACCESS_CONTROL_ALLOW_METHODS, "Content-Type")
+                .exposedHeaders(Cors.ACCESS_CONTROL_ALLOW_METHODS, HttpHeaders.CONTENT_TYPE)
                 .preflight();
     }
 
@@ -520,7 +503,7 @@ public class OID4VCIssuerEndpoint {
             throw new BadRequestException(getErrorResponse(ErrorType.INVALID_CREDENTIAL_REQUEST, errorMessage));
         }
 
-        cors = Cors.builder().auth().allowedMethods("POST").auth().exposedHeaders(Cors.ACCESS_CONTROL_ALLOW_METHODS);
+        cors = Cors.builder().auth().allowedMethods(HttpPost.METHOD_NAME).auth().exposedHeaders(Cors.ACCESS_CONTROL_ALLOW_METHODS);
 
         CredentialIssuer issuerMetadata = (CredentialIssuer) new OID4VCIssuerWellKnownProvider(session).getConfig();
 
