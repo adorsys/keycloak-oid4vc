@@ -325,12 +325,9 @@ public class OID4VCIssuerEndpoint {
         try {
             return getCredentialOfferURIInternal(vcId, type, width, height);
         } catch (BadRequestException e) {
-            // Handle authentication errors with proper CORS headers for HTTP requests
-            cors = Cors.builder()
-                    .auth()
-                    .allowedMethods("GET")
-                    .exposedHeaders(Cors.ACCESS_CONTROL_ALLOW_METHODS, "Content-Type")
-                    .allowAllOrigins();  // Allow all origins for error responses
+            // Always use CORS error response for consistency
+            // For HTTP requests: includes CORS headers
+            // For direct method calls: gets wrapped in InternalServerErrorException by test framework
             throw new CorsErrorResponseException(
                     cors,
                     Errors.INVALID_TOKEN,
