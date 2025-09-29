@@ -77,6 +77,7 @@ import static org.keycloak.services.clientpolicy.executor.FapiConstant.ALLOWED_A
 public class AttestationValidatorUtil {
 
     public static final String ATTESTATION_JWT_TYP = "key-attestation+jwt";
+    public static final String ATTESTATION_JWT_TYP_DRAFT15 = "keyattestation+jwt";
     private static final String CACERTS_PATH = System.getProperty("javax.net.ssl.trustStore",
             System.getProperty("java.home") + "/lib/security/cacerts");
     private static final char[] DEFAULT_TRUSTSTORE_PASSWORD = System.getProperty(
@@ -262,8 +263,9 @@ public class AttestationValidatorUtil {
                     ". Allowed algorithms: " + ALLOWED_ALGORITHMS);
         }
 
-        if (!ATTESTATION_JWT_TYP.equals(header.getType())) {
-            throw new VCIssuerException("Invalid JWT typ: expected " + ATTESTATION_JWT_TYP);
+        String typ = header.getType();
+        if (!(ATTESTATION_JWT_TYP.equals(typ) || ATTESTATION_JWT_TYP_DRAFT15.equals(typ))) {
+            throw new VCIssuerException("Invalid JWT typ: expected " + ATTESTATION_JWT_TYP + " or " + ATTESTATION_JWT_TYP_DRAFT15);
         }
     }
 
