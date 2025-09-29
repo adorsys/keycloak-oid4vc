@@ -33,6 +33,9 @@ public class Proof {
     @JsonProperty("jwt")
     private String jwt;
 
+    @JsonProperty("attestation")
+    private String attestation;
+
     @JsonProperty("proof_type")
     private String proofType;
 
@@ -50,6 +53,15 @@ public class Proof {
 
     public Proof setJwt(String jwt) {
         this.jwt = jwt;
+        return this;
+    }
+
+    public String getAttestation() {
+        return attestation;
+    }
+
+    public Proof setAttestation(String attestation) {
+        this.attestation = attestation;
         return this;
     }
 

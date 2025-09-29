@@ -510,6 +510,7 @@ public class OID4VCIssuerEndpoint {
 
         // Get the list of all proofs (handles single proof, multiple proofs, or none)
         List<String> allProofs = getAllProofs(credentialRequestVO);
+        SelectedProofs selected = credentialRequestVO.getProofs() != null ? selectProofs(credentialRequestVO.getProofs()) : null;
 
         // Generate credential response
         CredentialResponse responseVO = new CredentialResponse();
@@ -523,7 +524,11 @@ public class OID4VCIssuerEndpoint {
             // Issue credentials for each proof
             Proofs originalProofs = credentialRequestVO.getProofs();
             for (String currentProof : allProofs) {
-                credentialRequestVO.setProofs(new Proofs().setJwt(List.of(currentProof)));
+                if (selected != null && ProofType.JWT.equals(selected.proofType)) {
+                    credentialRequestVO.setProofs(new Proofs().setJwt(List.of(currentProof)));
+                } else if (selected != null && ProofType.ATTESTATION.equals(selected.proofType)) {
+                    credentialRequestVO.setProofs(new Proofs().setAttestation(List.of(currentProof)));
+                }
                 Object theCredential = getCredential(authResult, supportedCredential, credentialRequestVO);
                 responseVO.addCredential(theCredential);
             }
@@ -590,6 +595,9 @@ public class OID4VCIssuerEndpoint {
                 // Convert single proof to proofs array format
                 if (singleProof.getJwt() != null) {
                     proofsArray.setJwt(List.of(singleProof.getJwt()));
+                }
+                if (singleProof.getAttestation() != null) {
+                    proofsArray.setAttestation(List.of(singleProof.getAttestation()));
                 }
                 
                 credentialRequest.setProofs(proofsArray);
@@ -688,6 +696,9 @@ public class OID4VCIssuerEndpoint {
                 if (singleProof.getJwt() != null) {
                     proofsArray.setJwt(List.of(singleProof.getJwt()));
                 }
+                if (singleProof.getAttestation() != null) {
+                    proofsArray.setAttestation(List.of(singleProof.getAttestation()));
+                }
                 
                 credentialRequest.setProofs(proofsArray);
                 credentialRequest.setProof(null); // Clear the proof field to avoid confusion
@@ -747,20 +758,48 @@ public class OID4VCIssuerEndpoint {
     }
 
     private List<String> getAllProofs(CredentialRequest credentialRequestVO) {
-        List<String> allProofs = new ArrayList<>();
-
         Proofs proofs = credentialRequestVO.getProofs();
         if (proofs == null) {
-            return allProofs; // No proofs provided
+            return new ArrayList<>(); // No proofs provided
         }
 
-        if (proofs.getJwt() == null || proofs.getJwt().isEmpty()) {
-            throw new BadRequestException(getErrorResponse(ErrorType.INVALID_PROOF,
-                    "The 'proofs' object must contain exactly one proof type with non-empty array."));
+        SelectedProofs selected = selectProofs(proofs);
+        return new ArrayList<>(selected.items);
+    }
+
+    private static final class SelectedProofs {
+        private final List<String> items;
+        private final String proofType;
+
+        private SelectedProofs(List<String> items, String proofType) {
+            this.items = items;
+            this.proofType = proofType;
+        }
+    }
+
+    private SelectedProofs selectProofs(Proofs proofs) {
+        if (proofs == null) {
+            throw new BadRequestException(getErrorResponse(
+                    ErrorType.INVALID_PROOF,
+                    "The 'proofs' object cannot be null."
+            ));
         }
 
-        allProofs.addAll(proofs.getJwt());
-        return allProofs;
+        boolean hasJwt = proofs.getJwt() != null && !proofs.getJwt().isEmpty();
+        boolean hasAttestation = proofs.getAttestation() != null && !proofs.getAttestation().isEmpty();
+
+        if (hasJwt == hasAttestation) { // both true or both false
+            throw new BadRequestException(getErrorResponse(
+                    ErrorType.INVALID_PROOF,
+                    hasJwt
+                            ? "The 'proofs' object must contain exactly one proof type at a time."
+                            : "The 'proofs' object must contain at least one supported proof type with non-empty array."
+            ));
+        }
+
+        return hasJwt
+                ? new SelectedProofs(proofs.getJwt(), ProofType.JWT)
+                : new SelectedProofs(proofs.getAttestation(), ProofType.ATTESTATION);
     }
 
     /**
@@ -1112,9 +1151,11 @@ public class OID4VCIssuerEndpoint {
             return;
         }
 
-        // Validate each JWT proof if present
+        // Validate the provided proof type if present
         if (proofs.getJwt() != null && !proofs.getJwt().isEmpty()) {
             validateProofs(vcIssuanceContext, ProofType.JWT);
+        } else if (proofs.getAttestation() != null && !proofs.getAttestation().isEmpty()) {
+            validateProofs(vcIssuanceContext, ProofType.ATTESTATION);
         }
     }
 

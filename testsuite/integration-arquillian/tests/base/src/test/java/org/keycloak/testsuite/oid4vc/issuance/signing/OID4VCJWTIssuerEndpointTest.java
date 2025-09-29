@@ -950,7 +950,7 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
             authenticator.setTokenString(token);
             OID4VCIssuerEndpoint issuerEndpoint = prepareIssuerEndpoint(session, authenticator);
 
-            // Test 1: Create a request with single proof field - should be converted to proofs array
+            // Test 1: Create a request with single proof field (jwt) - should be converted to proofs array
             CredentialRequest requestWithProof = new CredentialRequest()
                     .setCredentialConfigurationId(credentialConfigurationId);
 
@@ -989,6 +989,26 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
             } catch (BadRequestException e) {
                 int statusCode = e.getResponse().getStatus();
                 assertEquals("Expected HTTP 400 Bad Request", 400, statusCode);
+            }
+
+            // Test 3: Create a request with single proof field (attestation) - should be converted to proofs.attestation
+            CredentialRequest requestWithAttestationProof = new CredentialRequest()
+                    .setCredentialConfigurationId(credentialConfigurationId);
+
+            Proof singleAttestationProof = new Proof()
+                    .setAttestation("dummy-attestation")
+                    .setProofType("attestation");
+            requestWithAttestationProof.setProof(singleAttestationProof);
+
+            String requestPayloadAttestation = JsonSerialization.writeValueAsString(requestWithAttestationProof);
+
+            try {
+                issuerEndpoint.requestCredential(requestPayloadAttestation);
+            } catch (Exception e) {
+                // We expect attestation validation to fail or unsupported depending on config, but conversion should have worked
+                assertTrue("Error should be related to proof validation, not conversion",
+                        e.getMessage().contains("Could not validate provided proof") ||
+                                e.getMessage().contains("Unable to validate proofs of type attestation"));
             }
         });
     }
