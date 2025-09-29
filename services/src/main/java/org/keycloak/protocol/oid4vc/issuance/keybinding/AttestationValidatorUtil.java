@@ -125,12 +125,17 @@ public class AttestationValidatorUtil {
         SignatureVerifierContext verifier;
         if (header.getX5c() != null && !header.getX5c().isEmpty()) {
             verifier = verifierFromX5CChain(header.getX5c(), header.getAlgorithm().name(), keycloakSession);
+        } else if (header.getKey() != null) {
+            verifier = verifierFromResolvedJWK(header.getKey(), header.getAlgorithm().name(), keycloakSession);
         } else if (header.getKeyId() != null) {
             JWK resolvedJwk = keyResolver.resolveKey(header.getKeyId(), rawHeader,
                     JsonSerialization.mapper.convertValue(attestationBody, Map.class));
+            if (resolvedJwk == null) {
+                throw new VCIssuerException("Unable to resolve attestation signing key for kid '" + header.getKeyId() + "'.");
+            }
             verifier = verifierFromResolvedJWK(resolvedJwk, header.getAlgorithm().name(), keycloakSession);
         } else {
-            throw new VCIssuerException("Neither x5c nor kid present in attestation JWT header");
+            throw new VCIssuerException("Neither x5c, jwk nor kid present in attestation JWT header");
         }
 
         if (!verifier.verify(jwsInput.getEncodedSignatureInput().getBytes(StandardCharsets.UTF_8),
