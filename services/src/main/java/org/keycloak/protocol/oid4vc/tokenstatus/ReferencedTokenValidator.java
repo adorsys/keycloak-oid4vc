@@ -43,8 +43,8 @@ import java.util.zip.Inflater;
  */
 public class ReferencedTokenValidator {
 
-    private static final String STATUS_FIELD = "status";
-    private static final String STATUS_LIST_FIELD = "status_list";
+    public static final String STATUS_FIELD = "status";
+    public static final String STATUS_LIST_FIELD = "status_list";
     private static final String IDX_FIELD = "idx";
     private static final String URI_FIELD = "uri";
     private static final String BITS_FIELD = "bits";

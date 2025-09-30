@@ -40,6 +40,12 @@ import java.nio.charset.StandardCharsets;
 public class CustomSdJwtAuthenticatorFactory extends SdJwtAuthenticatorFactory {
 
     @Override
+    public int order() {
+        // Ensure this factory is used instead of the default one
+        return super.order() + 10;
+    }
+
+    @Override
     public Authenticator create(KeycloakSession session) {
         StatusListJwtFetcher httpFetcher = new MockTrustedStatusListJwtFetcher(session);
         return new SdJwtAuthenticator(httpFetcher);
