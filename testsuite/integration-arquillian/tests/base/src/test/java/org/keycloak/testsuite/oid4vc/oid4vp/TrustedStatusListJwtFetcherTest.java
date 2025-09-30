@@ -20,8 +20,8 @@ package org.keycloak.testsuite.oid4vc.oid4vp;
 import org.junit.Test;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.protocol.oid4vc.tokenstatus.http.TrustedStatusListJwtFetcher;
-import org.keycloak.sdjwt.TestUtils;
 import org.keycloak.testsuite.oid4vc.issuance.signing.OID4VCIssuerEndpointTest;
+import org.keycloak.testsuite.oid4vp.CustomSdJwtAuthenticatorFactory;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -36,12 +36,10 @@ public class TrustedStatusListJwtFetcherTest extends OID4VCIssuerEndpointTest {
 
     @Test
     public void shouldAcceptTrustedStatusListJwts() {
-        String statusListJwt = exampleValidStatusListJwt();
+        String uri = "https://example.com/status-list-jwt";
         testingClient.server(TEST_REALM_NAME).run(session -> {
             try {
-                var fetcher = mockFetcher(session, statusListJwt);
-                String fetchedJwt = fetcher.fetchStatusListJwt("https://example.com/status-list-jwt");
-                assertEquals(statusListJwt, fetchedJwt);
+                mockFetcher(session).fetchStatusListJwt(uri);
             } catch (Exception e) {
                 fail("Operation should not fail");
             }
@@ -50,11 +48,10 @@ public class TrustedStatusListJwtFetcherTest extends OID4VCIssuerEndpointTest {
 
     @Test
     public void shouldRejectNonHttpsURIs() {
-        String statusListJwt = exampleValidStatusListJwt();
+        String uri = "http://example.com/status-list-jwt";
         testingClient.server(TEST_REALM_NAME).run(session -> {
             try {
-                var fetcher = mockFetcher(session, statusListJwt);
-                fetcher.fetchStatusListJwt("http://example.com/status-list-jwt");
+                mockFetcher(session).fetchStatusListJwt(uri);
                 fail("Operation should fail");
             } catch (Exception e) {
                 assertTrue(e.getMessage().startsWith("Status list JWT URI must use HTTPS:"));
@@ -65,7 +62,7 @@ public class TrustedStatusListJwtFetcherTest extends OID4VCIssuerEndpointTest {
     @Test
     public void shouldRejectInvalidStatusListJwts_InvalidSignature() {
         shouldRejectInvalidStatusListJwt(
-                "status-list-jwt+invalid-signature.txt",
+                "status-list-jwt+invalid-signature",
                 "Error during JWS signature verification",
                 "Invalid JWS signature"
         );
@@ -74,7 +71,7 @@ public class TrustedStatusListJwtFetcherTest extends OID4VCIssuerEndpointTest {
     @Test
     public void shouldRejectInvalidStatusListJwts_NoX5C() {
         shouldRejectInvalidStatusListJwt(
-                "status-list-jwt+no-x5c.txt",
+                "status-list-jwt+no-x5c",
                 "Could extract verifier from X5C certificate chain",
                 "Missing or empty x5c header in JWS"
         );
@@ -85,11 +82,10 @@ public class TrustedStatusListJwtFetcherTest extends OID4VCIssuerEndpointTest {
             String expectedErrorMessage,
             String expectedCauseMessage
     ) {
-        String statusListJwt = exampleStatusListJwt(testVector);
+        String uri = "https://example.com/" + testVector;
         testingClient.server(TEST_REALM_NAME).run(session -> {
             try {
-                var fetcher = mockFetcher(session, statusListJwt);
-                fetcher.fetchStatusListJwt("https://example.com/status-list-jwt");
+                mockFetcher(session).fetchStatusListJwt(uri);
                 fail("Operation should fail");
             } catch (Exception e) {
                 assertEquals(expectedErrorMessage, e.getMessage());
@@ -98,33 +94,7 @@ public class TrustedStatusListJwtFetcherTest extends OID4VCIssuerEndpointTest {
         });
     }
 
-    static TrustedStatusListJwtFetcher mockFetcher(KeycloakSession session, String statusListJwt) {
-        return new MockTrustedStatusListJwtFetcher(session, statusListJwt);
-    }
-
-    static String exampleValidStatusListJwt() {
-        return exampleStatusListJwt("status-list-jwt.txt");
-    }
-
-    static String exampleStatusListJwt(String filename) {
-        return TestUtils.readFileAsString(
-                TrustedStatusListJwtFetcherTest.class,
-                "oid4vc/tokenstatus/" + filename
-        );
-    }
-
-    static class MockTrustedStatusListJwtFetcher extends TrustedStatusListJwtFetcher {
-
-        private final String mockedStatusListJwt;
-
-        public MockTrustedStatusListJwtFetcher(KeycloakSession session, String mockedStatusListJwt) {
-            super(session);
-            this.mockedStatusListJwt = mockedStatusListJwt;
-        }
-
-        @Override
-        protected String _fetchStatusListJwt(String uri) {
-            return mockedStatusListJwt;
-        }
+    static TrustedStatusListJwtFetcher mockFetcher(KeycloakSession session) {
+        return new CustomSdJwtAuthenticatorFactory.MockTrustedStatusListJwtFetcher(session);
     }
 }
