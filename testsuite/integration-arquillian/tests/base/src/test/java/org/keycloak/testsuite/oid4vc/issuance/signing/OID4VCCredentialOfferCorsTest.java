@@ -23,10 +23,6 @@ import org.apache.http.HttpStatus;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpOptions;
-import org.apache.http.impl.client.CloseableHttpClient;
-import org.apache.http.impl.client.HttpClientBuilder;
-import org.junit.After;
-import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.keycloak.protocol.oid4vc.model.CredentialOfferURI;
@@ -35,7 +31,6 @@ import org.keycloak.testsuite.util.oauth.AccessTokenResponse;
 import org.keycloak.representations.idm.RealmRepresentation;
 import org.keycloak.services.cors.Cors;
 import org.keycloak.testsuite.AssertEvents;
-import org.keycloak.testsuite.arquillian.SuiteContext;
 import org.keycloak.testsuite.arquillian.annotation.EnableFeature;
 import org.keycloak.testsuite.util.TokenUtil;
 import org.keycloak.util.JsonSerialization;
@@ -66,33 +61,12 @@ public class OID4VCCredentialOfferCorsTest extends OID4VCIssuerEndpointTest {
     private static final String INVALID_CORS_URL = "http://invalid.localtest.me:8180";
     private static final String ANOTHER_VALID_CORS_URL = "http://another.localtest.me:8180";
 
-    private static final String CREDENTIAL_CONFIGURATION_ID = "jwt-credential-config-id";
-    private static final String OID4VCI_ENABLED_ATTRIBUTE_KEY = "oid4vci.enabled";
-
     @Rule
     public AssertEvents events = new AssertEvents(this);
 
     @Rule
     public TokenUtil tokenUtil = new TokenUtil();
 
-    private CloseableHttpClient httpClient;
-
-    @Before
-    public void before() {
-        httpClient = HttpClientBuilder.create().build();
-        SuiteContext suiteContext = testContext.getSuiteContext();
-    }
-
-    @After
-    public void after() {
-        try {
-            if (httpClient != null) {
-                httpClient.close();
-            }
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-    }
 
     @Override
     public void configureTestRealm(RealmRepresentation testRealm) {
@@ -105,10 +79,6 @@ public class OID4VCCredentialOfferCorsTest extends OID4VCIssuerEndpointTest {
                 .ifPresent(client -> {
                     client.setDirectAccessGrantsEnabled(true);
                     client.setWebOrigins(Arrays.asList(VALID_CORS_URL, ANOTHER_VALID_CORS_URL));
-                    client.setRedirectUris(Arrays.asList(
-                            VALID_CORS_URL + "/realms/master/app",
-                            ANOTHER_VALID_CORS_URL + "/realms/master/app"
-                    ));
                 });
     }
 
@@ -265,7 +235,7 @@ public class OID4VCCredentialOfferCorsTest extends OID4VCIssuerEndpointTest {
         String offerUriUrl = getCredentialOfferUriUrl();
 
         try (CloseableHttpResponse response = makeCorsRequest(offerUriUrl, VALID_CORS_URL, null)) {
-            // Should return 400 Bad Request 
+            // Should return 400 Bad Request
             assertEquals(HttpStatus.SC_BAD_REQUEST, response.getStatusLine().getStatusCode());
             // Should still include CORS headers for error responses
             assertCorsHeaders(response, VALID_CORS_URL);
@@ -282,7 +252,7 @@ public class OID4VCCredentialOfferCorsTest extends OID4VCIssuerEndpointTest {
     }
 
     private String getCredentialOfferUriUrl() {
-        return getBasePath("test") + "credential-offer-uri?credential_configuration_id=" + CREDENTIAL_CONFIGURATION_ID;
+        return getBasePath("test") + "credential-offer-uri?credential_configuration_id=" + jwtTypeCredentialConfigurationIdName;
     }
 
     private String getCredentialOfferUrl(String sessionCode) {
@@ -346,13 +316,12 @@ public class OID4VCCredentialOfferCorsTest extends OID4VCIssuerEndpointTest {
                 expectedOrigin, response.getFirstHeader(Cors.ACCESS_CONTROL_ALLOW_ORIGIN).getValue());
 
         // Session-based endpoints don't require credentials since they use session codes for security
-        // and allow all origins, so credentials header may not be present or may be false
+        // and allow all origins, so credentials header should be false for security reasons
         Header credentialsHeader = response.getFirstHeader(Cors.ACCESS_CONTROL_ALLOW_CREDENTIALS);
-        if (credentialsHeader != null) {
-            // If present, it should be false for security reasons when allowing all origins
-            assertEquals("Access-Control-Allow-Credentials should be false when allowing all origins",
-                    "false", credentialsHeader.getValue());
-        }
+        assertNotNull("Access-Control-Allow-Credentials header should be present for session endpoints",
+                credentialsHeader);
+        assertEquals("Access-Control-Allow-Credentials should be false when allowing all origins",
+                "false", credentialsHeader.getValue());
     }
 
     private void assertCorsPreflightHeaders(CloseableHttpResponse response, String expectedOrigin) {

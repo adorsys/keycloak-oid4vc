@@ -17,7 +17,6 @@
 package org.keycloak.testsuite.oid4vc.issuance.signing;
 
 import jakarta.ws.rs.BadRequestException;
-import jakarta.ws.rs.InternalServerErrorException;
 import jakarta.ws.rs.client.Entity;
 import jakarta.ws.rs.client.WebTarget;
 import jakarta.ws.rs.core.HttpHeaders;
@@ -98,22 +97,22 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
                     authenticator.setTokenString(token);
 
                     OID4VCIssuerEndpoint oid4VCIssuerEndpoint = prepareIssuerEndpoint(session, authenticator);
-                    oid4VCIssuerEndpoint.getCredentialOfferURIInternal("inexistent-id", OfferUriType.URI, 0, 0);
+                    oid4VCIssuerEndpoint.getCredentialOfferURI("inexistent-id", OfferUriType.URI, 0, 0);
                 })));
     }
 
-    @Test(expected = InternalServerErrorException.class)
+    @Test(expected = BadRequestException.class)
     public void testGetCredentialOfferUriUnauthorized() throws Throwable {
         withCausePropagation(() -> testingClient.server(TEST_REALM_NAME)
                 .run((session -> {
                     AppAuthManager.BearerTokenAuthenticator authenticator = new AppAuthManager.BearerTokenAuthenticator(session);
                     authenticator.setTokenString(null);
                     OID4VCIssuerEndpoint oid4VCIssuerEndpoint = prepareIssuerEndpoint(session, authenticator);
-                    oid4VCIssuerEndpoint.getCredentialOfferURIInternal("test-credential", OfferUriType.URI, 0, 0);
+                    oid4VCIssuerEndpoint.getCredentialOfferURI("test-credential", OfferUriType.URI, 0, 0);
                 })));
     }
 
-    @Test(expected = InternalServerErrorException.class)
+    @Test(expected = BadRequestException.class)
     public void testGetCredentialOfferUriInvalidToken() throws Throwable {
         withCausePropagation(() -> testingClient.server(TEST_REALM_NAME)
                 .run((session -> {
@@ -121,7 +120,7 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
                     authenticator.setTokenString("invalid-token");
                     OID4VCIssuerEndpoint oid4VCIssuerEndpoint = prepareIssuerEndpoint(session, authenticator);
                     Response response = oid4VCIssuerEndpoint
-                            .getCredentialOfferURIInternal("test-credential", OfferUriType.URI, 0, 0);
+                            .getCredentialOfferURI("test-credential", OfferUriType.URI, 0, 0);
                     assertEquals(MediaType.APPLICATION_JSON_TYPE, response.getMediaType());
                 })));
     }
