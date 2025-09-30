@@ -17,6 +17,9 @@
 
 package org.keycloak.protocol.oid4vc.tokenstatus.http;
 
+import org.keycloak.common.VerificationException;
+import org.keycloak.crypto.Algorithm;
+import org.keycloak.crypto.KeyType;
 import org.keycloak.crypto.KeyWrapper;
 import org.keycloak.crypto.SignatureProvider;
 import org.keycloak.crypto.SignatureVerifierContext;
@@ -24,21 +27,13 @@ import org.keycloak.jose.jws.JWSHeader;
 import org.keycloak.jose.jws.JWSInput;
 import org.keycloak.jose.jws.JWSInputException;
 import org.keycloak.models.KeycloakSession;
-import org.keycloak.truststore.TruststoreProvider;
 
-import java.security.KeyStore;
-import java.security.cert.CertPathValidator;
-import java.security.cert.Certificate;
+import java.io.ByteArrayInputStream;
+import java.io.InputStream;
 import java.security.cert.CertificateFactory;
-import java.security.cert.PKIXParameters;
-import java.security.cert.TrustAnchor;
 import java.security.cert.X509Certificate;
-import java.util.ArrayList;
 import java.util.Base64;
-import java.util.Enumeration;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
 import static org.keycloak.protocol.oid4vc.tokenstatus.ReferencedTokenValidator.ReferencedTokenValidationException;
 
@@ -64,8 +59,9 @@ public class TrustedStatusListJwtFetcher extends SimpleStatusListJwtFetcher {
         String statusListJwt = _fetchStatusListJwt(uri);
         JWSInput jws = parseStatusListJwt(statusListJwt);
 
-        // Enforce trust in X5C chain
-        SignatureVerifierContext verifier = enforceX5CTrust(jws);
+        // Extract verifying key from X5C cert chain
+        // TODO: Enforce trust in X5C chain
+        SignatureVerifierContext verifier = getVerifierFromX5C(jws);
 
         // Verify signature
         validateJwsSignature(jws, verifier);
@@ -87,65 +83,49 @@ public class TrustedStatusListJwtFetcher extends SimpleStatusListJwtFetcher {
         }
     }
 
-    private SignatureVerifierContext enforceX5CTrust(JWSInput jws) throws ReferencedTokenValidationException {
+    private SignatureVerifierContext getVerifierFromX5C(JWSInput jws) throws ReferencedTokenValidationException {
         try {
             JWSHeader header = jws.getHeader();
             List<String> x5cList = header.getX5c();
 
             if (x5cList == null || x5cList.isEmpty()) {
-                throw new ReferencedTokenValidationException("Missing x5c header in JWS");
+                throw new VerificationException("Missing or empty x5c header in JWS");
             }
 
-            // Convert base64-encoded certs into X509Certificate objects
+            // Convert base64-encoded leaf cert into X509Certificate
             CertificateFactory cf = CertificateFactory.getInstance("X.509");
-            List<X509Certificate> certs = new ArrayList<>();
-            for (String certB64 : x5cList) {
-                byte[] der = Base64.getDecoder().decode(certB64);
-                certs.add((X509Certificate) cf.generateCertificate(new java.io.ByteArrayInputStream(der)));
-            }
+            InputStream der = new ByteArrayInputStream(Base64.getDecoder().decode(x5cList.get(0)));
+            X509Certificate cert = (X509Certificate) cf.generateCertificate(der);
 
-            // Validate chain against Keycloak truststore
-            TruststoreProvider truststoreProvider = session.getProvider(TruststoreProvider.class);
-            KeyStore truststore = truststoreProvider.getTruststore();
-            CertPathValidator.getInstance("PKIX").validate(
-                    cf.generateCertPath(certs),
-                    new PKIXParameters(toTrustAnchors(truststore))
-            );
-
-            return toSignatureVerifier(certs.get(0), header.getAlgorithm().name());
+            // Return verifier corresponing to certificate
+            return toSignatureVerifier(cert, header.getAlgorithm().name());
         } catch (Exception e) {
-            throw new ReferencedTokenValidationException("X5C validation failed", e);
+            throw new ReferencedTokenValidationException("Could extract verifier from X5C certificate chain", e);
         }
-    }
-
-    private static Set<TrustAnchor> toTrustAnchors(KeyStore truststore) throws Exception {
-        Set<TrustAnchor> anchors = new HashSet<>();
-        Enumeration<String> aliases = truststore.aliases();
-        while (aliases.hasMoreElements()) {
-            Certificate cert = truststore.getCertificate(aliases.nextElement());
-            if (cert instanceof X509Certificate) {
-                anchors.add(new TrustAnchor((X509Certificate) cert, null));
-            }
-        }
-        return anchors;
     }
 
     private SignatureVerifierContext toSignatureVerifier(X509Certificate cert, String alg)
-            throws ReferencedTokenValidationException {
+            throws VerificationException, ReferencedTokenValidationException {
+        SignatureProvider signatureProvider = session.getProvider(SignatureProvider.class, alg);
+        if (signatureProvider == null) {
+            throw new ReferencedTokenValidationException("Unsupported signature algorithm: " + alg);
+        }
+
         KeyWrapper keyWrapper = new KeyWrapper();
         keyWrapper.setPublicKey(cert.getPublicKey());
+        keyWrapper.setType(algorithmToKeyType(alg));
         keyWrapper.setAlgorithm(alg);
 
-        try {
-            SignatureProvider signatureProvider = session.getProvider(
-                    SignatureProvider.class,
-                    keyWrapper.getAlgorithmOrDefault()
-            );
+        return signatureProvider.verifier(keyWrapper);
+    }
 
-            return signatureProvider.verifier(keyWrapper);
-        } catch (Exception e) {
-            throw new ReferencedTokenValidationException("Error deriving verifier from x5c certificate", e);
-        }
+    protected String algorithmToKeyType(String alg) throws ReferencedTokenValidationException {
+        return switch (alg) {
+            case Algorithm.RS256, Algorithm.RS384, Algorithm.RS512,
+                 Algorithm.PS256, Algorithm.PS384, Algorithm.PS512 -> KeyType.RSA;
+            case Algorithm.ES256, Algorithm.ES384, Algorithm.ES512 -> KeyType.EC;
+            default -> throw new ReferencedTokenValidationException("Unsupported signature algorithm");
+        };
     }
 
     private void validateJwsSignature(JWSInput jws, SignatureVerifierContext verifier)
