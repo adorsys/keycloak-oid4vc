@@ -301,57 +301,52 @@ public class OID4VCIssuerEndpoint {
     public Response getCredentialOfferURI(@QueryParam("credential_configuration_id") String vcId, @QueryParam("type") @DefaultValue("uri") OfferUriType type, @QueryParam("width") @DefaultValue("200") int width, @QueryParam("height") @DefaultValue("200") int height) {
         configureCors(true);
 
-        try {
-            AuthenticatedClientSessionModel clientSession = getAuthenticatedClientSession();
-            cors.allowedOrigins(session, clientSession.getClient());
-            checkClientEnabled();
+        AuthenticatedClientSessionModel clientSession = getAuthenticatedClientSession();
+        cors.allowedOrigins(session, clientSession.getClient());
+        checkClientEnabled();
 
-            Map<String, SupportedCredentialConfiguration> credentialsMap = OID4VCIssuerWellKnownProvider.getSupportedCredentials(session);
-            LOGGER.debugf("Get an offer for %s", vcId);
-            if (!credentialsMap.containsKey(vcId)) {
-                LOGGER.debugf("No credential with id %s exists.", vcId);
-                LOGGER.debugf("Supported credentials are %s.", credentialsMap);
-                throw new BadRequestException(getErrorResponse(ErrorType.INVALID_CREDENTIAL_REQUEST, "Invalid credential configuration ID"));
-            }
-            SupportedCredentialConfiguration supportedCredentialConfiguration = credentialsMap.get(vcId);
-
-            // calculate the expiration of the preAuthorizedCode. The sessionCode will also expire at that time.
-            int expiration = timeProvider.currentTimeSeconds() + preAuthorizedCodeLifeSpan;
-            String preAuthorizedCode = generateAuthorizationCodeForClientSession(expiration, clientSession);
-
-            CredentialsOffer theOffer = new CredentialsOffer()
-                    .setCredentialIssuer(OID4VCIssuerWellKnownProvider.getIssuer(session.getContext()))
-                    .setCredentialConfigurationIds(List.of(supportedCredentialConfiguration.getId()))
-                    .setGrants(
-                            new PreAuthorizedGrant()
-                                    .setPreAuthorizedCode(
-                                            new PreAuthorizedCode()
-                                                    .setPreAuthorizedCode(preAuthorizedCode)));
-
-            String sessionCode = generateCodeForSession(expiration, clientSession);
-            try {
-                clientSession.setNote(sessionCode, JsonSerialization.mapper.writeValueAsString(theOffer));
-            } catch (JsonProcessingException e) {
-                LOGGER.errorf("Could not convert the offer POJO to JSON: %s", e.getMessage());
-                throw new BadRequestException(getErrorResponse(ErrorType.INVALID_CREDENTIAL_REQUEST, "Failed to process credential offer"));
-            }
-
-            return switch (type) {
-                case URI -> getOfferUriAsUri(sessionCode);
-                case QR_CODE -> getOfferUriAsQr(sessionCode, width, height);
-            };
-        } catch (BadRequestException e) {
-            // Re-throw as CorsErrorResponseException for HTTP requests to include CORS headers
-            // For direct method calls, re-throw original exception to avoid serialization issues
-            if (isDirectMethodCall()) {
-                throw e;
-            }
+        Map<String, SupportedCredentialConfiguration> credentialsMap = OID4VCIssuerWellKnownProvider.getSupportedCredentials(session);
+        LOGGER.debugf("Get an offer for %s", vcId);
+        if (!credentialsMap.containsKey(vcId)) {
+            LOGGER.debugf("No credential with id %s exists.", vcId);
+            LOGGER.debugf("Supported credentials are %s.", credentialsMap);
             throw new CorsErrorResponseException(
                     cors,
-                    Errors.INVALID_TOKEN,
-                    "Invalid or missing token",
+                    ErrorType.INVALID_CREDENTIAL_REQUEST.toString(),
+                    "Invalid credential configuration ID",
                     Response.Status.BAD_REQUEST);
         }
+        SupportedCredentialConfiguration supportedCredentialConfiguration = credentialsMap.get(vcId);
+
+        // calculate the expiration of the preAuthorizedCode. The sessionCode will also expire at that time.
+        int expiration = timeProvider.currentTimeSeconds() + preAuthorizedCodeLifeSpan;
+        String preAuthorizedCode = generateAuthorizationCodeForClientSession(expiration, clientSession);
+
+        CredentialsOffer theOffer = new CredentialsOffer()
+                .setCredentialIssuer(OID4VCIssuerWellKnownProvider.getIssuer(session.getContext()))
+                .setCredentialConfigurationIds(List.of(supportedCredentialConfiguration.getId()))
+                .setGrants(
+                        new PreAuthorizedGrant()
+                                .setPreAuthorizedCode(
+                                        new PreAuthorizedCode()
+                                                .setPreAuthorizedCode(preAuthorizedCode)));
+
+        String sessionCode = generateCodeForSession(expiration, clientSession);
+        try {
+            clientSession.setNote(sessionCode, JsonSerialization.mapper.writeValueAsString(theOffer));
+        } catch (JsonProcessingException e) {
+            LOGGER.errorf("Could not convert the offer POJO to JSON: %s", e.getMessage());
+            throw new CorsErrorResponseException(
+                    cors,
+                    ErrorType.INVALID_CREDENTIAL_REQUEST.toString(),
+                    "Failed to process credential offer",
+                    Response.Status.BAD_REQUEST);
+        }
+
+        return switch (type) {
+            case URI -> getOfferUriAsUri(sessionCode);
+            case QR_CODE -> getOfferUriAsQr(sessionCode, width, height);
+        };
     }
 
     private Response getOfferUriAsUri(String sessionCode) {
@@ -955,7 +950,11 @@ public class OID4VCIssuerEndpoint {
                 getAuthenticatedClientSessionByClient(
                         authResult.getClient().getId());
         if (clientSession == null) {
-            throw new BadRequestException(getErrorResponse(ErrorType.INVALID_TOKEN));
+            throw new CorsErrorResponseException(
+                    cors,
+                    ErrorType.INVALID_TOKEN.toString(),
+                    "Invalid or missing token",
+                    Response.Status.BAD_REQUEST);
         }
         return clientSession;
     }
@@ -963,7 +962,11 @@ public class OID4VCIssuerEndpoint {
     private AuthenticationManager.AuthResult getAuthResult() {
         AuthenticationManager.AuthResult authResult = bearerTokenAuthenticator.authenticate();
         if (authResult == null) {
-            throw new BadRequestException(getErrorResponse(ErrorType.INVALID_TOKEN));
+            throw new CorsErrorResponseException(
+                    cors,
+                    ErrorType.INVALID_TOKEN.toString(),
+                    "Invalid or missing token",
+                    Response.Status.BAD_REQUEST);
         }
 
         // Validate DPoP nonce if present in the DPoP proof
@@ -984,7 +987,11 @@ public class OID4VCIssuerEndpoint {
                     );
                 } catch (VerificationException e) {
                     LOGGER.debugf("DPoP nonce validation failed: %s", e.getMessage());
-                    throw new BadRequestException(getErrorResponse(ErrorType.INVALID_TOKEN));
+                    throw new CorsErrorResponseException(
+                            cors,
+                            ErrorType.INVALID_TOKEN.toString(),
+                            "Invalid or missing token",
+                            Response.Status.BAD_REQUEST);
                 }
             }
         }
@@ -1199,16 +1206,5 @@ public class OID4VCIssuerEndpoint {
         }
 
         return credentialBuilder;
-    }
-
-    /**
-     * Determines if the current execution is a direct method call rather than an HTTP request.
-     * Direct method calls cannot serialize CorsErrorResponseException due to non-serializable Cors objects.
-     *
-     * @return true if direct method call, false if HTTP request
-     */
-    private boolean isDirectMethodCall() {
-        return Arrays.stream(Thread.currentThread().getStackTrace())
-                .anyMatch(element -> element.getClassName().contains("TestingResourceProvider"));
     }
 }
