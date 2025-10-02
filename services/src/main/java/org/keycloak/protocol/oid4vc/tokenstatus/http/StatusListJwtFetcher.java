@@ -15,9 +15,9 @@
  * limitations under the License.
  */
 
-package org.keycloak.sdjwt.consumer;
+package org.keycloak.protocol.oid4vc.tokenstatus.http;
 
-import java.io.IOException;
+import org.keycloak.protocol.oid4vc.tokenstatus.ReferencedTokenValidator.ReferencedTokenValidationException;
 
 /**
  * Functional interface for fetching Status List JWT tokens.
@@ -33,7 +33,7 @@ public interface StatusListJwtFetcher {
      *
      * @param uri The URI to fetch the Status List JWT from
      * @return The Status List JWT as a string
-     * @throws IOException if I/O error or HTTP status not OK (200)
+     * @throws ReferencedTokenValidationException if any issue arises or HTTP status not OK (200)
      */
-    String fetchStatusListJwt(String uri) throws IOException;
+    String fetchStatusListJwt(String uri) throws ReferencedTokenValidationException;
 }

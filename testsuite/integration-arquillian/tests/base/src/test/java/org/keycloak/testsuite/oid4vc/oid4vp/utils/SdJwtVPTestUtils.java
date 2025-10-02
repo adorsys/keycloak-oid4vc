@@ -29,6 +29,7 @@ import org.keycloak.crypto.SignatureSignerContext;
 import org.keycloak.jose.jwk.JWK;
 import org.keycloak.models.RealmModel;
 import org.keycloak.protocol.oid4vc.oid4vp.authenticator.SdJwtAuthenticatorFactory;
+import org.keycloak.protocol.oid4vc.tokenstatus.ReferencedTokenValidator;
 import org.keycloak.representations.IDToken;
 import org.keycloak.representations.JsonWebToken;
 import org.keycloak.sdjwt.DisclosureSpec;
@@ -43,10 +44,13 @@ import org.keycloak.util.JsonSerialization;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Map;
 import java.util.Objects;
 
 import static org.keycloak.protocol.oid4vc.issuance.credentialbuilder.SdJwtCredentialBody.CNF_CLAIM;
 import static org.keycloak.protocol.oid4vc.issuance.credentialbuilder.SdJwtCredentialBody.JWK_CLAIM;
+import static org.keycloak.protocol.oid4vc.tokenstatus.ReferencedTokenValidator.STATUS_FIELD;
+import static org.keycloak.protocol.oid4vc.tokenstatus.ReferencedTokenValidator.STATUS_LIST_FIELD;
 import static org.keycloak.testsuite.AbstractTestRealmKeycloakTest.TEST_REALM_NAME;
 
 /**
@@ -70,18 +74,19 @@ public class SdJwtVPTestUtils {
      * Requests that Keycloak issue an SD-JWT credential.
      */
     public String requestSdJwtCredential(String vct, String username) {
-        return requestSdJwtCredential(vct, username, true);
+        return requestSdJwtCredential(vct, username, true, true);
     }
 
     /**
      * Requests that Keycloak issue an SD-JWT credential.
      *
-     * @param vct      The verifiable credential type
-     * @param username The username of the user whom the credential is issued for
-     * @param setKid   Specifies if the ID of the key used by Keycloak for issuing the credential
-     *                 should be set to the `kid` header of the SD-JWT
+     * @param vct            The verifiable credential type
+     * @param username       The username of the user whom the credential is issued for
+     * @param setKid         Specifies if the ID of the key used by Keycloak for issuing the credential
+     *                       should be set to the `kid` header of the SD-JWT
+     * @param setStatusClaim Specifies whether to include a status claim in the issued credential
      */
-    public String requestSdJwtCredential(String vct, String username, boolean setKid) {
+    public String requestSdJwtCredential(String vct, String username, boolean setKid, boolean setStatusClaim) {
         FetchOnServer sdJwtFetcher = (session) -> {
             RealmModel realm = session.realms().getRealmByName(TEST_REALM_NAME);
             KeyWrapper signingKey = session.keys().getActiveKey(realm, KeyUse.SIG, Algorithm.ES256);
@@ -98,7 +103,7 @@ public class SdJwtVPTestUtils {
                     TEST_REALM_NAME
             );
 
-            SdJwt sdJwt = exampleSdJwtCredential(keycloakIssuerURI, vct, username)
+            SdJwt sdJwt = exampleSdJwtCredential(keycloakIssuerURI, vct, username, setStatusClaim)
                     .withSigner(signer)
                     .build();
 
@@ -111,7 +116,9 @@ public class SdJwtVPTestUtils {
     /**
      * Scaffold an SD-JWT identity credential that can clear authentication.
      */
-    private static SdJwt.Builder exampleSdJwtCredential(String iss, String vct, String username) {
+    private static SdJwt.Builder exampleSdJwtCredential(
+            String iss, String vct, String username, boolean setStatusClaim
+    ) {
         Objects.requireNonNull(iss);
         Objects.requireNonNull(vct);
 
@@ -119,6 +126,15 @@ public class SdJwtVPTestUtils {
         claimSet.put(OAuth2Constants.ISSUER, iss);
         claimSet.put(SdJwtAuthenticatorFactory.VCT_CONFIG, vct);
         claimSet.put(EXP_CLAIM_KEY, Time.currentTime() + ISSUER_SIGNED_JWT_LIFESPAN_SECS);
+
+        // Add status list claim (Token Status List)
+        if (setStatusClaim) {
+            claimSet.set(STATUS_FIELD, JsonSerialization.mapper.valueToTree(
+                    Map.of(STATUS_LIST_FIELD, new ReferencedTokenValidator.StatusInfo(
+                            0, "https://example.com/status-list-jwt"
+                    ))
+            ));
+        }
 
         DisclosureSpec.Builder disclosure = DisclosureSpec.builder()
                 .withDecoyClaim("G02NSrQfjFXQ7Io09syajA");
