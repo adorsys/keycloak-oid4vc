@@ -60,6 +60,7 @@ import org.keycloak.protocol.oid4vc.oid4vp.model.prex.InputDescriptor;
 import org.keycloak.protocol.oid4vc.oid4vp.model.prex.PresentationDefinition;
 import org.keycloak.protocol.oid4vc.oid4vp.model.prex.PresentationSubmission;
 import org.keycloak.protocol.oid4vc.oid4vp.service.AuthorizationResponseService;
+import org.keycloak.protocol.oidc.OIDCLoginProtocol;
 import org.keycloak.representations.AccessToken;
 import org.keycloak.representations.idm.AuthenticatorConfigRepresentation;
 import org.keycloak.representations.idm.ComponentExportRepresentation;
@@ -900,6 +901,10 @@ public class OID4VPUserAuthEndpointTest extends OID4VCIssuerEndpointTest {
             String freshAuthCode = uriInfo.getQueryParameters().getFirst(OAuth2Constants.CODE);
             assertAuthenticatingUser(opts, freshAuthCode);
             assertNotEquals("New code must be issued", authCode, freshAuthCode);
+
+            // A login method param must be appended to the redirect URI
+            String loginMethod = uriInfo.getQueryParameters().getFirst(OIDCLoginProtocol.LOGIN_METHOD_PARAM);
+            assertEquals(OID4VP_AUTH_LOGIN_PATH, loginMethod);
         }
     }
 
