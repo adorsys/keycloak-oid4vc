@@ -1292,6 +1292,9 @@ public class LoginActionsService {
                 authSession, null, session, realm, clientConnection, event);
         UserSessionModel freshUserSession = clientSessionCtx.getClientSession().getUserSession();
 
+        // Append note conveying this login method
+        freshUserSession.setNote(OIDCLoginProtocol.LOGIN_METHOD_PARAM, OID4VP_AUTH_LOGIN_PATH);
+
         logger.debugf("Attempting redirection after successful OID4VP authentication");
         return AuthenticationManager.redirectAfterSuccessfulFlow(
                 session, realm, freshUserSession, clientSessionCtx,
