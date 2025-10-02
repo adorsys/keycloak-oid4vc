@@ -47,10 +47,6 @@ public class MigrateTo26_4_0 extends RealmMigration {
 
     @Override
     public void migrateRealm(KeycloakSession session, RealmModel realm) {
-    }
-
-    @Override
-    public void migrateRealm(KeycloakSession session, RealmModel realm) {
         if (realm.getFlowByAlias(DefaultAuthenticationFlows.OID4VP_AUTH_FLOW) == null) {
             LOG.infof("Creating default OpenID4VP user auth flow for realm '%s'", realm.getName());
             DefaultAuthenticationFlows.oid4vpAuthenticationFlow(realm);

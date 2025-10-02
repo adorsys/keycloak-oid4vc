@@ -966,8 +966,7 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
 
             // Test 1: Create a request with single proof field - should be converted to proofs array
             CredentialRequest requestWithProof = new CredentialRequest()
-                    .setCredentialConfigurationId(credentialConfigurationId)
-                    .setFormat("jwt-vc");
+                    .setCredentialConfigurationId(credentialConfigurationId);
 
             // Create a single proof object
             Proof singleProof = new Proof()
@@ -988,8 +987,7 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
 
             // Test 2: Create a request with both proof and proofs fields - should fail validation
             CredentialRequest requestWithBoth = new CredentialRequest()
-                    .setCredentialConfigurationId(credentialConfigurationId)
-                    .setFormat("jwt-vc");
+                    .setCredentialConfigurationId(credentialConfigurationId);
 
             requestWithBoth.setProof(singleProof);
 
