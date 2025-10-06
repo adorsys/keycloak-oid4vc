@@ -158,6 +158,7 @@ public class OID4VCIssuerEndpoint {
     public static final String AUTHORIZATION_DETAILS_CLAIMS_PREFIX = "AUTHORIZATION_DETAILS_CLAIMS_";
 
     private Cors cors;
+    private AuthenticationManager.AuthResult cachedAuthResult;
 
     private static final String CODE_LIFESPAN_REALM_ATTRIBUTE_KEY = "preAuthorizedCodeLifespanS";
     private static final int DEFAULT_CODE_LIFESPAN_S = 30;
@@ -1039,52 +1040,46 @@ public class OID4VCIssuerEndpoint {
     }
 
     private AuthenticationManager.AuthResult getAuthResult() {
-        AuthenticationManager.AuthResult authResult = bearerTokenAuthenticator.authenticate();
-        if (authResult == null) {
-            throw new CorsErrorResponseException(
-                    cors,
-                    ErrorType.INVALID_TOKEN.toString(),
-                    "Invalid or missing token",
-                    Response.Status.BAD_REQUEST);
-        }
+        if (cachedAuthResult == null) {
+            AuthenticationManager.AuthResult authResult = bearerTokenAuthenticator.authenticate();
+            if (authResult == null) {
+                throw new CorsErrorResponseException(
+                        cors,
+                        ErrorType.INVALID_TOKEN.toString(),
+                        "Invalid or missing token",
+                        Response.Status.BAD_REQUEST);
+            }
 
-        // Validate DPoP nonce if present in the DPoP proof
-        DPoP dPoP = session.getAttribute(DPoPUtil.DPOP_SESSION_ATTRIBUTE, DPoP.class);
-        if (dPoP != null) {
-            Object nonceClaim = Optional.ofNullable(dPoP.getOtherClaims())
-                    .map(m -> m.get("nonce"))
-                    .orElse(null);
-            if (nonceClaim instanceof String nonceJwt && !nonceJwt.isEmpty()) {
-                try {
-                    CNonceHandler cNonceHandler = session.getProvider(CNonceHandler.class);
-                    String expectedAudience = OID4VCIssuerWellKnownProvider.getCredentialsEndpoint(session.getContext());
-                    String expectedSource = OID4VCIssuerWellKnownProvider.getNonceEndpoint(session.getContext());
-                    cNonceHandler.verifyCNonce(
-                            nonceJwt,
-                            List.of(expectedAudience),
-                            Map.of(JwtCNonceHandler.SOURCE_ENDPOINT, expectedSource)
-                    );
-                } catch (VerificationException e) {
-                    LOGGER.debugf("DPoP nonce validation failed: %s", e.getMessage());
-                    throw new CorsErrorResponseException(
-                            cors,
-                            ErrorType.INVALID_TOKEN.toString(),
-                            "Invalid or missing token",
-                            Response.Status.BAD_REQUEST);
+            // Validate DPoP nonce if present in the DPoP proof
+            DPoP dPoP = (DPoP) session.getAttribute(DPoPUtil.DPOP_SESSION_ATTRIBUTE);
+            if (dPoP != null) {
+                Object nonceClaim = Optional.ofNullable(dPoP.getOtherClaims())
+                        .map(m -> m.get("nonce"))
+                        .orElse(null);
+                if (nonceClaim instanceof String nonceJwt && !nonceJwt.isEmpty()) {
+                    try {
+                        CNonceHandler cNonceHandler = session.getProvider(CNonceHandler.class);
+                        String expectedAudience = OID4VCIssuerWellKnownProvider.getCredentialsEndpoint(session.getContext());
+                        String expectedSource = OID4VCIssuerWellKnownProvider.getNonceEndpoint(session.getContext());
+                        cNonceHandler.verifyCNonce(
+                                nonceJwt,
+                                List.of(expectedAudience),
+                                Map.of(JwtCNonceHandler.SOURCE_ENDPOINT, expectedSource)
+                        );
+                    } catch (VerificationException e) {
+                        LOGGER.debugf("DPoP nonce validation failed: %s", e.getMessage());
+                        throw new CorsErrorResponseException(
+                                cors,
+                                ErrorType.INVALID_TOKEN.toString(),
+                                "Invalid or missing token",
+                                Response.Status.BAD_REQUEST);
+                    }
                 }
             }
+            // cache for this request lifecycle to avoid duplicate authentication & DPoP validation
+            cachedAuthResult = authResult;
         }
-
-        return authResult;
-    }
-
-    // get the auth result from the authentication manager
-    private AuthenticationManager.AuthResult getAuthResult(WebApplicationException errorResponse) {
-        AuthenticationManager.AuthResult authResult = bearerTokenAuthenticator.authenticate();
-        if (authResult == null) {
-            throw errorResponse;
-        }
-        return authResult;
+        return cachedAuthResult;
     }
 
     /**
