@@ -158,6 +158,7 @@ public class OID4VCIssuerEndpoint {
     public static final String AUTHORIZATION_DETAILS_CLAIMS_PREFIX = "AUTHORIZATION_DETAILS_CLAIMS_";
 
     private Cors cors;
+    private AuthenticationManager.AuthResult cachedAuthResult;
 
     private static final String CODE_LIFESPAN_REALM_ATTRIBUTE_KEY = "preAuthorizedCodeLifespanS";
     private static final int DEFAULT_CODE_LIFESPAN_S = 30;
@@ -1039,17 +1040,21 @@ public class OID4VCIssuerEndpoint {
     }
 
     private AuthenticationManager.AuthResult getAuthResult() {
+        if (cachedAuthResult != null) {
+            return cachedAuthResult;
+        }
+
         AuthenticationManager.AuthResult authResult = bearerTokenAuthenticator.authenticate();
         if (authResult == null) {
             throw new CorsErrorResponseException(
                     cors,
                     ErrorType.INVALID_TOKEN.toString(),
                     "Invalid or missing token",
-                    Response.Status.BAD_REQUEST);
+                    Response.Status.BAD_REQUEST
+            );
         }
-
         // Validate DPoP nonce if present in the DPoP proof
-        DPoP dPoP = session.getAttribute(DPoPUtil.DPOP_SESSION_ATTRIBUTE, DPoP.class);
+        DPoP dPoP = (DPoP) session.getAttribute(DPoPUtil.DPOP_SESSION_ATTRIBUTE);
         if (dPoP != null) {
             Object nonceClaim = Optional.ofNullable(dPoP.getOtherClaims())
                     .map(m -> m.get("nonce"))
@@ -1070,21 +1075,15 @@ public class OID4VCIssuerEndpoint {
                             cors,
                             ErrorType.INVALID_TOKEN.toString(),
                             "Invalid or missing token",
-                            Response.Status.BAD_REQUEST);
+                            Response.Status.BAD_REQUEST
+                    );
                 }
             }
         }
 
-        return authResult;
-    }
-
-    // get the auth result from the authentication manager
-    private AuthenticationManager.AuthResult getAuthResult(WebApplicationException errorResponse) {
-        AuthenticationManager.AuthResult authResult = bearerTokenAuthenticator.authenticate();
-        if (authResult == null) {
-            throw errorResponse;
-        }
-        return authResult;
+        // Cache for this request lifecycle
+        cachedAuthResult = authResult;
+        return cachedAuthResult;
     }
 
     /**
