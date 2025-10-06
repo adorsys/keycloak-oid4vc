@@ -1040,45 +1040,49 @@ public class OID4VCIssuerEndpoint {
     }
 
     private AuthenticationManager.AuthResult getAuthResult() {
-        if (cachedAuthResult == null) {
-            AuthenticationManager.AuthResult authResult = bearerTokenAuthenticator.authenticate();
-            if (authResult == null) {
-                throw new CorsErrorResponseException(
-                        cors,
-                        ErrorType.INVALID_TOKEN.toString(),
-                        "Invalid or missing token",
-                        Response.Status.BAD_REQUEST);
-            }
+        if (cachedAuthResult != null) {
+            return cachedAuthResult;
+        }
 
-            // Validate DPoP nonce if present in the DPoP proof
-            DPoP dPoP = (DPoP) session.getAttribute(DPoPUtil.DPOP_SESSION_ATTRIBUTE);
-            if (dPoP != null) {
-                Object nonceClaim = Optional.ofNullable(dPoP.getOtherClaims())
-                        .map(m -> m.get("nonce"))
-                        .orElse(null);
-                if (nonceClaim instanceof String nonceJwt && !nonceJwt.isEmpty()) {
-                    try {
-                        CNonceHandler cNonceHandler = session.getProvider(CNonceHandler.class);
-                        String expectedAudience = OID4VCIssuerWellKnownProvider.getCredentialsEndpoint(session.getContext());
-                        String expectedSource = OID4VCIssuerWellKnownProvider.getNonceEndpoint(session.getContext());
-                        cNonceHandler.verifyCNonce(
-                                nonceJwt,
-                                List.of(expectedAudience),
-                                Map.of(JwtCNonceHandler.SOURCE_ENDPOINT, expectedSource)
-                        );
-                    } catch (VerificationException e) {
-                        LOGGER.debugf("DPoP nonce validation failed: %s", e.getMessage());
-                        throw new CorsErrorResponseException(
-                                cors,
-                                ErrorType.INVALID_TOKEN.toString(),
-                                "Invalid or missing token",
-                                Response.Status.BAD_REQUEST);
-                    }
+        AuthenticationManager.AuthResult authResult = bearerTokenAuthenticator.authenticate();
+        if (authResult == null) {
+            throw new CorsErrorResponseException(
+                    cors,
+                    ErrorType.INVALID_TOKEN.toString(),
+                    "Invalid or missing token",
+                    Response.Status.BAD_REQUEST
+            );
+        }
+        // Validate DPoP nonce if present in the DPoP proof
+        DPoP dPoP = (DPoP) session.getAttribute(DPoPUtil.DPOP_SESSION_ATTRIBUTE);
+        if (dPoP != null) {
+            Object nonceClaim = Optional.ofNullable(dPoP.getOtherClaims())
+                    .map(m -> m.get("nonce"))
+                    .orElse(null);
+            if (nonceClaim instanceof String nonceJwt && !nonceJwt.isEmpty()) {
+                try {
+                    CNonceHandler cNonceHandler = session.getProvider(CNonceHandler.class);
+                    String expectedAudience = OID4VCIssuerWellKnownProvider.getCredentialsEndpoint(session.getContext());
+                    String expectedSource = OID4VCIssuerWellKnownProvider.getNonceEndpoint(session.getContext());
+                    cNonceHandler.verifyCNonce(
+                            nonceJwt,
+                            List.of(expectedAudience),
+                            Map.of(JwtCNonceHandler.SOURCE_ENDPOINT, expectedSource)
+                    );
+                } catch (VerificationException e) {
+                    LOGGER.debugf("DPoP nonce validation failed: %s", e.getMessage());
+                    throw new CorsErrorResponseException(
+                            cors,
+                            ErrorType.INVALID_TOKEN.toString(),
+                            "Invalid or missing token",
+                            Response.Status.BAD_REQUEST
+                    );
                 }
             }
-            // cache for this request lifecycle to avoid duplicate authentication & DPoP validation
-            cachedAuthResult = authResult;
         }
+
+        // Cache for this request lifecycle
+        cachedAuthResult = authResult;
         return cachedAuthResult;
     }
 
