@@ -54,7 +54,7 @@ public class SdJwtAuthRequirements {
     private final int kbJwtMaxAllowedAge;
     private final boolean validateNotBeforeClaim;
     private final boolean validateExpirationClaim;
-    private final boolean enforceRecovationStatus;
+    private final boolean enforceRevocationStatus;
 
     public SdJwtAuthRequirements(KeycloakContext context, AuthenticatorConfigModel authConfig) {
         logger.debugf("Collecting authentication requirements");
@@ -91,7 +91,7 @@ public class SdJwtAuthRequirements {
                 String.valueOf(SdJwtAuthenticatorFactory.ENFORCE_EXP_CLAIM_CONFIG_DEFAULT)
         ));
 
-        this.enforceRecovationStatus = Boolean.parseBoolean(config.getOrDefault(
+        this.enforceRevocationStatus = Boolean.parseBoolean(config.getOrDefault(
                 SdJwtAuthenticatorFactory.ENFORCE_REVOCATION_STATUS_CONFIG,
                 String.valueOf(SdJwtAuthenticatorFactory.ENFORCE_REVOCATION_STATUS_CONFIG_DEFAULT)
         ));
@@ -112,7 +112,7 @@ public class SdJwtAuthRequirements {
     }
 
     public boolean shouldEnforceRevocationStatus() {
-        return enforceRecovationStatus;
+        return enforceRevocationStatus;
     }
 
     /**

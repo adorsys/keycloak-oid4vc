@@ -100,7 +100,7 @@ public class TrustedStatusListJwtFetcher extends SimpleStatusListJwtFetcher {
             // Return verifier corresponing to certificate
             return toSignatureVerifier(cert, header.getAlgorithm().name());
         } catch (Exception e) {
-            throw new ReferencedTokenValidationException("Could extract verifier from X5C certificate chain", e);
+            throw new ReferencedTokenValidationException("Could not extract verifier from X5C certificate chain", e);
         }
     }
 

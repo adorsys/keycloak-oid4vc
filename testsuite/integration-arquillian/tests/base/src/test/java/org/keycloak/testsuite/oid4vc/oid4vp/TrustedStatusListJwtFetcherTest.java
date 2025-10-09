@@ -72,7 +72,7 @@ public class TrustedStatusListJwtFetcherTest extends OID4VCIssuerEndpointTest {
     public void shouldRejectInvalidStatusListJwts_NoX5C() {
         shouldRejectInvalidStatusListJwt(
                 "status-list-jwt+no-x5c",
-                "Could extract verifier from X5C certificate chain",
+                "Could not extract verifier from X5C certificate chain",
                 "Missing or empty x5c header in JWS"
         );
     }
