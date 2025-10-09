@@ -32,6 +32,8 @@ import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
 import org.keycloak.models.UserModel;
 import org.keycloak.models.utils.KeycloakModelUtils;
+import org.keycloak.protocol.oid4vc.tokenstatus.ReferencedTokenValidator;
+import org.keycloak.protocol.oid4vc.tokenstatus.http.StatusListJwtFetcher;
 import org.keycloak.representations.idm.OAuth2ErrorRepresentation;
 import org.keycloak.sdjwt.SdJwtUtils;
 import org.keycloak.sdjwt.consumer.SdJwtPresentationConsumer;
@@ -40,6 +42,8 @@ import org.keycloak.sessions.AuthenticationSessionModel;
 
 import java.util.List;
 import java.util.Objects;
+
+import static org.keycloak.protocol.oid4vc.tokenstatus.ReferencedTokenValidator.ReferencedTokenValidationException;
 
 /**
  * Authenticate by presenting a valid SD-JWT credential.
@@ -51,6 +55,7 @@ public class SdJwtAuthenticator implements Authenticator {
     private static final Logger logger = Logger.getLogger(SdJwtAuthenticator.class);
 
     private final SdJwtPresentationConsumer consumer;
+    private final ReferencedTokenValidator tokenStatusValidator;
 
     /**
      * The authenticating party is challenged to produce a presentation with a nonce.
@@ -62,8 +67,9 @@ public class SdJwtAuthenticator implements Authenticator {
      */
     public static final String SDJWT_TOKEN_KEY = "sdjwt_token";
 
-    public SdJwtAuthenticator() {
+    public SdJwtAuthenticator(StatusListJwtFetcher statusListJwtFetcher) {
         this.consumer = new SdJwtPresentationConsumer();
+        this.tokenStatusValidator = new ReferencedTokenValidator(statusListJwtFetcher);
     }
 
     @Override
@@ -87,6 +93,17 @@ public class SdJwtAuthenticator implements Authenticator {
             logger.errorf(e, "Token verification failed");
             failRejectingPresentedSdJwtToken(context, e.getMessage());
             return;
+        }
+
+        // Validate token status if enforced
+        if (authReqs.shouldEnforceRevocationStatus()) {
+            try {
+                tokenStatusValidator.validate(sdJwt.getIssuerSignedJWT().getPayload());
+            } catch (ReferencedTokenValidationException e) {
+                logger.errorf(e, "Token status verification failed");
+                failRejectingPresentedSdJwtToken(context, "Token status verification failed");
+                return;
+            }
         }
 
         UserModel user = recoverAuthenticatingUser(context, sdJwt);

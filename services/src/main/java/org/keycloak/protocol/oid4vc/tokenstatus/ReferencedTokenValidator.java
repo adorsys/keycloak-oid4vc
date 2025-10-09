@@ -25,7 +25,7 @@ import org.keycloak.jose.JOSE;
 import org.keycloak.jose.JOSEParser;
 import org.keycloak.jose.jws.JWSInput;
 import org.keycloak.jose.jws.JWSInputException;
-import org.keycloak.sdjwt.consumer.StatusListJwtFetcher;
+import org.keycloak.protocol.oid4vc.tokenstatus.http.StatusListJwtFetcher;
 import org.keycloak.util.JsonSerialization;
 
 import java.io.ByteArrayOutputStream;
@@ -43,8 +43,8 @@ import java.util.zip.Inflater;
  */
 public class ReferencedTokenValidator {
 
-    private static final String STATUS_FIELD = "status";
-    private static final String STATUS_LIST_FIELD = "status_list";
+    public static final String STATUS_FIELD = "status";
+    public static final String STATUS_LIST_FIELD = "status_list";
     private static final String IDX_FIELD = "idx";
     private static final String URI_FIELD = "uri";
     private static final String BITS_FIELD = "bits";
@@ -221,12 +221,8 @@ public class ReferencedTokenValidator {
             // Extract the payload and parse as JSON
             return jws.readJsonContent(JsonNode.class);
 
-        } catch (JsonProcessingException e) {
-            throw new ReferencedTokenValidationException("Failed to parse JWT payload JSON from: " + uri, e);
         } catch (JWSInputException e) {
             throw new ReferencedTokenValidationException("Failed to parse Status List JWT from: " + uri, e);
-        } catch (IOException e) {
-            throw new ReferencedTokenValidationException("Failed to fetch status list token from: " + uri, e);
         }
     }
 

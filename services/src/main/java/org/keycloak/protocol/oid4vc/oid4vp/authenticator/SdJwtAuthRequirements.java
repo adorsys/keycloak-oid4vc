@@ -54,6 +54,7 @@ public class SdJwtAuthRequirements {
     private final int kbJwtMaxAllowedAge;
     private final boolean validateNotBeforeClaim;
     private final boolean validateExpirationClaim;
+    private final boolean enforceRevocationStatus;
 
     public SdJwtAuthRequirements(KeycloakContext context, AuthenticatorConfigModel authConfig) {
         logger.debugf("Collecting authentication requirements");
@@ -90,6 +91,11 @@ public class SdJwtAuthRequirements {
                 String.valueOf(SdJwtAuthenticatorFactory.ENFORCE_EXP_CLAIM_CONFIG_DEFAULT)
         ));
 
+        this.enforceRevocationStatus = Boolean.parseBoolean(config.getOrDefault(
+                SdJwtAuthenticatorFactory.ENFORCE_REVOCATION_STATUS_CONFIG,
+                String.valueOf(SdJwtAuthenticatorFactory.ENFORCE_REVOCATION_STATUS_CONFIG_DEFAULT)
+        ));
+
         this.expectedVctsPattern = expectedVcts.stream()
                 .map(vct -> Pattern.quote("\"" + vct + "\""))
                 .collect(Collectors.joining("|", "(", ")"));
@@ -103,6 +109,10 @@ public class SdJwtAuthRequirements {
         // A username field is required so as to reliably recover
         // the user associated with the presented credential
         return List.of(OAuth2Constants.USERNAME);
+    }
+
+    public boolean shouldEnforceRevocationStatus() {
+        return enforceRevocationStatus;
     }
 
     /**
