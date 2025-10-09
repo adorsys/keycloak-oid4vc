@@ -24,6 +24,8 @@ import org.keycloak.models.AuthenticationExecutionModel;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.KeycloakSessionFactory;
 import org.keycloak.protocol.oid4vc.oid4vp.OID4VPEnvironmentProviderFactory;
+import org.keycloak.protocol.oid4vc.tokenstatus.http.StatusListJwtFetcher;
+import org.keycloak.protocol.oid4vc.tokenstatus.http.TrustedStatusListJwtFetcher;
 import org.keycloak.provider.ProviderConfigProperty;
 
 import java.util.ArrayList;
@@ -50,6 +52,9 @@ public class SdJwtAuthenticatorFactory implements AuthenticatorFactory, OID4VPEn
 
     public static final String ENFORCE_EXP_CLAIM_CONFIG = "enforceExpClaim";
     public static final boolean ENFORCE_EXP_CLAIM_CONFIG_DEFAULT = false;
+
+    public static final String ENFORCE_REVOCATION_STATUS_CONFIG = "enforceRevocationStatus";
+    public static final boolean ENFORCE_REVOCATION_STATUS_CONFIG_DEFAULT = false;
 
     static {
         ProviderConfigProperty property;
@@ -85,6 +90,14 @@ public class SdJwtAuthenticatorFactory implements AuthenticatorFactory, OID4VPEn
         property.setDefaultValue(KBJWT_MAX_AGE_CONFIG_DEFAULT);
         property.setHelpText("Define a maximum age of accepted key-binding JWTs as part of measures to protect against replay.");
         configProperties.add(property);
+
+        property = new ProviderConfigProperty();
+        property.setName(ENFORCE_REVOCATION_STATUS_CONFIG);
+        property.setLabel("Reject revoked credentials (Token Status List)");
+        property.setType(ProviderConfigProperty.BOOLEAN_TYPE);
+        property.setDefaultValue(ENFORCE_REVOCATION_STATUS_CONFIG_DEFAULT);
+        property.setHelpText("Reject credentials whose status indicates they are no longer valid as per the Token Status List mechanism.");
+        configProperties.add(property);
     }
 
     @Override
@@ -94,7 +107,8 @@ public class SdJwtAuthenticatorFactory implements AuthenticatorFactory, OID4VPEn
 
     @Override
     public Authenticator create(KeycloakSession session) {
-        return new SdJwtAuthenticator();
+        StatusListJwtFetcher httpFetcher = new TrustedStatusListJwtFetcher(session);
+        return new SdJwtAuthenticator(httpFetcher);
     }
 
     @Override

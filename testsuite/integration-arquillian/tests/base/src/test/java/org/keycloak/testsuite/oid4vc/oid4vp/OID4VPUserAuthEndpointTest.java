@@ -124,6 +124,7 @@ public class OID4VPUserAuthEndpointTest extends OID4VCIssuerEndpointTest {
         authConfig.setAlias(SD_JWT_AUTH_CONFIG);
         authConfig.setConfig(Map.of(
                 SdJwtAuthenticatorFactory.ENFORCE_EXP_CLAIM_CONFIG, "true",
+                SdJwtAuthenticatorFactory.ENFORCE_REVOCATION_STATUS_CONFIG, "true",
                 SdJwtAuthenticatorFactory.VCT_CONFIG, "%s,%s".formatted(VCT_CONFIG_DEFAULT, VCT_CONFIG_ALT)
         ));
 
@@ -269,7 +270,7 @@ public class OID4VPUserAuthEndpointTest extends OID4VCIssuerEndpointTest {
     @Test
     public void shouldAuthenticateSuccessfully_SdJwtWithoutKid() throws Exception {
         // Request a valid SD-JWT credential from Keycloak without explicit kid
-        String sdJwt = sdJwtVPTestUtils.requestSdJwtCredential(VCT_CONFIG_DEFAULT, TEST_USER, false);
+        String sdJwt = sdJwtVPTestUtils.requestSdJwtCredential(VCT_CONFIG_DEFAULT, TEST_USER, false, true);
 
         // Proceed to authentication
         testSuccessfulAuthentication(sdJwt, TestOpts.getDefault());
@@ -502,6 +503,21 @@ public class OID4VPUserAuthEndpointTest extends OID4VCIssuerEndpointTest {
                 HttpStatus.SC_UNAUTHORIZED,
                 ProcessingError.VP_TOKEN_AUTH_ERROR.getErrorString(),
                 "Invalid SD-JWT presentation (A required field was not presented: `username`)"
+        );
+    }
+
+    @Test
+    public void shouldFailAuthentication_SdJwtWithoutStatusClaim() throws Exception {
+        // Request SD-JWT credentials from Keycloak to use for authentication
+        // Token status is enforced, but we omit the status claim, causing authentication to fail
+        String sdJwt = sdJwtVPTestUtils.requestSdJwtCredential(VCT_CONFIG_DEFAULT, TEST_USER, false, false);
+
+        // Proceed to authentication
+        testFailingAuthentication(
+                sdJwt, TestOpts.getDefault(),
+                HttpStatus.SC_UNAUTHORIZED,
+                ProcessingError.VP_TOKEN_AUTH_ERROR.getErrorString(),
+                "Invalid SD-JWT presentation (Token status verification failed)"
         );
     }
 
