@@ -94,6 +94,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 import static org.keycloak.constants.Oid4VciConstants.SIGNED_METADATA_JWT_TYPE;
 import static org.keycloak.jose.jwe.JWEConstants.A256GCM;
@@ -161,6 +162,14 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
                 assertNotNull("authorization_servers should be present", issuer.getAuthorizationServers());
                 assertNotNull("credential_response_encryption should be present", issuer.getCredentialResponseEncryption());
                 assertNotNull("batch_credential_issuance should be present", issuer.getBatchCredentialIssuance());
+
+                // Backward compatibility check for display metadata
+                Map<String, SupportedCredentialConfiguration> credentialsSupported = issuer.getCredentialsSupported();
+                assertEquals(4, credentialsSupported.size());
+                credentialsSupported.values().forEach(credentialSupported -> assertSame(
+                        credentialSupported.getCredentialMetadata().getDisplay(),
+                        credentialSupported.getDisplay()
+                ));
             }
         } catch (Exception e) {
             throw new RuntimeException("Failed to process JSON metadata response: " + e.getMessage(), e);
