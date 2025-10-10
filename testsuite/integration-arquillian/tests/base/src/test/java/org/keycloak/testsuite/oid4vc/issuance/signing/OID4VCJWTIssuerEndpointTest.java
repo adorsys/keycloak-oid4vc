@@ -1009,20 +1009,23 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
     }
 
     /**
-     * Helper method to extract display name from the new Object display structure
+     * Helper method to extract display name from the Object display structure
      */
     private static String getDisplayNameFromObject(Object displayObj) {
         if (displayObj == null) {
             return null;
         }
 
-        // Handle List<DisplayObject> (spec-compliant format)
+        // Handle List<DisplayObject> (spec-compliant format) - after JSON serialization they become LinkedHashMap
         if (displayObj instanceof List) {
             List<Object> displayList = (List<Object>) displayObj;
             if (!displayList.isEmpty()) {
                 Object firstDisplay = displayList.get(0);
                 if (firstDisplay instanceof DisplayObject) {
                     return ((DisplayObject) firstDisplay).getName();
+                } else if (firstDisplay instanceof Map) {
+                    Map<String, Object> displayMap = (Map<String, Object>) firstDisplay;
+                    return (String) displayMap.get("name");
                 }
             }
         }
@@ -1030,6 +1033,12 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
         // Handle single DisplayObject
         if (displayObj instanceof DisplayObject) {
             return ((DisplayObject) displayObj).getName();
+        }
+
+        // Handle serialized DisplayObject (LinkedHashMap)
+        if (displayObj instanceof Map) {
+            Map<String, Object> displayMap = (Map<String, Object>) displayObj;
+            return (String) displayMap.get("name");
         }
 
         return null;

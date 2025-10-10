@@ -20,8 +20,11 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import org.keycloak.models.oid4vci.CredentialScopeModel;
 import org.keycloak.models.KeycloakSession;
+import org.keycloak.util.JsonSerialization;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import java.util.List;
+import java.io.IOException;
 
 /**
  * Represents credential_metadata as defined in the OID4VCI specification.
@@ -33,6 +36,8 @@ import java.util.List;
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class CredentialMetadata {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(CredentialMetadata.class);
 
     @JsonProperty("display")
     private Object display;
@@ -52,13 +57,15 @@ public class CredentialMetadata {
     public static CredentialMetadata parse(KeycloakSession keycloakSession, CredentialScopeModel credentialScope) {
         CredentialMetadata metadata = new CredentialMetadata();
 
-        // Parse format-specific display metadata (prioritized)
-        // Keep as List<DisplayObject> for spec compliance, but allow flexibility with Object
-        List<DisplayObject> formatSpecificDisplay = DisplayObject.parse(credentialScope);
-        if (formatSpecificDisplay != null && !formatSpecificDisplay.isEmpty()) {
-            // Use the List<DisplayObject> directly for spec compliance
-            // Object allows for flexibility while maintaining spec compatibility
-            metadata.setDisplay(formatSpecificDisplay);
+        String displayJson = credentialScope.getVcDisplay();
+        if (displayJson != null && !displayJson.trim().isEmpty()) {
+            try {
+                Object displayData = JsonSerialization.readValue(displayJson, Object.class);
+                metadata.setDisplay(displayData);
+            } catch (IOException e) {
+                LOGGER.warn("Failed to parse display metadata for credential: " + credentialScope.getName() +
+                        ". Display is optional, continuing without it.", e);
+            }
         }
 
         // Parse format-specific claims metadata (prioritized)
