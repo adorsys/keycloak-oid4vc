@@ -22,7 +22,6 @@ import org.keycloak.models.oid4vci.CredentialScopeModel;
 import org.keycloak.models.KeycloakSession;
 
 import java.util.List;
-import java.util.Map;
 
 /**
  * Represents credential_metadata as defined in the OID4VCI specification.
@@ -36,7 +35,7 @@ import java.util.Map;
 public class CredentialMetadata {
 
     @JsonProperty("display")
-    private Map<String, Object> display;
+    private Object display;
 
     @JsonProperty("claims")
     private Claims claims;
@@ -54,21 +53,12 @@ public class CredentialMetadata {
         CredentialMetadata metadata = new CredentialMetadata();
 
         // Parse format-specific display metadata (prioritized)
-        // For backward compatibility, we still parse as List<DisplayObject> and convert to Map
+        // Keep as List<DisplayObject> for spec compliance, but allow flexibility with Object
         List<DisplayObject> formatSpecificDisplay = DisplayObject.parse(credentialScope);
         if (formatSpecificDisplay != null && !formatSpecificDisplay.isEmpty()) {
-            // Convert List<DisplayObject> to Map<String, Object> for flexibility
-            // This allows wallets to use the display data in a more flexible way
-            Map<String, Object> displayMap = new java.util.HashMap<>();
-            for (int i = 0; i < formatSpecificDisplay.size(); i++) {
-                DisplayObject displayObj = formatSpecificDisplay.get(i);
-                if (displayObj.getLocale() != null) {
-                    displayMap.put(displayObj.getLocale(), displayObj);
-                } else {
-                    displayMap.put("default", displayObj);
-                }
-            }
-            metadata.setDisplay(displayMap);
+            // Use the List<DisplayObject> directly for spec compliance
+            // Object allows for flexibility while maintaining spec compatibility
+            metadata.setDisplay(formatSpecificDisplay);
         }
 
         // Parse format-specific claims metadata (prioritized)
@@ -85,11 +75,11 @@ public class CredentialMetadata {
         return null;
     }
 
-    public Map<String, Object> getDisplay() {
+    public Object getDisplay() {
         return display;
     }
 
-    public CredentialMetadata setDisplay(Map<String, Object> display) {
+    public CredentialMetadata setDisplay(Object display) {
         this.display = display;
         return this;
     }

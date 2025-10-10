@@ -583,27 +583,33 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
         }
 
         assertNotNull("Credential metadata should exist when display is configured", supportedConfig.getCredentialMetadata());
-        Map<String, Object> actualDisplay = supportedConfig.getCredentialMetadata().getDisplay();
+        Object actualDisplay = supportedConfig.getCredentialMetadata().getDisplay();
         assertNotNull("Display should not be null", actualDisplay);
 
-        // Since display is now a Map<String, Object>, we need to check that all expected display objects are present
-        // The map should contain entries for each locale (or "default" if no locale)
-        for (DisplayObject expectedDisplay : expectedDisplayObjectList) {
-            String key = expectedDisplay.getLocale() != null ? expectedDisplay.getLocale() : "default";
-            assertTrue("Display should contain entry for key: " + key, actualDisplay.containsKey(key));
-            Object actualDisplayObj = actualDisplay.get(key);
+        // Since display is now an Object (List<DisplayObject> for spec compliance), we need to check that all expected display objects are present
+        assertTrue("Display should be a List", actualDisplay instanceof List);
 
-            // Handle both DisplayObject instances and Map objects (after JSON serialization)
-            if (actualDisplayObj instanceof DisplayObject) {
-                assertEquals("Display object should match expected", expectedDisplay, actualDisplayObj);
-            } else if (actualDisplayObj instanceof Map) {
-                // If it's a Map (after JSON serialization), check that it contains the expected name
-                Map<String, Object> displayMap = (Map<String, Object>) actualDisplayObj;
-                String actualName = (String) displayMap.get("name");
-                assertEquals("Display name should match expected", expectedDisplay.getName(), actualName);
-            } else {
-                assertTrue("Display entry should be either a DisplayObject or a Map, but was: " + actualDisplayObj.getClass(), false);
-            }
+        List<Object> displayList = (List<Object>) actualDisplay;
+        assertEquals("Display list size should match expected", expectedDisplayObjectList.size(), displayList.size());
+
+
+        // Extract names from actual display objects for comparison
+        // Since display is Object containing List<DisplayObject>, we expect LinkedHashMap after JSON serialization
+        List<String> actualNames = displayList.stream()
+                .filter(obj -> obj instanceof Map)
+                .map(obj -> {
+                    Map<String, Object> displayMap = (Map<String, Object>) obj;
+                    return (String) displayMap.get("name");
+                })
+                .filter(name -> name != null)
+                .collect(java.util.stream.Collectors.toList());
+
+        // Check that all expected display object names are present
+        for (DisplayObject expectedDisplay : expectedDisplayObjectList) {
+            assertTrue("Expected display object should be found in the list: " + expectedDisplay.getName() +
+                            ". Actual names found: " + actualNames +
+                            ". Expected names: " + expectedDisplayObjectList.stream().map(DisplayObject::getName).collect(java.util.stream.Collectors.toList()),
+                    actualNames.contains(expectedDisplay.getName()));
         }
     }
 

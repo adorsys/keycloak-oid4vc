@@ -488,7 +488,7 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
                                          .getCredentialMetadata() != null &&
                                          credentialIssuer.getCredentialsSupported().get(credentialConfigurationId)
                                                  .getCredentialMetadata().getDisplay() != null ?
-                                         getDisplayNameFromMap(credentialIssuer.getCredentialsSupported().get(credentialConfigurationId)
+                                         getDisplayNameFromObject(credentialIssuer.getCredentialsSupported().get(credentialConfigurationId)
                                                  .getCredentialMetadata().getDisplay()) : null);
                 }));
     }
@@ -585,19 +585,29 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
     }
 
     /**
-     * Helper method to extract display name from the new Map<String, Object> display structure
+     * Helper method to extract display name from the new Object display structure
      */
-    private static String getDisplayNameFromMap(Map<String, Object> displayMap) {
-        if (displayMap == null || displayMap.isEmpty()) {
+    private static String getDisplayNameFromObject(Object displayObj) {
+        if (displayObj == null) {
             return null;
         }
 
-        // Try to get the first DisplayObject from the map
-        for (Object value : displayMap.values()) {
-            if (value instanceof DisplayObject) {
-                return ((DisplayObject) value).getName();
+        // Handle List<DisplayObject> (spec-compliant format)
+        if (displayObj instanceof List) {
+            List<Object> displayList = (List<Object>) displayObj;
+            if (!displayList.isEmpty()) {
+                Object firstDisplay = displayList.get(0);
+                if (firstDisplay instanceof DisplayObject) {
+                    return ((DisplayObject) firstDisplay).getName();
+                }
             }
         }
+
+        // Handle single DisplayObject
+        if (displayObj instanceof DisplayObject) {
+            return ((DisplayObject) displayObj).getName();
+        }
+
         return null;
     }
 }

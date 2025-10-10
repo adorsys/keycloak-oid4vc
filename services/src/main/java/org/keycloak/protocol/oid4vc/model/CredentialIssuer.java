@@ -59,7 +59,7 @@ public class CredentialIssuer {
     private Map<String, SupportedCredentialConfiguration> credentialsSupported;
 
     @JsonProperty("display")
-    private Map<String, Object> display;
+    private Object display;
 
     @JsonProperty("credential_response_encryption")
     private CredentialResponseEncryptionMetadata credentialResponseEncryption;
@@ -142,11 +142,11 @@ public class CredentialIssuer {
         return this;
     }
 
-    public Map<String, Object> getDisplay() {
+    public Object getDisplay() {
         return display;
     }
 
-    public CredentialIssuer setDisplay(Map<String, Object> display) {
+    public CredentialIssuer setDisplay(Object display) {
         this.display = display;
         return this;
     }

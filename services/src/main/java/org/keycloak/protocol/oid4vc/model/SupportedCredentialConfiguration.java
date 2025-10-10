@@ -25,7 +25,6 @@ import org.keycloak.models.KeycloakSession;
 
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -248,7 +247,7 @@ public class SupportedCredentialConfiguration {
     }
 
     @JsonProperty(value = LEGACY_DISPLAY_KEY, access = JsonProperty.Access.READ_ONLY)
-    public Map<String, Object> getDisplay() {
+    public Object getDisplay() {
         return credentialMetadata != null ? credentialMetadata.getDisplay() : null;
     }
 
