@@ -247,7 +247,7 @@ public class SupportedCredentialConfiguration {
     }
 
     @JsonProperty(value = LEGACY_DISPLAY_KEY, access = JsonProperty.Access.READ_ONLY)
-    public List<DisplayObject> getDisplay() {
+    public Object getDisplay() {
         return credentialMetadata != null ? credentialMetadata.getDisplay() : null;
     }
 

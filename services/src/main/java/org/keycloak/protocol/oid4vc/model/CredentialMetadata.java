@@ -20,8 +20,11 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import org.keycloak.models.oid4vci.CredentialScopeModel;
 import org.keycloak.models.KeycloakSession;
+import org.keycloak.util.JsonSerialization;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import java.util.List;
+import java.io.IOException;
 
 /**
  * Represents credential_metadata as defined in the OID4VCI specification.
@@ -34,8 +37,10 @@ import java.util.List;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class CredentialMetadata {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(CredentialMetadata.class);
+
     @JsonProperty("display")
-    private List<DisplayObject> display;
+    private Object display;
 
     @JsonProperty("claims")
     private Claims claims;
@@ -52,10 +57,15 @@ public class CredentialMetadata {
     public static CredentialMetadata parse(KeycloakSession keycloakSession, CredentialScopeModel credentialScope) {
         CredentialMetadata metadata = new CredentialMetadata();
 
-        // Parse format-specific display metadata (prioritized)
-        List<DisplayObject> formatSpecificDisplay = DisplayObject.parse(credentialScope);
-        if (formatSpecificDisplay != null && !formatSpecificDisplay.isEmpty()) {
-            metadata.setDisplay(formatSpecificDisplay);
+        String displayJson = credentialScope.getVcDisplay();
+        if (displayJson != null && !displayJson.trim().isEmpty()) {
+            try {
+                Object displayData = JsonSerialization.readValue(displayJson, Object.class);
+                metadata.setDisplay(displayData);
+            } catch (IOException e) {
+                LOGGER.warn("Failed to parse display metadata for credential: " + credentialScope.getName() +
+                        ". Display is optional, continuing without it.", e);
+            }
         }
 
         // Parse format-specific claims metadata (prioritized)
@@ -72,11 +82,11 @@ public class CredentialMetadata {
         return null;
     }
 
-    public List<DisplayObject> getDisplay() {
+    public Object getDisplay() {
         return display;
     }
 
-    public CredentialMetadata setDisplay(List<DisplayObject> display) {
+    public CredentialMetadata setDisplay(Object display) {
         this.display = display;
         return this;
     }

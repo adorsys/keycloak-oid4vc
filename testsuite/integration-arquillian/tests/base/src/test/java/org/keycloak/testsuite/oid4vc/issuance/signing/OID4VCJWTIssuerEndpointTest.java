@@ -44,6 +44,7 @@ import org.keycloak.protocol.oid4vc.model.Claim;
 import org.keycloak.protocol.oid4vc.model.ClaimDisplay;
 import org.keycloak.protocol.oid4vc.model.Claims;
 import org.keycloak.protocol.oid4vc.model.CredentialIssuer;
+import org.keycloak.protocol.oid4vc.model.DisplayObject;
 import org.keycloak.protocol.oid4vc.model.CredentialOfferURI;
 import org.keycloak.protocol.oid4vc.model.CredentialRequest;
 import org.keycloak.protocol.oid4vc.model.CredentialResponse;
@@ -858,7 +859,7 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
                     assertEquals("The jwt_vc-credential should display as Test Credential",
                             credentialConfigurationId,
                             jwtVcConfig.getCredentialMetadata() != null && jwtVcConfig.getCredentialMetadata().getDisplay() != null ?
-                                    jwtVcConfig.getCredentialMetadata().getDisplay().get(0).getName() : null);
+                                    getDisplayNameFromObject(jwtVcConfig.getCredentialMetadata().getDisplay()) : null);
                 }));
     }
 
@@ -1005,6 +1006,42 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
                 assertEquals("Expected HTTP 400 Bad Request", 400, statusCode);
             }
         });
+    }
+
+    /**
+     * Helper method to extract display name from the Object display structure
+     */
+    private static String getDisplayNameFromObject(Object displayObj) {
+        if (displayObj == null) {
+            return null;
+        }
+
+        // Handle List<DisplayObject> (spec-compliant format) - after JSON serialization they become LinkedHashMap
+        if (displayObj instanceof List) {
+            List<Object> displayList = (List<Object>) displayObj;
+            if (!displayList.isEmpty()) {
+                Object firstDisplay = displayList.get(0);
+                if (firstDisplay instanceof DisplayObject) {
+                    return ((DisplayObject) firstDisplay).getName();
+                } else if (firstDisplay instanceof Map) {
+                    Map<String, Object> displayMap = (Map<String, Object>) firstDisplay;
+                    return (String) displayMap.get("name");
+                }
+            }
+        }
+
+        // Handle single DisplayObject
+        if (displayObj instanceof DisplayObject) {
+            return ((DisplayObject) displayObj).getName();
+        }
+
+        // Handle serialized DisplayObject (LinkedHashMap)
+        if (displayObj instanceof Map) {
+            Map<String, Object> displayMap = (Map<String, Object>) displayObj;
+            return (String) displayMap.get("name");
+        }
+
+        return null;
     }
 
 }

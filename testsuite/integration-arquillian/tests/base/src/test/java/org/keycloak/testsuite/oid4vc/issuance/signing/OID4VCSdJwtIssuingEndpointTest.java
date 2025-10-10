@@ -49,6 +49,7 @@ import org.keycloak.protocol.oid4vc.issuance.mappers.OID4VCGeneratedIdMapper;
 import org.keycloak.protocol.oid4vc.model.Claim;
 import org.keycloak.protocol.oid4vc.model.Claims;
 import org.keycloak.protocol.oid4vc.model.CredentialIssuer;
+import org.keycloak.protocol.oid4vc.model.DisplayObject;
 import org.keycloak.protocol.oid4vc.model.CredentialOfferURI;
 import org.keycloak.protocol.oid4vc.model.CredentialResponse;
 import org.keycloak.protocol.oid4vc.model.CredentialsOffer;
@@ -487,8 +488,8 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
                                          .getCredentialMetadata() != null &&
                                          credentialIssuer.getCredentialsSupported().get(credentialConfigurationId)
                                                  .getCredentialMetadata().getDisplay() != null ?
-                                         credentialIssuer.getCredentialsSupported().get(credentialConfigurationId)
-                                                 .getCredentialMetadata().getDisplay().get(0).getName() : null);
+                                         getDisplayNameFromObject(credentialIssuer.getCredentialsSupported().get(credentialConfigurationId)
+                                                 .getCredentialMetadata().getDisplay()) : null);
                 }));
     }
 
@@ -581,5 +582,41 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
             assertNotNull("Test credential shall include an iat claim.", jsonWebToken.getIat());
             assertNotNull("Test credential shall include an nbf claim.", jsonWebToken.getNbf());
         }
+    }
+
+    /**
+     * Helper method to extract display name from Object display structure
+     */
+    private static String getDisplayNameFromObject(Object displayObj) {
+        if (displayObj == null) {
+            return null;
+        }
+
+        // Handle List<DisplayObject> (spec-compliant format) - after JSON serialization they become LinkedHashMap
+        if (displayObj instanceof List) {
+            List<Object> displayList = (List<Object>) displayObj;
+            if (!displayList.isEmpty()) {
+                Object firstDisplay = displayList.get(0);
+                if (firstDisplay instanceof DisplayObject) {
+                    return ((DisplayObject) firstDisplay).getName();
+                } else if (firstDisplay instanceof Map) {
+                    Map<String, Object> displayMap = (Map<String, Object>) firstDisplay;
+                    return (String) displayMap.get("name");
+                }
+            }
+        }
+
+        // Handle single DisplayObject
+        if (displayObj instanceof DisplayObject) {
+            return ((DisplayObject) displayObj).getName();
+        }
+
+        // Handle serialized DisplayObject
+        if (displayObj instanceof Map) {
+            Map<String, Object> displayMap = (Map<String, Object>) displayObj;
+            return (String) displayMap.get("name");
+        }
+
+        return null;
     }
 }
