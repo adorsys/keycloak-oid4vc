@@ -44,6 +44,7 @@ import org.keycloak.protocol.oid4vc.model.Claim;
 import org.keycloak.protocol.oid4vc.model.ClaimDisplay;
 import org.keycloak.protocol.oid4vc.model.Claims;
 import org.keycloak.protocol.oid4vc.model.CredentialIssuer;
+import org.keycloak.protocol.oid4vc.model.DisplayObject;
 import org.keycloak.protocol.oid4vc.model.CredentialOfferURI;
 import org.keycloak.protocol.oid4vc.model.CredentialRequest;
 import org.keycloak.protocol.oid4vc.model.CredentialResponse;
@@ -858,7 +859,7 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
                     assertEquals("The jwt_vc-credential should display as Test Credential",
                             credentialConfigurationId,
                             jwtVcConfig.getCredentialMetadata() != null && jwtVcConfig.getCredentialMetadata().getDisplay() != null ?
-                                    jwtVcConfig.getCredentialMetadata().getDisplay().get(0).getName() : null);
+                                    getDisplayNameFromMap(jwtVcConfig.getCredentialMetadata().getDisplay()) : null);
                 }));
     }
 
@@ -1005,6 +1006,23 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
                 assertEquals("Expected HTTP 400 Bad Request", 400, statusCode);
             }
         });
+    }
+
+    /**
+     * Helper method to extract display name from the new Map<String, Object> display structure
+     */
+    private static String getDisplayNameFromMap(Map<String, Object> displayMap) {
+        if (displayMap == null || displayMap.isEmpty()) {
+            return null;
+        }
+
+        // Try to get the first DisplayObject from the map
+        for (Object value : displayMap.values()) {
+            if (value instanceof DisplayObject) {
+                return ((DisplayObject) value).getName();
+            }
+        }
+        return null;
     }
 
 }
