@@ -15,20 +15,18 @@
  * limitations under the License.
  */
 
-package org.keycloak.protocol.oid4vc.tokenstatus;
+package org.keycloak.protocol.oid4vc.tokenstatus.http;
 
-import org.keycloak.models.KeycloakSession;
-import org.keycloak.sdjwt.consumer.StatusListJwtFetcher;
 import org.keycloak.broker.provider.util.SimpleHttp;
-
-import java.io.IOException;
+import org.keycloak.models.KeycloakSession;
+import org.keycloak.protocol.oid4vc.tokenstatus.ReferencedTokenValidator.ReferencedTokenValidationException;
 
 /**
  * Simple implementation of StatusListJwtFetcher for token status list validation.
  *
  * @author <a href="mailto:Forkim.Akwichek@adorsys.com">Forkim Akwichek</a>
  */
-public class SimpleHttpDataFetcher implements StatusListJwtFetcher {
+public class SimpleStatusListJwtFetcher implements StatusListJwtFetcher {
 
     /**
      * Accept header value for Status List JWT format.
@@ -36,16 +34,22 @@ public class SimpleHttpDataFetcher implements StatusListJwtFetcher {
      */
     public static final String STATUS_LIST_JWT_ACCEPT_HEADER = "application/statuslist+jwt";
 
-    private final KeycloakSession session;
+    protected final KeycloakSession session;
 
-    public SimpleHttpDataFetcher(KeycloakSession session) {
+    public SimpleStatusListJwtFetcher(KeycloakSession session) {
         this.session = session;
     }
 
     @Override
-    public String fetchStatusListJwt(String uri) throws IOException {
-        return SimpleHttp.doGet(uri, session)
-                .header("Accept", STATUS_LIST_JWT_ACCEPT_HEADER)
-                .asString();
+    public String fetchStatusListJwt(String uri) throws ReferencedTokenValidationException {
+        try {
+            return SimpleHttp.doGet(uri, session)
+                    .header("Accept", STATUS_LIST_JWT_ACCEPT_HEADER)
+                    .asString();
+        } catch (Exception e) {
+            throw new ReferencedTokenValidationException(
+                    String.format("Error retrieving or parsing Status List JWT from URI: %s", uri), e
+            );
+        }
     }
 }
