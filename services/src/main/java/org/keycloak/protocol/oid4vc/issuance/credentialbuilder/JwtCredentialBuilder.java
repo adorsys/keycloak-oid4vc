@@ -26,6 +26,8 @@ import org.keycloak.representations.JsonWebToken;
 
 import java.time.Instant;
 import java.util.Optional;
+import org.keycloak.protocol.oid4vc.issuance.TimeClaimNormalizer;
+import org.keycloak.models.KeycloakSession;
 
 public class JwtCredentialBuilder implements CredentialBuilder {
 
@@ -33,9 +35,16 @@ public class JwtCredentialBuilder implements CredentialBuilder {
     private static final String ID_CLAIM_KEY = "id";
 
     private final TimeProvider timeProvider;
+    private final KeycloakSession session;
 
     public JwtCredentialBuilder(TimeProvider timeProvider) {
         this.timeProvider = timeProvider;
+        this.session = null;
+    }
+
+    public JwtCredentialBuilder(TimeProvider timeProvider, KeycloakSession session) {
+        this.timeProvider = timeProvider;
+        this.session = session;
     }
 
     @Override
@@ -53,9 +62,11 @@ public class JwtCredentialBuilder implements CredentialBuilder {
 
         // Get the issuance date from the credential. Since nbf is mandatory, we set it to the current time if not
         // provided
-        long iat = Optional.ofNullable(verifiableCredential.getIssuanceDate())
-                .map(Instant::getEpochSecond)
-                .orElse((long) timeProvider.currentTimeSeconds());
+        Instant issuanceInstant = Optional.ofNullable(verifiableCredential.getIssuanceDate())
+                .orElse(Instant.ofEpochSecond(timeProvider.currentTimeSeconds()));
+        Instant normalizedIssuance = session == null ? issuanceInstant : new TimeClaimNormalizer(session)
+                .normalize(issuanceInstant, Instant.ofEpochSecond(timeProvider.currentTimeSeconds()));
+        long iat = normalizedIssuance.getEpochSecond();
 
         // set mandatory fields
         JsonWebToken jsonWebToken = new JsonWebToken()
@@ -66,6 +77,8 @@ public class JwtCredentialBuilder implements CredentialBuilder {
 
         // expiry is optional
         Optional.ofNullable(verifiableCredential.getExpirationDate())
+                .map(exp -> session == null ? exp : new TimeClaimNormalizer(session)
+                        .normalize(exp, Instant.ofEpochSecond(timeProvider.currentTimeSeconds())))
                 .ifPresent(d -> jsonWebToken.exp(d.getEpochSecond()));
 
         // subject id should only be set if the credential subject has an id.

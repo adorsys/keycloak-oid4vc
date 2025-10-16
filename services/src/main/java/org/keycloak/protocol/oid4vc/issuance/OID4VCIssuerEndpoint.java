@@ -1124,6 +1124,11 @@ public class OID4VCIssuerEndpoint {
                 .setIssuanceDate(Instant.ofEpochMilli(timeProvider.currentTimeMillis()))
                 .setType(List.of(credentialConfig.getScope()));
 
+        // Apply correlation-mitigation for issuanceDate according to realm configuration
+        TimeClaimNormalizer timeClaimNormalizer = new TimeClaimNormalizer(session);
+        Instant normalizedIssuance = timeClaimNormalizer.normalize(vc.getIssuanceDate(), Instant.ofEpochSecond(timeProvider.currentTimeSeconds()));
+        vc.setIssuanceDate(normalizedIssuance);
+
         Map<String, Object> subjectClaims = new HashMap<>();
         protocolMappers
                 .forEach(mapper -> mapper.setClaimsForSubject(subjectClaims, authResult.getSession()));
