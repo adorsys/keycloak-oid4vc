@@ -18,6 +18,7 @@
 package org.keycloak.protocol.oid4vc.issuance.credentialbuilder;
 
 import org.keycloak.jose.jws.JWSBuilder;
+import org.keycloak.protocol.oid4vc.issuance.TimeClaimNormalizer;
 import org.keycloak.protocol.oid4vc.issuance.TimeProvider;
 import org.keycloak.protocol.oid4vc.model.CredentialBuildConfig;
 import org.keycloak.protocol.oid4vc.model.Format;
@@ -26,6 +27,7 @@ import org.keycloak.representations.JsonWebToken;
 
 import java.time.Instant;
 import java.util.Optional;
+import org.keycloak.models.KeycloakSession;
 
 public class JwtCredentialBuilder implements CredentialBuilder {
 
@@ -33,9 +35,16 @@ public class JwtCredentialBuilder implements CredentialBuilder {
     private static final String ID_CLAIM_KEY = "id";
 
     private final TimeProvider timeProvider;
+    private final KeycloakSession session;
 
     public JwtCredentialBuilder(TimeProvider timeProvider) {
         this.timeProvider = timeProvider;
+        this.session = null;
+    }
+
+    public JwtCredentialBuilder(TimeProvider timeProvider, KeycloakSession session) {
+        this.timeProvider = timeProvider;
+        this.session = session;
     }
 
     @Override
@@ -52,10 +61,17 @@ public class JwtCredentialBuilder implements CredentialBuilder {
         verifiableCredential.setIssuer(credentialBuildConfig.getCredentialIssuer());
 
         // Get the issuance date from the credential. Since nbf is mandatory, we set it to the current time if not
-        // provided
-        long iat = Optional.ofNullable(verifiableCredential.getIssuanceDate())
-                .map(Instant::getEpochSecond)
-                .orElse((long) timeProvider.currentTimeSeconds());
+        // provided. Only normalize if we're using the default time, as VC issuanceDate is already normalized.
+        Instant issuanceInstant = Optional.ofNullable(verifiableCredential.getIssuanceDate())
+                .orElseGet(() -> {
+                    if (session == null) {
+                        throw new IllegalStateException("KeycloakSession must not be null when defaulting issuance time");
+                    }
+                    Instant defaultTime = Instant.ofEpochSecond(timeProvider.currentTimeSeconds());
+                    return new TimeClaimNormalizer(session).normalize(defaultTime);
+                });
+
+        long iat = issuanceInstant.getEpochSecond();
 
         // set mandatory fields
         JsonWebToken jsonWebToken = new JsonWebToken()
