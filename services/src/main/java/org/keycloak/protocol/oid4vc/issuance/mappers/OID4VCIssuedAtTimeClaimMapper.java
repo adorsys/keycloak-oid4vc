@@ -29,6 +29,7 @@ import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.time.temporal.UnsupportedTemporalTypeException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -74,9 +75,9 @@ public class OID4VCIssuedAtTimeClaimMapper extends OID4VCMapper {
         ProviderConfigProperty truncateToTimeUnit = new ProviderConfigProperty();
         truncateToTimeUnit.setName(TRUNCATE_TO_TIME_UNIT_KEY);
         truncateToTimeUnit.setLabel("Truncate To Time Unit");
-        truncateToTimeUnit.setHelpText("Truncate time to the start of the selected unit. Supported: MINUTES, HOURS, DAYS.");
+        truncateToTimeUnit.setHelpText("Truncate time to the start of the selected unit. Supported by java time truncation: MINUTES, HOURS, DAYS. Other options are provided for compatibility but may be ignored at runtime.");
         truncateToTimeUnit.setType(ProviderConfigProperty.LIST_TYPE);
-        truncateToTimeUnit.setOptions(List.of("MINUTES", "HOURS", "DAYS"));
+        truncateToTimeUnit.setOptions(List.of("MINUTES", "HOURS", "HALF_DAYS", "DAYS", "WEEKS", "MONTHS", "YEARS"));
         CONFIG_PROPERTIES.add(truncateToTimeUnit);
 
         ProviderConfigProperty valueSource = new ProviderConfigProperty();
@@ -133,11 +134,12 @@ public class OID4VCIssuedAtTimeClaimMapper extends OID4VCMapper {
                 .filter(val -> !val.isEmpty())
                 .map(ChronoUnit::valueOf)
                 .map(unit -> {
-                    // Only support units that Instant.truncatedTo can handle reliably
-                    return switch (unit) {
-                        case MINUTES, HOURS, DAYS -> normalizedIat.truncatedTo(unit);
-                        default -> iat;
-                    };
+                    try {
+                       return normalizedIat.truncatedTo(unit);
+                    } catch (UnsupportedTemporalTypeException ex) {
+                        log.warn("Unsupported truncation unit '{}' for iat; using normalized value without extra truncation", unit);
+                        return normalizedIat;
+                    }
                 })
                 .orElse(normalizedIat);
 

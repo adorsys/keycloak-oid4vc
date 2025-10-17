@@ -26,6 +26,8 @@ import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.Locale;
 import java.util.Objects;
+import org.jboss.logging.Logger;
+import org.keycloak.utils.StringUtil;
 
 /**
  * Utility to apply correlation-mitigation to time-related claims
@@ -40,13 +42,11 @@ import java.util.Objects;
  */
 public class TimeClaimNormalizer {
 
+    private static final Logger logger = Logger.getLogger(TimeClaimNormalizer.class);
+
     public static final String ATTR_STRATEGY = "oid4vci.time.claims.strategy";
     public static final String ATTR_RANDOM_WINDOW = "oid4vci.time.randomize.window.seconds";
     public static final String ATTR_ROUND_UNIT = "oid4vci.time.round.unit";
-
-    private static final long DEFAULT_RANDOMIZE_WINDOW = 86400; // 24h default
-    private static final Strategy DEFAULT_STRATEGY = Strategy.OFF;
-    private static final RoundUnit DEFAULT_ROUND_UNIT = RoundUnit.DAY;
 
     public enum Strategy {
         OFF,
@@ -64,11 +64,12 @@ public class TimeClaimNormalizer {
     private final long randomizeWindowSeconds;
     private final RoundUnit roundUnit;
 
+    private static final long DEFAULT_RANDOMIZE_WINDOW = 86400; // 24h default
+    private static final Strategy DEFAULT_STRATEGY = Strategy.OFF;
+    private static final RoundUnit DEFAULT_ROUND_UNIT = RoundUnit.DAY;
+
     public TimeClaimNormalizer(KeycloakSession session) {
-        RealmModel realm = session.getContext().getRealm();
-        this.strategy = parseStrategy(realm.getAttribute(ATTR_STRATEGY));
-        this.randomizeWindowSeconds = parseRandomizeWindow(realm.getAttribute(ATTR_RANDOM_WINDOW));
-        this.roundUnit = parseRoundUnit(realm.getAttribute(ATTR_ROUND_UNIT));
+        this(session.getContext().getRealm());
     }
 
     public TimeClaimNormalizer(RealmModel realm) {
@@ -77,11 +78,10 @@ public class TimeClaimNormalizer {
         this.roundUnit = parseRoundUnit(realm.getAttribute(ATTR_ROUND_UNIT));
     }
 
-    // Visible for tests
     TimeClaimNormalizer(Strategy strategy, long randomizeWindowSeconds, RoundUnit roundUnit) {
-        this.strategy = strategy == null ? DEFAULT_STRATEGY : strategy;
+        this.strategy = strategy;
         this.randomizeWindowSeconds = randomizeWindowSeconds;
-        this.roundUnit = roundUnit == null ? DEFAULT_ROUND_UNIT : roundUnit;
+        this.roundUnit = roundUnit;
     }
 
     public Instant normalize(Instant original, Instant nowReference) {
@@ -95,6 +95,10 @@ public class TimeClaimNormalizer {
         };
     }
 
+    public Instant normalize(Instant original) {
+        return normalize(original, Instant.now());
+    }
+
     private Instant randomize(Instant original, Instant nowReference) {
         if (randomizeWindowSeconds <= 0) {
             return original;
@@ -102,11 +106,13 @@ public class TimeClaimNormalizer {
         // Randomize backwards within window from nowReference to avoid future dates
         long offset = (long) (Math.random() * (randomizeWindowSeconds + 1));
         Instant candidate = Objects.requireNonNullElse(nowReference, Instant.now()).minusSeconds(offset);
-        // Preserve coarse ordering: do not move past the original by more than window; pick earlier of original and candidate
+        // If original was within the window, candidate may be earlier than original; in that case we
+        // choose the earlier candidate to avoid future shifts while staying with the window.
         return candidate.isBefore(original) ? candidate : original;
     }
 
     private Instant round(Instant original) {
+        // Truncate in UTC by design to ensure consistent, timezone-independent rounding
         ZonedDateTime zdt = original.atZone(ZoneOffset.UTC);
         return switch (roundUnit) {
             case MINUTE -> zdt.truncatedTo(ChronoUnit.MINUTES).toInstant();
@@ -122,17 +128,19 @@ public class TimeClaimNormalizer {
         try {
             return Strategy.valueOf(value.trim().toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException ex) {
+            logger.warnf("Invalid time-claim strategy '%s'. Using default '%s'", value, DEFAULT_STRATEGY);
             return DEFAULT_STRATEGY;
         }
     }
 
     private static long parseRandomizeWindow(String value) {
-        if (value == null || value.isBlank()) {
+        if (value == null || StringUtil.isBlank(value)) {
             return DEFAULT_RANDOMIZE_WINDOW;
         }
         try {
             return Long.parseLong(value.trim());
         } catch (NumberFormatException ex) {
+            logger.warnf("Invalid randomize window '%s'. Using default %d seconds", value, DEFAULT_RANDOMIZE_WINDOW);
             return DEFAULT_RANDOMIZE_WINDOW;
         }
     }
@@ -144,6 +152,7 @@ public class TimeClaimNormalizer {
         try {
             return RoundUnit.valueOf(value.trim().toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException ex) {
+            logger.warnf("Invalid round unit '%s'. Using default '%s'", value, DEFAULT_ROUND_UNIT);
             return DEFAULT_ROUND_UNIT;
         }
     }

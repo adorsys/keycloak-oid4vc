@@ -84,13 +84,10 @@ public class OID4VCTimeNormalizationTest extends OID4VCJWTIssuerEndpointTest {
 
                 // Additionally, ensure issuance date inside vc claim (if present) aligns with the day boundary
                 Object vcObj = jwt.getOtherClaims().get("vc");
-                if (vcObj != null) {
-                    var vc = JsonSerialization.mapper.convertValue(vcObj, VerifiableCredential.class);
-                    Instant issuance = vc.getIssuanceDate();
-                    if (issuance != null) {
-                        assertEquals(0, issuance.getEpochSecond() % 86400);
-                    }
-                }
+                var vc = JsonSerialization.mapper.convertValue(vcObj, VerifiableCredential.class);
+                Instant issuance = vc.getIssuanceDate();
+                assertNotNull("issuanceDate should be present", issuance);
+                assertEquals(0, issuance.getEpochSecond() % 86400);
             } catch (IOException | VerificationException e) {
                 throw new RuntimeException(e);
             }
