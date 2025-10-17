@@ -104,6 +104,10 @@ public interface Errors {
 
     String INVALID_DPOP_PROOF = "invalid_dpop_proof";
 
+    String INVALID_CLIENT_ATTESTATION = "invalid_client_attestation";
+    String USE_ATTESTATION_CHALLENGE = "use_attestation_challenge";
+    String USE_FRESH_ATTESTATION = "use_fresh_attestation";
+
     String NOT_LOGGED_IN = "not_logged_in";
     String UNKNOWN_IDENTITY_PROVIDER = "unknown_identity_provider";
     String ILLEGAL_ORIGIN = "illegal_origin";
