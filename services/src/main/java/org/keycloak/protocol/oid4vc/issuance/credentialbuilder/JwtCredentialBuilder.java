@@ -26,6 +26,7 @@ import org.keycloak.representations.JsonWebToken;
 
 import java.time.Instant;
 import java.util.Optional;
+import org.keycloak.models.KeycloakSession;
 
 public class JwtCredentialBuilder implements CredentialBuilder {
 
@@ -33,9 +34,16 @@ public class JwtCredentialBuilder implements CredentialBuilder {
     private static final String ID_CLAIM_KEY = "id";
 
     private final TimeProvider timeProvider;
+    private final KeycloakSession session;
 
     public JwtCredentialBuilder(TimeProvider timeProvider) {
         this.timeProvider = timeProvider;
+        this.session = null;
+    }
+
+    public JwtCredentialBuilder(TimeProvider timeProvider, KeycloakSession session) {
+        this.timeProvider = timeProvider;
+        this.session = session;
     }
 
     @Override
@@ -53,9 +61,9 @@ public class JwtCredentialBuilder implements CredentialBuilder {
 
         // Get the issuance date from the credential. Since nbf is mandatory, we set it to the current time if not
         // provided
-        long iat = Optional.ofNullable(verifiableCredential.getIssuanceDate())
-                .map(Instant::getEpochSecond)
-                .orElse((long) timeProvider.currentTimeSeconds());
+        Instant issuanceInstant = Optional.ofNullable(verifiableCredential.getIssuanceDate())
+                .orElse(Instant.ofEpochSecond(timeProvider.currentTimeSeconds()));
+        long iat = issuanceInstant.getEpochSecond();
 
         // set mandatory fields
         JsonWebToken jsonWebToken = new JsonWebToken()

@@ -1119,9 +1119,15 @@ public class OID4VCIssuerEndpoint {
     // builds the unsigned credential by applying all protocol mappers.
     private VCIssuanceContext getVCToSign(List<OID4VCMapper> protocolMappers, SupportedCredentialConfiguration credentialConfig,
                                           AuthenticationManager.AuthResult authResult, CredentialRequest credentialRequestVO) {
+
+        // Compute issuance date and apply correlation-mitigation according to realm configuration
+        Instant issuance = Instant.ofEpochMilli(timeProvider.currentTimeMillis());
+        TimeClaimNormalizer timeClaimNormalizer = new TimeClaimNormalizer(session);
+        Instant normalizedIssuance = timeClaimNormalizer.normalize(issuance, Instant.ofEpochSecond(timeProvider.currentTimeSeconds()));
+
         // set the required claims
         VerifiableCredential vc = new VerifiableCredential()
-                .setIssuanceDate(Instant.ofEpochMilli(timeProvider.currentTimeMillis()))
+                .setIssuanceDate(normalizedIssuance)
                 .setType(List.of(credentialConfig.getScope()));
 
         Map<String, Object> subjectClaims = new HashMap<>();
