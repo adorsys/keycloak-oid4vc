@@ -78,10 +78,15 @@ public class TimeClaimNormalizer {
         this.roundUnit = parseRoundUnit(realm.getAttribute(ATTR_ROUND_UNIT));
     }
 
-    TimeClaimNormalizer(Strategy strategy, long randomizeWindowSeconds, RoundUnit roundUnit) {
-        this.strategy = strategy;
-        this.randomizeWindowSeconds = randomizeWindowSeconds;
-        this.roundUnit = roundUnit;
+    TimeClaimNormalizer(Strategy strategy, Long randomizeWindowSeconds, RoundUnit roundUnit) {
+        this.strategy = strategy == null ? DEFAULT_STRATEGY : strategy;
+        this.randomizeWindowSeconds =
+                randomizeWindowSeconds == null ? DEFAULT_RANDOMIZE_WINDOW : randomizeWindowSeconds;
+        this.roundUnit = roundUnit == null ? DEFAULT_ROUND_UNIT : roundUnit;
+    }
+
+    public TimeClaimNormalizer(Strategy strategy, long randomizeWindowSeconds, RoundUnit roundUnit) {
+        this(strategy, Long.valueOf(randomizeWindowSeconds), roundUnit);
     }
 
     public Instant normalize(Instant original, Instant nowReference) {
@@ -103,12 +108,25 @@ public class TimeClaimNormalizer {
         if (randomizeWindowSeconds <= 0) {
             return original;
         }
-        // Randomize backwards within window from nowReference to avoid future dates
+
+        Instant now = Objects.requireNonNullElse(nowReference, Instant.now());
+        Instant lowerBound = now.minusSeconds(randomizeWindowSeconds);
+
+        // If original is outside the window, return original
+        if (original.isBefore(lowerBound)) {
+            return original;
+        }
+
+        // Simple approach: subtract random seconds from original, but don't go before lowerBound
         long offset = (long) (Math.random() * (randomizeWindowSeconds + 1));
-        Instant candidate = Objects.requireNonNullElse(nowReference, Instant.now()).minusSeconds(offset);
-        // If original was within the window, candidate may be earlier than original; in that case we
-        // choose the earlier candidate to avoid future shifts while staying with the window.
-        return candidate.isBefore(original) ? candidate : original;
+        Instant candidate = original.minusSeconds(offset);
+
+        // Ensure we don't go before the lower bound
+        if (candidate.isBefore(lowerBound)) {
+            return lowerBound;
+        }
+
+        return candidate;
     }
 
     private Instant round(Instant original) {
@@ -134,7 +152,7 @@ public class TimeClaimNormalizer {
     }
 
     private static long parseRandomizeWindow(String value) {
-        if (value == null || StringUtil.isBlank(value)) {
+        if (StringUtil.isBlank(value)) {
             return DEFAULT_RANDOMIZE_WINDOW;
         }
         try {

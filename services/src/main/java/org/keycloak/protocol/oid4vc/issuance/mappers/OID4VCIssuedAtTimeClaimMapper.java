@@ -29,7 +29,6 @@ import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.time.temporal.UnsupportedTemporalTypeException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -75,9 +74,9 @@ public class OID4VCIssuedAtTimeClaimMapper extends OID4VCMapper {
         ProviderConfigProperty truncateToTimeUnit = new ProviderConfigProperty();
         truncateToTimeUnit.setName(TRUNCATE_TO_TIME_UNIT_KEY);
         truncateToTimeUnit.setLabel("Truncate To Time Unit");
-        truncateToTimeUnit.setHelpText("Truncate time to the start of the selected unit. Supported by java time truncation: MINUTES, HOURS, DAYS. Other options are provided for compatibility but may be ignored at runtime.");
+        truncateToTimeUnit.setHelpText("Truncate time to the start of the selected unit. Supported: MINUTES, HOURS, DAYS.");
         truncateToTimeUnit.setType(ProviderConfigProperty.LIST_TYPE);
-        truncateToTimeUnit.setOptions(List.of("MINUTES", "HOURS", "HALF_DAYS", "DAYS", "WEEKS", "MONTHS", "YEARS"));
+        truncateToTimeUnit.setOptions(List.of("MINUTES", "HOURS", "DAYS"));
         CONFIG_PROPERTIES.add(truncateToTimeUnit);
 
         ProviderConfigProperty valueSource = new ProviderConfigProperty();
@@ -132,15 +131,13 @@ public class OID4VCIssuedAtTimeClaimMapper extends OID4VCMapper {
         Instant iatTrunc = Optional.ofNullable(mapperModel.getConfig())
                 .flatMap(config -> Optional.ofNullable(config.get(TRUNCATE_TO_TIME_UNIT_KEY)))
                 .filter(val -> !val.isEmpty())
-                .map(ChronoUnit::valueOf)
-                .map(unit -> {
-                    try {
-                       return normalizedIat.truncatedTo(unit);
-                    } catch (UnsupportedTemporalTypeException ex) {
-                        log.warn("Unsupported truncation unit '{}' for iat; using normalized value without extra truncation", unit);
-                        return normalizedIat;
+                .map(value -> {
+                    if (!List.of("MINUTES", "HOURS", "DAYS").contains(value)) {
+                        throw new IllegalArgumentException("Unsupported truncation unit for iat: " + value);
                     }
+                    return ChronoUnit.valueOf(value);
                 })
+                .map(normalizedIat::truncatedTo)
                 .orElse(normalizedIat);
 
         CredentialSubject credentialSubject = verifiableCredential.getCredentialSubject();
