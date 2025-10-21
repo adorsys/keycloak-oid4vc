@@ -61,16 +61,15 @@ public class JwtCredentialBuilder implements CredentialBuilder {
         verifiableCredential.setIssuer(credentialBuildConfig.getCredentialIssuer());
 
         // Get the issuance date from the credential. Since nbf is mandatory, we set it to the current time if not
-        // provided
+        // provided. Only normalize if we're using the default time, as VC issuanceDate is already normalized.
         Instant issuanceInstant = Optional.ofNullable(verifiableCredential.getIssuanceDate())
                 .orElseGet(() -> {
                     Instant defaultTime = Instant.ofEpochSecond(timeProvider.currentTimeSeconds());
-                    if (session != null) {
-                        TimeClaimNormalizer normalizer = new TimeClaimNormalizer(session);
-                        return normalizer.normalize(defaultTime);
-                    }
-                    return defaultTime;
+                    return Optional.ofNullable(session)
+                            .map(s -> new TimeClaimNormalizer(s).normalize(defaultTime))
+                            .orElse(defaultTime);
                 });
+
         long iat = issuanceInstant.getEpochSecond();
 
         // set mandatory fields

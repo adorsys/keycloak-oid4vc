@@ -19,11 +19,9 @@ package org.keycloak.protocol.oid4vc.issuance;
 
 import org.junit.Test;
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
-import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 
 /*
@@ -34,16 +32,15 @@ public class TimeClaimNormalizerTest {
     @Test
     public void offStrategy_keepsOriginal() {
         Instant orig = Instant.parse("2025-01-02T03:04:05Z");
-        Instant now = Instant.parse("2025-01-03T00:00:00Z");
         TimeClaimNormalizer n = new TimeClaimNormalizer(TimeClaimNormalizer.Strategy.OFF, 0L, TimeClaimNormalizer.RoundUnit.DAY);
-        assertThat(n.normalize(orig, now), is(orig));
+        assertThat(n.normalize(orig), is(orig));
     }
 
     @Test
     public void roundDay_truncatesToStartOfDayUtc() {
         Instant orig = Instant.parse("2025-01-02T23:59:59Z");
         TimeClaimNormalizer n = new TimeClaimNormalizer(TimeClaimNormalizer.Strategy.ROUND, 0L, TimeClaimNormalizer.RoundUnit.DAY);
-        Instant normalized = n.normalize(orig, orig);
+        Instant normalized = n.normalize(orig);
         assertThat(normalized, is(Instant.parse("2025-01-02T00:00:00Z")));
     }
 
@@ -51,7 +48,7 @@ public class TimeClaimNormalizerTest {
     public void roundHour_truncatesToHour() {
         Instant orig = Instant.parse("2025-01-02T03:59:59Z");
         TimeClaimNormalizer n = new TimeClaimNormalizer(TimeClaimNormalizer.Strategy.ROUND, 0L, TimeClaimNormalizer.RoundUnit.HOUR);
-        Instant normalized = n.normalize(orig, orig);
+        Instant normalized = n.normalize(orig);
         assertThat(normalized, is(Instant.parse("2025-01-02T03:00:00Z")));
     }
 
@@ -59,41 +56,43 @@ public class TimeClaimNormalizerTest {
     public void roundMinute_truncatesToMinute() {
         Instant orig = Instant.parse("2025-01-02T03:04:59Z");
         TimeClaimNormalizer n = new TimeClaimNormalizer(TimeClaimNormalizer.Strategy.ROUND, 0L, TimeClaimNormalizer.RoundUnit.MINUTE);
-        Instant normalized = n.normalize(orig, orig);
+        Instant normalized = n.normalize(orig);
         assertThat(normalized, is(Instant.parse("2025-01-02T03:04:00Z")));
     }
 
     @Test
     public void randomize_withinWindow_doesNotShiftIntoFuture() {
-        Instant now = Instant.parse("2025-01-03T00:00:00Z");
-        Instant orig = now.minus(2, ChronoUnit.HOURS);
+        Instant orig = Instant.parse("2025-01-02T22:00:00Z");
         TimeClaimNormalizer n = new TimeClaimNormalizer(TimeClaimNormalizer.Strategy.RANDOMIZE, 3600L, TimeClaimNormalizer.RoundUnit.DAY);
 
-        Instant normalized = n.normalize(orig, now);
+        Instant normalized = n.normalize(orig);
 
         assertFalse("Normalized time should not be after original time", normalized.isAfter(orig));
     }
 
     @Test
-    public void randomize_withinWindow_notBeforeLowerBound() {
-        Instant now = Instant.parse("2025-01-03T00:00:00Z");
-        Instant orig = now.minus(30, ChronoUnit.MINUTES);
-        Instant lower = now.minusSeconds(3600);
+    public void randomize_withinWindow_alwaysBeforeOrEqualOriginal() {
+        Instant orig = Instant.parse("2025-01-02T22:00:00Z");
         TimeClaimNormalizer n = new TimeClaimNormalizer(TimeClaimNormalizer.Strategy.RANDOMIZE, 3600L, TimeClaimNormalizer.RoundUnit.DAY);
-        Instant normalized = n.normalize(orig, now);
-
-        assertFalse("Normalized time should not be before lower bound", normalized.isBefore(lower));
+        Instant normalized = n.normalize(orig);
+        assertFalse("Normalized time should not be after original time", normalized.isAfter(orig));
+        // should be within the randomization window
+        long diffSeconds = orig.getEpochSecond() - normalized.getEpochSecond();
+        assertFalse("Randomized time should be within window", diffSeconds > 3600);
     }
 
     @Test
-    public void randomize_outsideWindow_returnsOriginal() {
-        Instant now = Instant.parse("2025-01-03T00:00:00Z");
-        Instant orig = now.minus(3, ChronoUnit.HOURS);
+    public void randomize_alwaysRandomizesWithinWindow() {
+        Instant orig = Instant.parse("2025-01-02T22:00:00Z");
         TimeClaimNormalizer n = new TimeClaimNormalizer(TimeClaimNormalizer.Strategy.RANDOMIZE, 3600L, TimeClaimNormalizer.RoundUnit.DAY);
 
-        Instant normalized = n.normalize(orig, now);
+        Instant normalized = n.normalize(orig);
 
-        assertEquals(orig, normalized);
+        // we always randomize within the window (0 to 3600 seconds back)
+        // So normalized should be <= original and within the window
+        assertFalse("Normalized time should not be after original time", normalized.isAfter(orig));
+        long diffSeconds = orig.getEpochSecond() - normalized.getEpochSecond();
+        assertFalse("Randomized time should be within window", diffSeconds > 3600);
     }
 
 }

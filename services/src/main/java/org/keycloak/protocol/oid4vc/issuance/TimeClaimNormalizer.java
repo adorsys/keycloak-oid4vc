@@ -25,7 +25,6 @@ import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.Locale;
-import java.util.Objects;
 import org.jboss.logging.Logger;
 import org.keycloak.utils.StringUtil;
 
@@ -85,40 +84,20 @@ public class TimeClaimNormalizer {
         this.roundUnit = roundUnit == null ? DEFAULT_ROUND_UNIT : roundUnit;
     }
 
-    public Instant normalize(Instant original, Instant nowReference) {
+    public Instant normalize(Instant original) {
         if (original == null) {
             return null;
         }
         return switch (strategy) {
-            case RANDOMIZE -> randomize(original, nowReference);
+            case RANDOMIZE -> randomize(original);
             case ROUND -> round(original);
             case OFF -> original;
         };
     }
 
-    public Instant normalize(Instant original) {
-        return normalize(original, Instant.now());
-    }
-
-    private Instant randomize(Instant original, Instant nowReference) {
-        if (randomizeWindowSeconds <= 0) {
-            logger.warnf("Randomization window is zero or negative (%d), returning original value without randomization", randomizeWindowSeconds);
-            return original;
-        }
-
-        Instant now = Objects.requireNonNullElse(nowReference, Instant.now());
-        Instant lowerBound = now.minusSeconds(randomizeWindowSeconds);
-
-        // If original is outside the window, return original
-        if (original.isBefore(lowerBound)) {
-            return original;
-        }
-
-        // Subtract a random number of seconds up to the window to mitigate correlation attacks,
-        // but never go below the lower bound (now - window) to respect the safe range.
-        long offset = (long) (Math.random() * (randomizeWindowSeconds + 1));
-        Instant randomized = original.minusSeconds(offset);
-        return randomized.isBefore(lowerBound) ? lowerBound : randomized;
+    private Instant randomize(Instant original) {
+        long randomOffset = (long) (Math.random() * (randomizeWindowSeconds + 1));
+        return original.minusSeconds(randomOffset);
     }
 
     private Instant round(Instant original) {
@@ -148,7 +127,12 @@ public class TimeClaimNormalizer {
             return DEFAULT_RANDOMIZE_WINDOW;
         }
         try {
-            return Long.parseLong(value.trim());
+            long window = Long.parseLong(value.trim());
+            if (window <= 0) {
+                logger.warnf("Randomization window is zero or negative (%d), will be using default value", window);
+                return DEFAULT_RANDOMIZE_WINDOW;
+            }
+            return window;
         } catch (NumberFormatException ex) {
             logger.warnf("Invalid randomize window '%s'. Using default %d seconds", value, DEFAULT_RANDOMIZE_WINDOW);
             return DEFAULT_RANDOMIZE_WINDOW;

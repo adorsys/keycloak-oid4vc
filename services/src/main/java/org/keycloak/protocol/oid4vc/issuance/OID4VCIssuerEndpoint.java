@@ -1123,13 +1123,13 @@ public class OID4VCIssuerEndpoint {
         // Compute issuance date and apply correlation-mitigation according to realm configuration
         Instant issuance = Instant.ofEpochMilli(timeProvider.currentTimeMillis());
         TimeClaimNormalizer timeClaimNormalizer = new TimeClaimNormalizer(session);
-        Instant normalizedIssuance = timeClaimNormalizer.normalize(issuance, Instant.ofEpochSecond(timeProvider.currentTimeSeconds()));
+        Instant normalizedIssuance = timeClaimNormalizer.normalize(issuance);
 
         // Compute expiration date from client scope configuration and normalize it
         CredentialScopeModel clientScopeModel = getClientScopeModel(credentialConfig);
         Integer expiryInSeconds = clientScopeModel.getExpiryInSeconds();
         Instant expiration = normalizedIssuance.plusSeconds(expiryInSeconds);
-        Instant normalizedExpiration = timeClaimNormalizer.normalize(expiration, Instant.ofEpochSecond(timeProvider.currentTimeSeconds()));
+        Instant normalizedExpiration = timeClaimNormalizer.normalize(expiration);
 
         // set the required claims
         VerifiableCredential vc = new VerifiableCredential()
