@@ -67,6 +67,16 @@ public class ParRequest extends AbstractHttpPostRequest<ParRequest, ParResponse>
         return this;
     }
 
+    public ParRequest clientAttestation(String attestation) {
+        header(OAuth2Constants.CLIENT_ATTESTATION_HTTP_HEADER, attestation);
+        return this;
+    }
+
+    public ParRequest clientAttestationPoP(String attestationPoP) {
+        header(OAuth2Constants.CLIENT_ATTESTATION_POP_HTTP_HEADER, attestationPoP);
+        return this;
+    }
+
     @Override
     protected void initRequest() {
         parameter(OAuth2Constants.RESPONSE_TYPE, client.config().getResponseType());
