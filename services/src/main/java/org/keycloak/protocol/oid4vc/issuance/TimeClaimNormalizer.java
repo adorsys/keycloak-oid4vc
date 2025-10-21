@@ -85,10 +85,6 @@ public class TimeClaimNormalizer {
         this.roundUnit = roundUnit == null ? DEFAULT_ROUND_UNIT : roundUnit;
     }
 
-    public TimeClaimNormalizer(Strategy strategy, long randomizeWindowSeconds, RoundUnit roundUnit) {
-        this(strategy, Long.valueOf(randomizeWindowSeconds), roundUnit);
-    }
-
     public Instant normalize(Instant original, Instant nowReference) {
         if (original == null) {
             return null;
@@ -106,6 +102,7 @@ public class TimeClaimNormalizer {
 
     private Instant randomize(Instant original, Instant nowReference) {
         if (randomizeWindowSeconds <= 0) {
+            logger.warnf("Randomization window is zero or negative (%d), returning original value without randomization", randomizeWindowSeconds);
             return original;
         }
 
@@ -117,16 +114,11 @@ public class TimeClaimNormalizer {
             return original;
         }
 
-        // Simple approach: subtract random seconds from original, but don't go before lowerBound
+        // Subtract a random number of seconds up to the window to mitigate correlation attacks,
+        // but never go below the lower bound (now - window) to respect the safe range.
         long offset = (long) (Math.random() * (randomizeWindowSeconds + 1));
-        Instant candidate = original.minusSeconds(offset);
-
-        // Ensure we don't go before the lower bound
-        if (candidate.isBefore(lowerBound)) {
-            return lowerBound;
-        }
-
-        return candidate;
+        Instant randomized = original.minusSeconds(offset);
+        return randomized.isBefore(lowerBound) ? lowerBound : randomized;
     }
 
     private Instant round(Instant original) {

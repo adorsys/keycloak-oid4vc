@@ -18,6 +18,7 @@
 package org.keycloak.protocol.oid4vc.issuance.credentialbuilder;
 
 import org.keycloak.jose.jws.JWSBuilder;
+import org.keycloak.protocol.oid4vc.issuance.TimeClaimNormalizer;
 import org.keycloak.protocol.oid4vc.issuance.TimeProvider;
 import org.keycloak.protocol.oid4vc.model.CredentialBuildConfig;
 import org.keycloak.protocol.oid4vc.model.Format;
@@ -62,7 +63,14 @@ public class JwtCredentialBuilder implements CredentialBuilder {
         // Get the issuance date from the credential. Since nbf is mandatory, we set it to the current time if not
         // provided
         Instant issuanceInstant = Optional.ofNullable(verifiableCredential.getIssuanceDate())
-                .orElse(Instant.ofEpochSecond(timeProvider.currentTimeSeconds()));
+                .orElseGet(() -> {
+                    Instant defaultTime = Instant.ofEpochSecond(timeProvider.currentTimeSeconds());
+                    if (session != null) {
+                        TimeClaimNormalizer normalizer = new TimeClaimNormalizer(session);
+                        return normalizer.normalize(defaultTime);
+                    }
+                    return defaultTime;
+                });
         long iat = issuanceInstant.getEpochSecond();
 
         // set mandatory fields

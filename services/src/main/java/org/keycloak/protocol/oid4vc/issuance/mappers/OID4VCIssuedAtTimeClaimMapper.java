@@ -16,10 +16,14 @@
  */
 package org.keycloak.protocol.oid4vc.issuance.mappers;
 
+import org.keycloak.models.ProtocolMapperContainerModel;
+import org.keycloak.models.ProtocolMapperModel;
+import org.keycloak.models.RealmModel;
 import org.keycloak.models.oid4vci.CredentialScopeModel;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.UserSessionModel;
 import org.keycloak.protocol.ProtocolMapper;
+import org.keycloak.protocol.ProtocolMapperConfigException;
 import org.keycloak.protocol.oid4vc.issuance.TimeClaimNormalizer;
 import org.keycloak.protocol.oid4vc.model.CredentialSubject;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
@@ -74,7 +78,7 @@ public class OID4VCIssuedAtTimeClaimMapper extends OID4VCMapper {
         ProviderConfigProperty truncateToTimeUnit = new ProviderConfigProperty();
         truncateToTimeUnit.setName(TRUNCATE_TO_TIME_UNIT_KEY);
         truncateToTimeUnit.setLabel("Truncate To Time Unit");
-        truncateToTimeUnit.setHelpText("Truncate time to the start of the selected unit. Supported: MINUTES, HOURS, DAYS.");
+        truncateToTimeUnit.setHelpText("Truncate time to the start of the selected unit. Supported: MINUTES, HOURS, DAYS. Such as to prevent correlation of credentials based on this time value.");
         truncateToTimeUnit.setType(ProviderConfigProperty.LIST_TYPE);
         truncateToTimeUnit.setOptions(List.of("MINUTES", "HOURS", "DAYS"));
         CONFIG_PROPERTIES.add(truncateToTimeUnit);
@@ -131,17 +135,29 @@ public class OID4VCIssuedAtTimeClaimMapper extends OID4VCMapper {
         Instant iatTrunc = Optional.ofNullable(mapperModel.getConfig())
                 .flatMap(config -> Optional.ofNullable(config.get(TRUNCATE_TO_TIME_UNIT_KEY)))
                 .filter(val -> !val.isEmpty())
-                .map(value -> {
-                    if (!List.of("MINUTES", "HOURS", "DAYS").contains(value)) {
-                        throw new IllegalArgumentException("Unsupported truncation unit for iat: " + value);
-                    }
-                    return ChronoUnit.valueOf(value);
-                })
+                .map(ChronoUnit::valueOf)
                 .map(normalizedIat::truncatedTo)
                 .orElse(normalizedIat);
 
         CredentialSubject credentialSubject = verifiableCredential.getCredentialSubject();
         credentialSubject.setClaims(propertyName, iatTrunc.getEpochSecond());
+    }
+
+    @Override
+    public void validateConfig(KeycloakSession session, RealmModel realm, ProtocolMapperContainerModel client, ProtocolMapperModel mapperModel) throws ProtocolMapperConfigException {
+        super.validateConfig(session, realm, client, mapperModel);
+        // Validate truncation unit if specified
+        String truncateUnit = mapperModel.getConfig().get(TRUNCATE_TO_TIME_UNIT_KEY);
+        if (truncateUnit != null && !truncateUnit.isEmpty()) {
+            try {
+                ChronoUnit unit = ChronoUnit.valueOf(truncateUnit);
+                if (!List.of(ChronoUnit.MINUTES, ChronoUnit.HOURS, ChronoUnit.DAYS).contains(unit)) {
+                    throw new ProtocolMapperConfigException("Unsupported truncation unit '" + truncateUnit + "'. Supported units are MINUTES, HOURS, DAYS.");
+                }
+            } catch (IllegalArgumentException e) {
+                throw new ProtocolMapperConfigException("Invalid truncation unit '" + truncateUnit + "'. Must be one of: MINUTES, HOURS, DAYS.");
+            }
+        }
     }
 
     @Override

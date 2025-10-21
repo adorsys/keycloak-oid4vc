@@ -1125,9 +1125,16 @@ public class OID4VCIssuerEndpoint {
         TimeClaimNormalizer timeClaimNormalizer = new TimeClaimNormalizer(session);
         Instant normalizedIssuance = timeClaimNormalizer.normalize(issuance, Instant.ofEpochSecond(timeProvider.currentTimeSeconds()));
 
+        // Compute expiration date from client scope configuration and normalize it
+        CredentialScopeModel clientScopeModel = getClientScopeModel(credentialConfig);
+        Integer expiryInSeconds = clientScopeModel.getExpiryInSeconds();
+        Instant expiration = normalizedIssuance.plusSeconds(expiryInSeconds);
+        Instant normalizedExpiration = timeClaimNormalizer.normalize(expiration, Instant.ofEpochSecond(timeProvider.currentTimeSeconds()));
+
         // set the required claims
         VerifiableCredential vc = new VerifiableCredential()
                 .setIssuanceDate(normalizedIssuance)
+                .setExpirationDate(normalizedExpiration)
                 .setType(List.of(credentialConfig.getScope()));
 
         Map<String, Object> subjectClaims = new HashMap<>();

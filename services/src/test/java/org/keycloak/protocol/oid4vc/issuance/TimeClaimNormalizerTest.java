@@ -35,14 +35,14 @@ public class TimeClaimNormalizerTest {
     public void offStrategy_keepsOriginal() {
         Instant orig = Instant.parse("2025-01-02T03:04:05Z");
         Instant now = Instant.parse("2025-01-03T00:00:00Z");
-        TimeClaimNormalizer n = new TimeClaimNormalizer(TimeClaimNormalizer.Strategy.OFF, 0, TimeClaimNormalizer.RoundUnit.DAY);
+        TimeClaimNormalizer n = new TimeClaimNormalizer(TimeClaimNormalizer.Strategy.OFF, 0L, TimeClaimNormalizer.RoundUnit.DAY);
         assertThat(n.normalize(orig, now), is(orig));
     }
 
     @Test
     public void roundDay_truncatesToStartOfDayUtc() {
         Instant orig = Instant.parse("2025-01-02T23:59:59Z");
-        TimeClaimNormalizer n = new TimeClaimNormalizer(TimeClaimNormalizer.Strategy.ROUND, 0, TimeClaimNormalizer.RoundUnit.DAY);
+        TimeClaimNormalizer n = new TimeClaimNormalizer(TimeClaimNormalizer.Strategy.ROUND, 0L, TimeClaimNormalizer.RoundUnit.DAY);
         Instant normalized = n.normalize(orig, orig);
         assertThat(normalized, is(Instant.parse("2025-01-02T00:00:00Z")));
     }
@@ -50,7 +50,7 @@ public class TimeClaimNormalizerTest {
     @Test
     public void roundHour_truncatesToHour() {
         Instant orig = Instant.parse("2025-01-02T03:59:59Z");
-        TimeClaimNormalizer n = new TimeClaimNormalizer(TimeClaimNormalizer.Strategy.ROUND, 0, TimeClaimNormalizer.RoundUnit.HOUR);
+        TimeClaimNormalizer n = new TimeClaimNormalizer(TimeClaimNormalizer.Strategy.ROUND, 0L, TimeClaimNormalizer.RoundUnit.HOUR);
         Instant normalized = n.normalize(orig, orig);
         assertThat(normalized, is(Instant.parse("2025-01-02T03:00:00Z")));
     }
@@ -58,7 +58,7 @@ public class TimeClaimNormalizerTest {
     @Test
     public void roundMinute_truncatesToMinute() {
         Instant orig = Instant.parse("2025-01-02T03:04:59Z");
-        TimeClaimNormalizer n = new TimeClaimNormalizer(TimeClaimNormalizer.Strategy.ROUND, 0, TimeClaimNormalizer.RoundUnit.MINUTE);
+        TimeClaimNormalizer n = new TimeClaimNormalizer(TimeClaimNormalizer.Strategy.ROUND, 0L, TimeClaimNormalizer.RoundUnit.MINUTE);
         Instant normalized = n.normalize(orig, orig);
         assertThat(normalized, is(Instant.parse("2025-01-02T03:04:00Z")));
     }
@@ -67,7 +67,7 @@ public class TimeClaimNormalizerTest {
     public void randomize_withinWindow_doesNotShiftIntoFuture() {
         Instant now = Instant.parse("2025-01-03T00:00:00Z");
         Instant orig = now.minus(2, ChronoUnit.HOURS);
-        TimeClaimNormalizer n = new TimeClaimNormalizer(TimeClaimNormalizer.Strategy.RANDOMIZE, 3600, TimeClaimNormalizer.RoundUnit.DAY);
+        TimeClaimNormalizer n = new TimeClaimNormalizer(TimeClaimNormalizer.Strategy.RANDOMIZE, 3600L, TimeClaimNormalizer.RoundUnit.DAY);
 
         Instant normalized = n.normalize(orig, now);
 
@@ -79,7 +79,7 @@ public class TimeClaimNormalizerTest {
         Instant now = Instant.parse("2025-01-03T00:00:00Z");
         Instant orig = now.minus(30, ChronoUnit.MINUTES);
         Instant lower = now.minusSeconds(3600);
-        TimeClaimNormalizer n = new TimeClaimNormalizer(TimeClaimNormalizer.Strategy.RANDOMIZE, 3600, TimeClaimNormalizer.RoundUnit.DAY);
+        TimeClaimNormalizer n = new TimeClaimNormalizer(TimeClaimNormalizer.Strategy.RANDOMIZE, 3600L, TimeClaimNormalizer.RoundUnit.DAY);
         Instant normalized = n.normalize(orig, now);
 
         assertFalse("Normalized time should not be before lower bound", normalized.isBefore(lower));
@@ -89,7 +89,7 @@ public class TimeClaimNormalizerTest {
     public void randomize_outsideWindow_returnsOriginal() {
         Instant now = Instant.parse("2025-01-03T00:00:00Z");
         Instant orig = now.minus(3, ChronoUnit.HOURS);
-        TimeClaimNormalizer n = new TimeClaimNormalizer(TimeClaimNormalizer.Strategy.RANDOMIZE, 3600, TimeClaimNormalizer.RoundUnit.DAY);
+        TimeClaimNormalizer n = new TimeClaimNormalizer(TimeClaimNormalizer.Strategy.RANDOMIZE, 3600L, TimeClaimNormalizer.RoundUnit.DAY);
 
         Instant normalized = n.normalize(orig, now);
 
