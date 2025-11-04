@@ -56,6 +56,10 @@ import static org.junit.Assert.assertTrue;
 /**
  * Integration test to validate that status.status_list.idx is normalized from string to integer
  * in SD-JWT credentials. This test ensures the fix for conformance test failures.
+ * 
+ * <p>This test validates normalization for claims added via setClaimsForSubject() (credentialSubject.getClaims()).
+ * The normalization logic also handles claims added via setClaimsForCredential() to VerifiableCredential.additionalProperties,
+ * which is used by external mappers like StatusListProtocolMapper.</p>
  *
  * @author <a href="mailto:francis.pouatcha@adorsys.com">Francis Pouatcha</a>
  */

@@ -56,6 +56,10 @@ public class SdJwtCredentialBuilder implements CredentialBuilder {
         CredentialSubject credentialSubject = verifiableCredential.getCredentialSubject();
         Map<String, Object> claimSet = credentialSubject.getClaims();
 
+        // Normalize numeric values FIRST to catch any claims added by external mappers
+        // This ensures idx is always normalized regardless of when/how the status claim was added
+        normalizeNumericValues(claimSet);
+
         // Populate configured fields (necessarily visible)
         claimSet.put(ISSUER_CLAIM, credentialBuildConfig.getCredentialIssuer());
         claimSet.put(VERIFIABLE_CREDENTIAL_TYPE_CLAIM, credentialBuildConfig.getCredentialType());
@@ -111,6 +115,10 @@ public class SdJwtCredentialBuilder implements CredentialBuilder {
             IntStream.range(0, credentialBuildConfig.getNumberOfDecoys())
                     .forEach(i -> disclosureSpecBuilder.withDecoyClaim(SdJwtUtils.randomSalt()));
         }
+
+        // Final normalization pass right before building SD-JWT to ensure idx is integer
+        // This catches any edge cases where claims might be added/modified after previous normalizations
+        normalizeNumericValues(claimSet);
 
         var sdJwtBuilder = SdJwt.builder()
                 .withDisclosureSpec(disclosureSpecBuilder.build())

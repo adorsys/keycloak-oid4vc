@@ -1169,6 +1169,19 @@ public class OID4VCIssuerEndpoint {
         // This ensures that claims added via setClaimsForCredential are normalized
         SdJwtCredentialBuilder.normalizeNumericValues(vc.getCredentialSubject().getClaims());
 
+        // Also normalize any claims added to VerifiableCredential.additionalProperties via @JsonAnySetter
+        // Some mappers (like StatusListProtocolMapper) may add top-level claims this way
+        if (vc.getAdditionalProperties() != null && !vc.getAdditionalProperties().isEmpty()) {
+            SdJwtCredentialBuilder.normalizeNumericValues(vc.getAdditionalProperties());
+            // If status claim was added to additionalProperties, move it to credential subject for SD-JWT
+            // In SD-JWT format, status is a top-level JWT claim, which comes from credentialSubject.getClaims()
+            if (vc.getAdditionalProperties().containsKey("status")) {
+                Object statusClaim = vc.getAdditionalProperties().remove("status");
+                vc.getCredentialSubject().setClaims("status", statusClaim);
+                LOGGER.debugf("Moved status claim from additionalProperties to credential subject");
+            }
+        }
+
         LOGGER.debugf("The credential to sign is: %s", vc);
 
         // Build format-specific credential
