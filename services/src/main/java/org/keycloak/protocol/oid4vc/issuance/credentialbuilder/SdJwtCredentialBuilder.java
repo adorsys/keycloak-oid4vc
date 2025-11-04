@@ -26,6 +26,7 @@ import org.keycloak.sdjwt.SdJwt;
 import org.keycloak.sdjwt.SdJwtUtils;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -114,18 +115,18 @@ public class SdJwtCredentialBuilder implements CredentialBuilder {
             return;
         }
 
+        // Collect keys to modify to avoid ConcurrentModificationException
+        ArrayList<String> keysToModify = new ArrayList<>();
+
         for (Map.Entry<String, Object> entry : map.entrySet()) {
             Object value = entry.getValue();
             if (value instanceof Map) {
-                @SuppressWarnings("unchecked")
                 Map<String, Object> nestedMap = (Map<String, Object>) value;
                 normalizeNumericValues(nestedMap);
             } else if (value instanceof List) {
-                @SuppressWarnings("unchecked")
                 List<Object> list = (List<Object>) value;
                 for (Object item : list) {
                     if (item instanceof Map) {
-                        @SuppressWarnings("unchecked")
                         Map<String, Object> nestedMap = (Map<String, Object>) item;
                         normalizeNumericValues(nestedMap);
                     }
@@ -134,9 +135,18 @@ public class SdJwtCredentialBuilder implements CredentialBuilder {
                 String strValue = (String) value;
                 // Convert idx field from string to integer (required by spec)
                 if (entry.getKey().equals("idx") && strValue.matches("^\\d+$")) {
-                    Integer intValue = Integer.parseInt(strValue);
-                    entry.setValue(intValue);
+                    keysToModify.add(entry.getKey());
                 }
+            }
+        }
+
+        // Apply modifications after iteration
+        for (String key : keysToModify) {
+            Object value = map.get(key);
+            if (value instanceof String) {
+                String strValue = (String) value;
+                Integer intValue = Integer.parseInt(strValue);
+                map.put(key, intValue);
             }
         }
     }
