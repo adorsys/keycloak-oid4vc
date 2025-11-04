@@ -21,6 +21,7 @@ import org.keycloak.protocol.oid4vc.model.CredentialBuildConfig;
 import org.keycloak.protocol.oid4vc.model.CredentialSubject;
 import org.keycloak.protocol.oid4vc.model.Format;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
+import org.keycloak.sdjwt.DisclosureRedList;
 import org.keycloak.sdjwt.DisclosureSpec;
 import org.keycloak.sdjwt.SdJwt;
 import org.keycloak.sdjwt.SdJwtUtils;
@@ -30,6 +31,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public class SdJwtCredentialBuilder implements CredentialBuilder {
@@ -54,11 +56,41 @@ public class SdJwtCredentialBuilder implements CredentialBuilder {
         CredentialSubject credentialSubject = verifiableCredential.getCredentialSubject();
         Map<String, Object> claimSet = credentialSubject.getClaims();
 
+        // Populate configured fields (necessarily visible)
+        claimSet.put(ISSUER_CLAIM, credentialBuildConfig.getCredentialIssuer());
+        claimSet.put(VERIFIABLE_CREDENTIAL_TYPE_CLAIM, credentialBuildConfig.getCredentialType());
+
+        // jti, nbf, iat and exp are all optional per spec.
+        // see: https://www.ietf.org/archive/id/draft-ietf-oauth-sd-jwt-vc-03.html#name-registered-jwt-claims
+        // exp is automatically set from credential scope configuration (or can be set by protocol mapper).
+        // If expirationDate is set on the VerifiableCredential, we add exp claim to the JWT.
+        Optional.ofNullable(verifiableCredential.getExpirationDate())
+                .map(Instant::getEpochSecond)
+                .ifPresent(exp -> claimSet.put("exp", exp));
+
+        // Normalize numeric values in nested maps (e.g., status list idx should be integer, not string)
+        // This must happen BEFORE building the disclosure spec to ensure all values are properly normalized
+        normalizeNumericValues(claimSet);
+
         // Put all claims into the disclosure spec, except the one to be kept visible
+        // Normalize visible claims list (trim whitespace) to ensure proper filtering
+        List<String> visibleClaims = new ArrayList<>(credentialBuildConfig.getSdJwtVisibleClaims().stream()
+                .map(String::trim)
+                .collect(Collectors.toList()));
+
+        // Ensure all red-listed claims that are present in the claimSet are automatically visible
+        // This prevents red-list validation errors when red-listed claims are not explicitly marked as visible
+        // Red-listed claims: "iss", "iat", "nbf", "exp", "cnf", "vct", "status"
+        for (String redListedClaim : DisclosureRedList.redList) {
+            if (claimSet.containsKey(redListedClaim) && !visibleClaims.contains(redListedClaim)) {
+                visibleClaims.add(redListedClaim);
+            }
+        }
+
         DisclosureSpec.Builder disclosureSpecBuilder = DisclosureSpec.builder();
         claimSet.entrySet()
                 .stream()
-                .filter(entry -> !credentialBuildConfig.getSdJwtVisibleClaims().contains(entry.getKey()))
+                .filter(entry -> !visibleClaims.contains(entry.getKey()))
                 .forEach(entry -> {
                     if (entry instanceof List<?> listValue) {
                         // FIXME: Unreachable branch. The intent was probably to check `entry.getValue()`,
@@ -73,21 +105,6 @@ public class SdJwtCredentialBuilder implements CredentialBuilder {
                         disclosureSpecBuilder.withUndisclosedClaim(entry.getKey(), SdJwtUtils.randomSalt());
                     }
                 });
-
-        // Populate configured fields (necessarily visible)
-        claimSet.put(ISSUER_CLAIM, credentialBuildConfig.getCredentialIssuer());
-        claimSet.put(VERIFIABLE_CREDENTIAL_TYPE_CLAIM, credentialBuildConfig.getCredentialType());
-
-        // jti, nbf, iat and exp are all optional per spec.
-        // see: https://www.ietf.org/archive/id/draft-ietf-oauth-sd-jwt-vc-03.html#name-registered-jwt-claims
-        // exp is automatically set from credential scope configuration (or can be set by protocol mapper).
-        // If expirationDate is set on the VerifiableCredential, we add exp claim to the JWT.
-        Optional.ofNullable(verifiableCredential.getExpirationDate())
-                .map(Instant::getEpochSecond)
-                .ifPresent(exp -> claimSet.put("exp", exp));
-
-        // Normalize numeric values in nested maps (e.g., status list idx should be integer, not string)
-        normalizeNumericValues(claimSet);
 
         // Add the configured number of decoys
         if (credentialBuildConfig.getNumberOfDecoys() > 0) {
@@ -110,7 +127,7 @@ public class SdJwtCredentialBuilder implements CredentialBuilder {
      *
      * @param map the map to normalize (may contain nested maps and lists)
      */
-    static void normalizeNumericValues(Map<String, Object> map) {
+    public static void normalizeNumericValues(Map<String, Object> map) {
         if (map == null) {
             return;
         }
@@ -120,20 +137,21 @@ public class SdJwtCredentialBuilder implements CredentialBuilder {
 
         for (Map.Entry<String, Object> entry : map.entrySet()) {
             Object value = entry.getValue();
+            // Handle nested maps - use raw Map type check to handle LinkedHashMap, HashMap, etc.
             if (value instanceof Map) {
-                Map<String, Object> nestedMap = (Map<String, Object>) value;
-                normalizeNumericValues(nestedMap);
+                // Cast to Map<String, Object> - safe due to type erasure at runtime
+                normalizeNumericValues((Map<String, Object>) value);
             } else if (value instanceof List) {
-                List<Object> list = (List<Object>) value;
+                List<?> list = (List<?>) value;
                 for (Object item : list) {
                     if (item instanceof Map) {
-                        Map<String, Object> nestedMap = (Map<String, Object>) item;
-                        normalizeNumericValues(nestedMap);
+                        // Cast to Map<String, Object> - safe due to type erasure at runtime
+                        normalizeNumericValues((Map<String, Object>) item);
                     }
                 }
             } else if (value instanceof String) {
                 String strValue = (String) value;
-                // Convert idx field from string to integer (required by spec)
+                // Convert idx field from string to integer
                 if (entry.getKey().equals("idx") && strValue.matches("^\\d+$")) {
                     keysToModify.add(entry.getKey());
                 }

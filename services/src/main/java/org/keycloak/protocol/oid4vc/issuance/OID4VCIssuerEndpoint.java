@@ -64,6 +64,7 @@ import org.keycloak.protocol.oid4vc.OID4VCLoginProtocolFactory;
 import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.CredentialBody;
 import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.CredentialBuilder;
 import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.CredentialBuilderFactory;
+import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.SdJwtCredentialBuilder;
 import org.keycloak.protocol.oid4vc.issuance.keybinding.CNonceHandler;
 import org.keycloak.protocol.oid4vc.issuance.keybinding.JwtCNonceHandler;
 import org.keycloak.protocol.oid4vc.issuance.keybinding.ProofValidator;
@@ -1163,6 +1164,10 @@ public class OID4VCIssuerEndpoint {
 
         protocolMappers
                 .forEach(mapper -> mapper.setClaimsForCredential(vc, authResult.session()));
+
+        // Normalize numeric values in credential subject claims after all mappers have run
+        // This ensures that claims added via setClaimsForCredential are normalized
+        SdJwtCredentialBuilder.normalizeNumericValues(vc.getCredentialSubject().getClaims());
 
         LOGGER.debugf("The credential to sign is: %s", vc);
 

@@ -22,7 +22,9 @@ import org.keycloak.models.UserSessionModel;
 import org.keycloak.protocol.ProtocolMapper;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
 import org.keycloak.provider.ProviderConfigProperty;
+import org.keycloak.util.JsonSerialization;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -71,7 +73,21 @@ public class OID4VCStaticClaimMapper extends OID4VCMapper {
         List<String> attributePath = getMetadataAttributePath();
         String propertyName = attributePath.get(attributePath.size() - 1);
         String staticValue = mapperModel.getConfig().get(STATIC_CLAIM_KEY);
-        claims.put(propertyName, staticValue);
+
+        // If the static value is a JSON string, parse it to a Map/Object structure
+        // This allows nested structures to be properly normalized
+        Object claimValue = staticValue;
+        if (staticValue != null && staticValue.trim().startsWith("{") && staticValue.trim().endsWith("}")) {
+            try {
+                // Try to parse as JSON object
+                claimValue = JsonSerialization.mapper.readValue(staticValue, Map.class);
+            } catch (IOException e) {
+                // If parsing fails, keep as string (might be a plain string value)
+                claimValue = staticValue;
+            }
+        }
+
+        claims.put(propertyName, claimValue);
     }
 
     @Override
