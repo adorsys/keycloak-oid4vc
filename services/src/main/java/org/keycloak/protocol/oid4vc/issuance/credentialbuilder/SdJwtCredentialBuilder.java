@@ -25,8 +25,10 @@ import org.keycloak.sdjwt.DisclosureSpec;
 import org.keycloak.sdjwt.SdJwt;
 import org.keycloak.sdjwt.SdJwtUtils;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.IntStream;
 
 public class SdJwtCredentialBuilder implements CredentialBuilder {
@@ -75,8 +77,16 @@ public class SdJwtCredentialBuilder implements CredentialBuilder {
         claimSet.put(ISSUER_CLAIM, credentialBuildConfig.getCredentialIssuer());
         claimSet.put(VERIFIABLE_CREDENTIAL_TYPE_CLAIM, credentialBuildConfig.getCredentialType());
 
-        // jti, nbf, iat and exp are all optional. So need to be set by a protocol mapper if needed.
+        // jti, nbf, iat and exp are all optional per spec.
         // see: https://www.ietf.org/archive/id/draft-ietf-oauth-sd-jwt-vc-03.html#name-registered-jwt-claims
+        // exp is automatically set from credential scope configuration (or can be set by protocol mapper).
+        // If expirationDate is set on the VerifiableCredential, we add exp claim to the JWT.
+        Optional.ofNullable(verifiableCredential.getExpirationDate())
+                .map(Instant::getEpochSecond)
+                .ifPresent(exp -> claimSet.put("exp", exp));
+
+        // Normalize numeric values in nested maps (e.g., status list idx should be integer, not string)
+        normalizeNumericValues(claimSet);
 
         // Add the configured number of decoys
         if (credentialBuildConfig.getNumberOfDecoys() > 0) {
@@ -90,5 +100,44 @@ public class SdJwtCredentialBuilder implements CredentialBuilder {
                 .withJwsType(credentialBuildConfig.getTokenJwsType());
 
         return new SdJwtCredentialBody(sdJwtBuilder, claimSet);
+    }
+
+    /**
+     * Normalizes numeric values in nested map structures to ensure proper JSON serialization.
+     * Specifically converts string numbers to integers only for idx field as required by the spec.
+     * This recursively processes nested maps and lists to handle structures like status.status_list.idx.
+     *
+     * @param map the map to normalize (may contain nested maps and lists)
+     */
+    static void normalizeNumericValues(Map<String, Object> map) {
+        if (map == null) {
+            return;
+        }
+
+        for (Map.Entry<String, Object> entry : map.entrySet()) {
+            Object value = entry.getValue();
+            if (value instanceof Map) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> nestedMap = (Map<String, Object>) value;
+                normalizeNumericValues(nestedMap);
+            } else if (value instanceof List) {
+                @SuppressWarnings("unchecked")
+                List<Object> list = (List<Object>) value;
+                for (Object item : list) {
+                    if (item instanceof Map) {
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> nestedMap = (Map<String, Object>) item;
+                        normalizeNumericValues(nestedMap);
+                    }
+                }
+            } else if (value instanceof String) {
+                String strValue = (String) value;
+                // Convert idx field from string to integer (required by spec)
+                if (entry.getKey().equals("idx") && strValue.matches("^\\d+$")) {
+                    Integer intValue = Integer.parseInt(strValue);
+                    entry.setValue(intValue);
+                }
+            }
+        }
     }
 }

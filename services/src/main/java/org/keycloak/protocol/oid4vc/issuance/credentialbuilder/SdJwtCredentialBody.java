@@ -50,6 +50,9 @@ public class SdJwtCredentialBody implements CredentialBody {
     }
 
     public String sign(SignatureSignerContext signatureSignerContext) {
+        // Normalize numeric values right before serialization
+        SdJwtCredentialBuilder.normalizeNumericValues(this.claimSet);
+        
         JsonNode claimSet = JsonSerialization.mapper.valueToTree(this.claimSet);
         SdJwt sdJwt = sdJwtBuilder
                 .withClaimSet(claimSet)

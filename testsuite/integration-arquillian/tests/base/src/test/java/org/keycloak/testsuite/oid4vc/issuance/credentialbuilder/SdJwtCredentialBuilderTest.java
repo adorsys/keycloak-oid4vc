@@ -17,6 +17,7 @@
 
 package org.keycloak.testsuite.oid4vc.issuance.credentialbuilder;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import org.junit.Test;
 import org.keycloak.common.VerificationException;
@@ -28,11 +29,14 @@ import org.keycloak.sdjwt.IssuerSignedJWT;
 import org.keycloak.sdjwt.IssuerSignedJwtVerificationOpts;
 import org.keycloak.sdjwt.vp.SdJwtVP;
 
+import java.time.Instant;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.keycloak.protocol.oid4vc.issuance.credentialbuilder.SdJwtCredentialBuilder.ISSUER_CLAIM;
 import static org.keycloak.protocol.oid4vc.issuance.credentialbuilder.SdJwtCredentialBuilder.VERIFIABLE_CREDENTIAL_TYPE_CLAIM;
@@ -144,5 +148,79 @@ public class SdJwtCredentialBuilderTest extends CredentialBuilderTest {
                         .build(),
                 null
         );
+    }
+
+    @Test
+    public void shouldIncludeExpClaimWhenExpirationDateIsSet() throws Exception {
+        String issuerDid = TEST_DID.toString();
+        CredentialBuildConfig credentialBuildConfig = new CredentialBuildConfig()
+                .setCredentialIssuer(issuerDid)
+                .setCredentialType("https://credentials.example.com/test-credential")
+                .setTokenJwsType("example+sd-jwt")
+                .setHashAlgorithm("sha-256")
+                .setNumberOfDecoys(0)
+                .setSdJwtVisibleClaims(List.of());
+
+        // Create credential with expiration date
+        VerifiableCredential testCredential = getTestCredential(Map.of());
+        Instant expirationDate = Instant.ofEpochSecond(2000);
+        testCredential.setExpirationDate(expirationDate);
+
+        SdJwtCredentialBody sdJwtCredentialBody = new SdJwtCredentialBuilder()
+                .buildCredentialBody(testCredential, credentialBuildConfig);
+
+        String sdJwtString = sdJwtCredentialBody.sign(exampleSigner());
+        SdJwtVP sdJwt = SdJwtVP.of(sdJwtString);
+        IssuerSignedJWT jwt = sdJwt.getIssuerSignedJWT();
+
+        // Verify exp claim is present and has correct value
+        JsonNode expClaim = jwt.getPayload().get("exp");
+        assertNotNull("exp claim should be present when expirationDate is set", expClaim);
+        assertEquals("exp claim should be set to expiration date epoch seconds",
+                expirationDate.getEpochSecond(), expClaim.asLong());
+    }
+
+    @Test
+    public void shouldNormalizeIdxFieldFromStringToInteger() throws Exception {
+        String issuerDid = TEST_DID.toString();
+        CredentialBuildConfig credentialBuildConfig = new CredentialBuildConfig()
+                .setCredentialIssuer(issuerDid)
+                .setCredentialType("https://credentials.example.com/test-credential")
+                .setTokenJwsType("example+sd-jwt")
+                .setHashAlgorithm("sha-256")
+                .setNumberOfDecoys(0)
+                .setSdJwtVisibleClaims(List.of("status"));
+
+        // Create credential with status list where idx is a string (as it might come from protocol mapper)
+        Map<String, Object> statusList = new HashMap<>();
+        statusList.put("idx", "0");  // String, not integer
+        statusList.put("uri", "test-status-list-uri");
+
+        Map<String, Object> status = new HashMap<>();
+        status.put("status_list", statusList);
+
+        Map<String, Object> claims = new HashMap<>();
+        claims.put("status", status);
+
+        VerifiableCredential testCredential = getTestCredential(claims);
+
+        SdJwtCredentialBody sdJwtCredentialBody = new SdJwtCredentialBuilder()
+                .buildCredentialBody(testCredential, credentialBuildConfig);
+
+        String sdJwtString = sdJwtCredentialBody.sign(exampleSigner());
+        SdJwtVP sdJwt = SdJwtVP.of(sdJwtString);
+        IssuerSignedJWT jwt = sdJwt.getIssuerSignedJWT();
+
+        // Verify idx is an integer, not a string
+        JsonNode statusClaim = jwt.getPayload().get("status");
+        assertNotNull("status claim should be present", statusClaim);
+
+        JsonNode statusListClaim = statusClaim.get("status_list");
+        assertNotNull("status_list claim should be present", statusListClaim);
+
+        JsonNode idxClaim = statusListClaim.get("idx");
+        assertNotNull("idx claim should be present", idxClaim);
+        assertTrue("idx should be a number (integer), not a string", idxClaim.isNumber());
+        assertEquals("idx should be 0 as integer", 0, idxClaim.asInt());
     }
 }

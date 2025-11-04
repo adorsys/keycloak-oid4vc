@@ -1046,7 +1046,7 @@ public class OID4VCIssuerEndpoint {
                 .filter(Objects::nonNull)
                 .toList();
 
-        VCIssuanceContext vcIssuanceContext = getVCToSign(protocolMappers, credentialConfig, authResult, credentialRequestVO);
+        VCIssuanceContext vcIssuanceContext = getVCToSign(protocolMappers, credentialConfig, authResult, credentialRequestVO, credentialScopeModel);
 
         // Enforce key binding prior to signing if necessary
         enforceKeyBindingIfProofProvided(vcIssuanceContext);
@@ -1133,11 +1133,23 @@ public class OID4VCIssuerEndpoint {
 
     // builds the unsigned credential by applying all protocol mappers.
     private VCIssuanceContext getVCToSign(List<OID4VCMapper> protocolMappers, SupportedCredentialConfiguration credentialConfig,
-                                          AuthenticationManager.AuthResult authResult, CredentialRequest credentialRequestVO) {
+                                          AuthenticationManager.AuthResult authResult, CredentialRequest credentialRequestVO,
+                                          CredentialScopeModel credentialScopeModel) {
         // set the required claims
+        Instant issuanceDate = Instant.ofEpochMilli(timeProvider.currentTimeMillis());
         VerifiableCredential vc = new VerifiableCredential()
-                .setIssuanceDate(Instant.ofEpochMilli(timeProvider.currentTimeMillis()))
+                .setIssuanceDate(issuanceDate)
                 .setType(List.of(credentialConfig.getScope()));
+        
+        // Set expiration date if not already set and expiry is configured
+        // This ensures exp claim is present when required (e.g., for HAIP profile)
+        if (vc.getExpirationDate() == null) {
+            Integer expiryInSeconds = credentialScopeModel.getExpiryInSeconds();
+            if (expiryInSeconds != null && expiryInSeconds > 0) {
+                Instant expirationDate = issuanceDate.plusSeconds(expiryInSeconds);
+                vc.setExpirationDate(expirationDate);
+            }
+        }
 
         Map<String, Object> subjectClaims = new HashMap<>();
         protocolMappers
