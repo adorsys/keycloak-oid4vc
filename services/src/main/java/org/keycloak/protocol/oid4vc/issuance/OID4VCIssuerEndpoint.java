@@ -412,7 +412,9 @@ public class OID4VCIssuerEndpoint {
         String vcIssuanceFlow = clientSession.getNote(PreAuthorizedCodeGrantType.VC_ISSUANCE_FLOW);
 
         if (vcIssuanceFlow == null || !vcIssuanceFlow.equals(PreAuthorizedCodeGrantTypeFactory.GRANT_TYPE)) {
-            AccessToken accessToken = bearerTokenAuthenticator.authenticate().token();
+            // Use getAuthResult() instead of bearerTokenAuthenticator.authenticate() directly
+            // This ensures we benefit from the cachedAuthResult caching that prevents DPoP proof reuse
+            AccessToken accessToken = getAuthResult().token();
             if (Arrays.stream(accessToken.getScope().split(" "))
                     .noneMatch(tokenScope -> tokenScope.equals(requestedCredential.getScope()))) {
                 LOGGER.debugf("Scope check failure: required scope = %s, " +
