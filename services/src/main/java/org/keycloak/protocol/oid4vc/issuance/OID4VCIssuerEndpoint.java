@@ -64,6 +64,7 @@ import org.keycloak.protocol.oid4vc.OID4VCLoginProtocolFactory;
 import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.CredentialBody;
 import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.CredentialBuilder;
 import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.CredentialBuilderFactory;
+import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.SdJwtCredentialBuilder;
 import org.keycloak.protocol.oid4vc.issuance.keybinding.CNonceHandler;
 import org.keycloak.protocol.oid4vc.issuance.keybinding.JwtCNonceHandler;
 import org.keycloak.protocol.oid4vc.issuance.keybinding.ProofValidator;
@@ -154,6 +155,8 @@ public class OID4VCIssuerEndpoint {
     public static final String AUTHORIZATION_DETAILS_CLAIMS_PREFIX = "AUTHORIZATION_DETAILS_CLAIMS_";
 
     private Cors cors;
+
+    private AuthenticationManager.AuthResult cachedAuthResult;
 
     private static final String CODE_LIFESPAN_REALM_ATTRIBUTE_KEY = "preAuthorizedCodeLifespanS";
     private static final int DEFAULT_CODE_LIFESPAN_S = 30;
@@ -959,13 +962,16 @@ public class OID4VCIssuerEndpoint {
     }
 
     private AuthenticationManager.AuthResult getAuthResult() {
+        if (cachedAuthResult != null) {
+            return cachedAuthResult;
+        }
         AuthenticationManager.AuthResult authResult = bearerTokenAuthenticator.authenticate();
         if (authResult == null) {
             throw new BadRequestException(getErrorResponse(ErrorType.INVALID_TOKEN));
         }
 
         // Validate DPoP nonce if present in the DPoP proof
-        DPoP dPoP = session.getAttribute(DPoPUtil.DPOP_SESSION_ATTRIBUTE, DPoP.class);
+        DPoP dPoP = (DPoP) session.getAttribute(DPoPUtil.DPOP_SESSION_ATTRIBUTE);
         if (dPoP != null) {
             Object nonceClaim = Optional.ofNullable(dPoP.getOtherClaims())
                     .map(m -> m.get("nonce"))
@@ -987,16 +993,25 @@ public class OID4VCIssuerEndpoint {
             }
         }
 
-        return authResult;
+        // Cache for this request lifecycle
+        cachedAuthResult = authResult;
+        return cachedAuthResult;
     }
 
     // get the auth result from the authentication manager
     private AuthenticationManager.AuthResult getAuthResult(WebApplicationException errorResponse) {
+         if (cachedAuthResult != null) {
+            return cachedAuthResult;
+        }
+
         AuthenticationManager.AuthResult authResult = bearerTokenAuthenticator.authenticate();
         if (authResult == null) {
             throw errorResponse;
         }
-        return authResult;
+
+        // Cache for this request lifecycle
+        cachedAuthResult = authResult;
+        return cachedAuthResult;
     }
 
     /**
@@ -1031,7 +1046,7 @@ public class OID4VCIssuerEndpoint {
                 .filter(Objects::nonNull)
                 .toList();
 
-        VCIssuanceContext vcIssuanceContext = getVCToSign(protocolMappers, credentialConfig, authResult, credentialRequestVO);
+        VCIssuanceContext vcIssuanceContext = getVCToSign(protocolMappers, credentialConfig, authResult, credentialRequestVO, credentialScopeModel);
 
         // Enforce key binding prior to signing if necessary
         enforceKeyBindingIfProofProvided(vcIssuanceContext);
@@ -1118,11 +1133,23 @@ public class OID4VCIssuerEndpoint {
 
     // builds the unsigned credential by applying all protocol mappers.
     private VCIssuanceContext getVCToSign(List<OID4VCMapper> protocolMappers, SupportedCredentialConfiguration credentialConfig,
-                                          AuthenticationManager.AuthResult authResult, CredentialRequest credentialRequestVO) {
+                                          AuthenticationManager.AuthResult authResult, CredentialRequest credentialRequestVO,
+                                          CredentialScopeModel credentialScopeModel) {
         // set the required claims
+        Instant issuanceDate = Instant.ofEpochMilli(timeProvider.currentTimeMillis());
         VerifiableCredential vc = new VerifiableCredential()
-                .setIssuanceDate(Instant.ofEpochMilli(timeProvider.currentTimeMillis()))
+                .setIssuanceDate(issuanceDate)
                 .setType(List.of(credentialConfig.getScope()));
+
+        // Set expiration date if not already set and expiry is configured
+        // This ensures exp claim is present when required.
+        if (vc.getExpirationDate() == null) {
+            Integer expiryInSeconds = credentialScopeModel.getExpiryInSeconds();
+            if (expiryInSeconds != null && expiryInSeconds > 0) {
+                Instant expirationDate = issuanceDate.plusSeconds(expiryInSeconds);
+                vc.setExpirationDate(expirationDate);
+            }
+        }
 
         Map<String, Object> subjectClaims = new HashMap<>();
         protocolMappers

@@ -25,8 +25,10 @@ import org.keycloak.sdjwt.DisclosureSpec;
 import org.keycloak.sdjwt.SdJwt;
 import org.keycloak.sdjwt.SdJwtUtils;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.IntStream;
 
 public class SdJwtCredentialBuilder implements CredentialBuilder {
@@ -77,6 +79,11 @@ public class SdJwtCredentialBuilder implements CredentialBuilder {
 
         // jti, nbf, iat and exp are all optional. So need to be set by a protocol mapper if needed.
         // see: https://www.ietf.org/archive/id/draft-ietf-oauth-sd-jwt-vc-03.html#name-registered-jwt-claims
+        // exp is automatically set from credential scope configuration (or can be set by protocol mapper).
+        // If expirationDate is set on the VerifiableCredential, we add exp claim to the JWT.
+        Optional.ofNullable(verifiableCredential.getExpirationDate())
+                .map(Instant::getEpochSecond)
+                .ifPresent(exp -> claimSet.put("exp", exp));
 
         // Add the configured number of decoys
         if (credentialBuildConfig.getNumberOfDecoys() > 0) {
