@@ -16,8 +16,8 @@
  */
 package org.keycloak.testsuite.oid4vc.issuance.signing;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import jakarta.ws.rs.BadRequestException;
+import org.keycloak.services.CorsErrorResponseException;
 import jakarta.ws.rs.client.Entity;
 import jakarta.ws.rs.client.WebTarget;
 import jakarta.ws.rs.core.HttpHeaders;
@@ -54,6 +54,7 @@ import org.keycloak.protocol.oid4vc.model.Format;
 import org.keycloak.protocol.oid4vc.model.OfferUriType;
 import org.keycloak.protocol.oid4vc.model.PreAuthorizedCode;
 import org.keycloak.protocol.oid4vc.model.PreAuthorizedGrant;
+import org.keycloak.protocol.oid4vc.model.Proof;
 import org.keycloak.protocol.oid4vc.model.Proofs;
 import org.keycloak.protocol.oid4vc.model.SupportedCredentialConfiguration;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
@@ -68,8 +69,6 @@ import org.keycloak.util.JsonSerialization;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
-import java.security.NoSuchAlgorithmException;
-import java.security.PrivateKey;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -90,41 +89,51 @@ import static org.junit.Assert.fail;
 public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
     // ----- getCredentialOfferUri
 
-    @Test(expected = BadRequestException.class)
-    public void testGetCredentialOfferUriUnsupportedCredential() throws Throwable {
+    @Test
+    public void testGetCredentialOfferUriUnsupportedCredential() {
         String token = getBearerToken(oauth);
-        withCausePropagation(() -> testingClient.server(TEST_REALM_NAME)
-                .run((session -> {
-                    AppAuthManager.BearerTokenAuthenticator authenticator = new AppAuthManager.BearerTokenAuthenticator(session);
-                    authenticator.setTokenString(token);
+        testingClient.server(TEST_REALM_NAME).run((session -> {
+            AppAuthManager.BearerTokenAuthenticator authenticator = new AppAuthManager.BearerTokenAuthenticator(session);
+            authenticator.setTokenString(token);
 
-                    OID4VCIssuerEndpoint oid4VCIssuerEndpoint = prepareIssuerEndpoint(session, authenticator);
-                    oid4VCIssuerEndpoint.getCredentialOfferURI("inexistent-id", OfferUriType.URI, 0, 0);
-                })));
+            OID4VCIssuerEndpoint oid4VCIssuerEndpoint = prepareIssuerEndpoint(session, authenticator);
+
+            CorsErrorResponseException exception = Assert.assertThrows(CorsErrorResponseException.class, () ->
+                    oid4VCIssuerEndpoint.getCredentialOfferURI("inexistent-id", OfferUriType.URI, 0, 0)
+            );
+            assertEquals("Should return BAD_REQUEST", Response.Status.BAD_REQUEST.getStatusCode(),
+                    exception.getResponse().getStatus());
+        }));
     }
 
-    @Test(expected = BadRequestException.class)
-    public void testGetCredentialOfferUriUnauthorized() throws Throwable {
-        withCausePropagation(() -> testingClient.server(TEST_REALM_NAME)
-                .run((session -> {
-                    AppAuthManager.BearerTokenAuthenticator authenticator = new AppAuthManager.BearerTokenAuthenticator(session);
-                    authenticator.setTokenString(null);
-                    OID4VCIssuerEndpoint oid4VCIssuerEndpoint = prepareIssuerEndpoint(session, authenticator);
-                    oid4VCIssuerEndpoint.getCredentialOfferURI("test-credential", OfferUriType.URI, 0, 0);
-                })));
+    @Test
+    public void testGetCredentialOfferUriUnauthorized() {
+        testingClient.server(TEST_REALM_NAME).run((session -> {
+            AppAuthManager.BearerTokenAuthenticator authenticator = new AppAuthManager.BearerTokenAuthenticator(session);
+            authenticator.setTokenString(null);
+            OID4VCIssuerEndpoint oid4VCIssuerEndpoint = prepareIssuerEndpoint(session, authenticator);
+
+            CorsErrorResponseException exception = Assert.assertThrows(CorsErrorResponseException.class, () ->
+                    oid4VCIssuerEndpoint.getCredentialOfferURI("test-credential", OfferUriType.URI, 0, 0)
+            );
+            assertEquals("Should return BAD_REQUEST", Response.Status.BAD_REQUEST.getStatusCode(),
+                    exception.getResponse().getStatus());
+        }));
     }
 
-    @Test(expected = BadRequestException.class)
-    public void testGetCredentialOfferUriInvalidToken() throws Throwable {
-        withCausePropagation(() -> testingClient.server(TEST_REALM_NAME)
-                .run((session -> {
-                    AppAuthManager.BearerTokenAuthenticator authenticator = new AppAuthManager.BearerTokenAuthenticator(session);
-                    authenticator.setTokenString("invalid-token");
-                    OID4VCIssuerEndpoint oid4VCIssuerEndpoint = prepareIssuerEndpoint(session, authenticator);
-                    Response response = oid4VCIssuerEndpoint
-                            .getCredentialOfferURI("test-credential", OfferUriType.URI, 0, 0);
-                    assertEquals(MediaType.APPLICATION_JSON_TYPE, response.getMediaType());
-                })));
+    @Test
+    public void testGetCredentialOfferUriInvalidToken() {
+        testingClient.server(TEST_REALM_NAME).run((session -> {
+            AppAuthManager.BearerTokenAuthenticator authenticator = new AppAuthManager.BearerTokenAuthenticator(session);
+            authenticator.setTokenString("invalid-token");
+            OID4VCIssuerEndpoint oid4VCIssuerEndpoint = prepareIssuerEndpoint(session, authenticator);
+
+            CorsErrorResponseException exception = Assert.assertThrows(CorsErrorResponseException.class, () ->
+                    oid4VCIssuerEndpoint.getCredentialOfferURI("test-credential", OfferUriType.URI, 0, 0)
+            );
+            assertEquals("Should return BAD_REQUEST", Response.Status.BAD_REQUEST.getStatusCode(),
+                    exception.getResponse().getStatus());
+        }));
     }
 
     @Test
@@ -250,39 +259,42 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
 
 // ----- requestCredential
 
-    @Test(expected = BadRequestException.class)
-    public void testRequestCredentialUnauthorized() throws Throwable {
-        withCausePropagation(() -> {
-            testingClient.server(TEST_REALM_NAME).run(session -> {
-                AppAuthManager.BearerTokenAuthenticator authenticator = new AppAuthManager.BearerTokenAuthenticator(session);
-                authenticator.setTokenString(null);
-                OID4VCIssuerEndpoint issuerEndpoint = prepareIssuerEndpoint(session, authenticator);
-                CredentialRequest credentialRequest = new CredentialRequest()
-                        .setCredentialIdentifier("test-credential");
+    @Test
+    public void testRequestCredentialUnauthorized() {
+        testingClient.server(TEST_REALM_NAME).run(session -> {
+            AppAuthManager.BearerTokenAuthenticator authenticator = new AppAuthManager.BearerTokenAuthenticator(session);
+            authenticator.setTokenString(null);
+            OID4VCIssuerEndpoint issuerEndpoint = prepareIssuerEndpoint(session, authenticator);
+            CredentialRequest credentialRequest = new CredentialRequest()
+                    .setCredentialIdentifier("test-credential");
 
-                String requestPayload;
-                requestPayload = JsonSerialization.writeValueAsString(credentialRequest);
+            String requestPayload;
+            requestPayload = JsonSerialization.writeValueAsString(credentialRequest);
 
-                Response response = issuerEndpoint.requestCredential(requestPayload);
-                assertEquals(MediaType.APPLICATION_JSON_TYPE, response.getMediaType());
-            });
+            CorsErrorResponseException exception = Assert.assertThrows(CorsErrorResponseException.class, () ->
+                    issuerEndpoint.requestCredential(requestPayload)
+            );
+            assertEquals("Should return BAD_REQUEST", Response.Status.BAD_REQUEST.getStatusCode(),
+                    exception.getResponse().getStatus());
         });
     }
 
-    @Test(expected = BadRequestException.class)
-    public void testRequestCredentialInvalidToken() throws Throwable {
-        withCausePropagation(() -> {
-            testingClient.server(TEST_REALM_NAME).run(session -> {
-                AppAuthManager.BearerTokenAuthenticator authenticator = new AppAuthManager.BearerTokenAuthenticator(session);
-                authenticator.setTokenString("token");
-                OID4VCIssuerEndpoint issuerEndpoint = prepareIssuerEndpoint(session, authenticator);
-                CredentialRequest credentialRequest = new CredentialRequest()
-                        .setCredentialIdentifier("test-credential");
+    @Test
+    public void testRequestCredentialInvalidToken() {
+        testingClient.server(TEST_REALM_NAME).run(session -> {
+            AppAuthManager.BearerTokenAuthenticator authenticator = new AppAuthManager.BearerTokenAuthenticator(session);
+            authenticator.setTokenString("token");
+            OID4VCIssuerEndpoint issuerEndpoint = prepareIssuerEndpoint(session, authenticator);
+            CredentialRequest credentialRequest = new CredentialRequest()
+                    .setCredentialIdentifier("test-credential");
 
-                String requestPayload = JsonSerialization.writeValueAsString(credentialRequest);
+            String requestPayload = JsonSerialization.writeValueAsString(credentialRequest);
 
-                issuerEndpoint.requestCredential(requestPayload);
-            });
+            CorsErrorResponseException exception = Assert.assertThrows(CorsErrorResponseException.class, () ->
+                    issuerEndpoint.requestCredential(requestPayload)
+            );
+            assertEquals("Should return BAD_REQUEST", Response.Status.BAD_REQUEST.getStatusCode(),
+                    exception.getResponse().getStatus());
         });
     }
 
@@ -936,4 +948,63 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
             }
         });
     }
+
+    /**
+     * Test that verifies the conversion from 'proof' (singular) to 'proofs' (array) works correctly.
+     * This test ensures backward compatibility with clients that send 'proof' instead of 'proofs'.
+     */
+    @Test
+    public void testProofToProofsConversion() throws Exception {
+        String token = getBearerToken(oauth, client, jwtTypeCredentialClientScope.getName());
+        final String credentialConfigurationId = jwtTypeCredentialClientScope.getAttributes()
+                .get(CredentialScopeModel.CONFIGURATION_ID);
+
+        testingClient.server(TEST_REALM_NAME).run(session -> {
+            AppAuthManager.BearerTokenAuthenticator authenticator = new AppAuthManager.BearerTokenAuthenticator(session);
+            authenticator.setTokenString(token);
+            OID4VCIssuerEndpoint issuerEndpoint = prepareIssuerEndpoint(session, authenticator);
+
+            // Test 1: Create a request with single proof field - should be converted to proofs array
+            CredentialRequest requestWithProof = new CredentialRequest()
+                    .setCredentialConfigurationId(credentialConfigurationId);
+
+            // Create a single proof object
+            Proof singleProof = new Proof()
+                    .setJwt("dummy-jwt")
+                    .setProofType("jwt");
+            requestWithProof.setProof(singleProof);
+
+            String requestPayload = JsonSerialization.writeValueAsString(requestWithProof);
+
+            try {
+                // This should work because the conversion happens in validateRequestEncryption
+                issuerEndpoint.requestCredential(requestPayload);
+            } catch (Exception e) {
+                // We expect JWT validation to fail, but the conversion should have worked
+                assertTrue("Error should be related to JWT validation, not conversion",
+                        e.getMessage().contains("Could not validate provided proof"));
+            }
+
+            // Test 2: Create a request with both proof and proofs fields - should fail validation
+            CredentialRequest requestWithBoth = new CredentialRequest()
+                    .setCredentialConfigurationId(credentialConfigurationId);
+
+            requestWithBoth.setProof(singleProof);
+
+            Proofs proofsArray = new Proofs();
+            proofsArray.setJwt(List.of("dummy-jwt"));
+            requestWithBoth.setProofs(proofsArray);
+
+            String bothFieldsPayload = JsonSerialization.writeValueAsString(requestWithBoth);
+
+            try {
+                issuerEndpoint.requestCredential(bothFieldsPayload);
+                Assert.fail("Expected BadRequestException when both proof and proofs are provided");
+            } catch (BadRequestException e) {
+                int statusCode = e.getResponse().getStatus();
+                assertEquals("Expected HTTP 400 Bad Request", 400, statusCode);
+            }
+        });
+    }
+
 }

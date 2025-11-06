@@ -55,6 +55,8 @@ public class SupportedCredentialConfiguration {
     public static final String CREDENTIAL_BUILD_CONFIG_KEY = "credential_build_config";
     @JsonIgnore
     private static final String CREDENTIAL_METADATA_KEY = "credential_metadata";
+    @JsonIgnore
+    private static final String LEGACY_DISPLAY_KEY = "display";
 
     private String id;
 
@@ -242,6 +244,11 @@ public class SupportedCredentialConfiguration {
     public SupportedCredentialConfiguration setCredentialMetadata(CredentialMetadata credentialMetadata) {
         this.credentialMetadata = credentialMetadata;
         return this;
+    }
+
+    @JsonProperty(value = LEGACY_DISPLAY_KEY, access = JsonProperty.Access.READ_ONLY)
+    public List<DisplayObject> getDisplay() {
+        return credentialMetadata != null ? credentialMetadata.getDisplay() : null;
     }
 
     public CredentialBuildConfig getCredentialBuildConfig() {

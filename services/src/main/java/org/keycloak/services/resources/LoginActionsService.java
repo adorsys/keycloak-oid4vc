@@ -16,6 +16,7 @@
  */
 package org.keycloak.services.resources;
 
+import jakarta.ws.rs.FormParam;
 import jakarta.ws.rs.HEAD;
 import org.jboss.logging.Logger;
 import org.keycloak.common.Profile;
@@ -36,6 +37,7 @@ import org.keycloak.authentication.RequiredActionFactory;
 import org.keycloak.authentication.RequiredActionProvider;
 import org.keycloak.authentication.actiontoken.ActionTokenContext;
 import org.keycloak.authentication.actiontoken.ActionTokenHandler;
+import org.keycloak.models.AuthenticatedClientSessionModel;
 import org.keycloak.models.DefaultActionTokenKey;
 import org.keycloak.authentication.actiontoken.ExplainedTokenVerificationException;
 import org.keycloak.authentication.actiontoken.resetcred.ResetCredentialsActionTokenHandler;
@@ -56,6 +58,7 @@ import org.keycloak.events.EventBuilder;
 import org.keycloak.events.EventType;
 import org.keycloak.exceptions.TokenNotActiveException;
 import org.keycloak.models.KeycloakContext;
+import org.keycloak.models.KeycloakUriInfo;
 import org.keycloak.models.SingleUseObjectKeyModel;
 import org.keycloak.models.AuthenticationFlowModel;
 import org.keycloak.models.ClientModel;
@@ -78,6 +81,7 @@ import org.keycloak.protocol.LoginProtocol;
 import org.keycloak.protocol.LoginProtocol.Error;
 import org.keycloak.protocol.oidc.OIDCLoginProtocol;
 import org.keycloak.protocol.oidc.grants.device.DeviceGrantType;
+import org.keycloak.protocol.oidc.utils.OAuth2CodeParser;
 import org.keycloak.protocol.oidc.utils.OIDCResponseMode;
 import org.keycloak.protocol.oidc.utils.OIDCResponseType;
 import org.keycloak.protocol.oidc.utils.RedirectUtils;
@@ -94,6 +98,7 @@ import org.keycloak.services.messages.Messages;
 import org.keycloak.services.util.AuthenticationFlowURLHelper;
 import org.keycloak.services.util.BrowserHistoryHelper;
 import org.keycloak.services.util.CacheControlUtil;
+import org.keycloak.services.util.DefaultClientSessionContext;
 import org.keycloak.services.util.LocaleUtil;
 import org.keycloak.sessions.AuthenticationSessionModel;
 import org.keycloak.sessions.RootAuthenticationSessionModel;
@@ -130,6 +135,7 @@ public class LoginActionsService {
     public static final String REQUIRED_ACTION = "required-action";
     public static final String FIRST_BROKER_LOGIN_PATH = "first-broker-login";
     public static final String POST_BROKER_LOGIN_PATH = "post-broker-login";
+    public static final String OID4VP_AUTH_LOGIN_PATH = "oid4vp-auth-login";
 
     public static final String RESTART_PATH = "restart";
 
@@ -1250,5 +1256,49 @@ public class LoginActionsService {
 
     public Response preHandleActionToken(String tokenString) {
         return handleActionToken(tokenString, null, null, null, null, ActionTokenHandler::preHandleToken);
+    }
+
+    @Path(OID4VP_AUTH_LOGIN_PATH)
+    @POST
+    @Consumes(MediaType.APPLICATION_FORM_URLENCODED)
+    public Response oid4vpAuthLogin(@QueryParam(AUTH_SESSION_ID) String authSessionId,
+                                    @QueryParam(SESSION_CODE) String code,
+                                    @QueryParam(Constants.EXECUTION) String execution,
+                                    @QueryParam(Constants.CLIENT_ID) String clientId,
+                                    @QueryParam(Constants.CLIENT_DATA) String clientData,
+                                    @QueryParam(Constants.TAB_ID) String tabId,
+                                    @FormParam(OAuth2Constants.CODE) String authorizationCode) {
+        SessionCodeChecks checks = checksForCode(authSessionId, code, execution, clientId, tabId, clientData, AUTHENTICATE_PATH);
+        if (!checks.verifyActiveAndValidAction(AuthenticationSessionModel.Action.AUTHENTICATE.name(), ClientSessionCode.ActionType.LOGIN)) {
+            return checks.getResponse();
+        }
+
+        // Recover URI context and OIDC auth session
+        KeycloakUriInfo uriInfo = session.getContext().getUri();
+        AuthenticationSessionModel authSession = checks.getAuthenticationSession();
+
+        // Validate authorization code
+        logger.debugf("Validating authorization code: %s", authorizationCode);
+        OAuth2CodeParser.ParseResult result = OAuth2CodeParser.parseCode(session, authorizationCode, realm, event);
+        if (result.isIllegalCode() || result.isExpiredCode()) {
+            String errorMessage = "Authorization code not valid";
+            event.error(Errors.INVALID_CODE);
+            return ErrorPage.error(session, authSession, Response.Status.BAD_REQUEST, errorMessage);
+        }
+
+        // Attach authenticated user to OIDC sessions
+        authSession.setAuthenticatedUser(result.getClientSession().getUserSession().getUser());
+        ClientSessionContext clientSessionCtx = AuthenticationProcessor.attachSession(
+                authSession, null, session, realm, clientConnection, event);
+        UserSessionModel freshUserSession = clientSessionCtx.getClientSession().getUserSession();
+
+        // Append note conveying this login method
+        freshUserSession.setNote(OIDCLoginProtocol.LOGIN_METHOD_PARAM, OID4VP_AUTH_LOGIN_PATH);
+
+        logger.debugf("Attempting redirection after successful OID4VP authentication");
+        return AuthenticationManager.redirectAfterSuccessfulFlow(
+                session, realm, freshUserSession, clientSessionCtx,
+                request, uriInfo, clientConnection, event, authSession
+        );
     }
 }

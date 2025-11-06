@@ -17,6 +17,8 @@
 
 package org.keycloak.sdjwt.vp;
 
+import java.util.regex.Pattern;
+
 /**
  * Options for Key Binding JWT verification.
  *
@@ -34,7 +36,7 @@ public class KeyBindingJwtVerificationOpts {
     private final int allowedMaxAge;
 
     private final String nonce;
-    private final String aud;
+    private final Pattern aud;
 
     private final boolean validateExpirationClaim;
     private final boolean validateNotBeforeClaim;
@@ -43,7 +45,7 @@ public class KeyBindingJwtVerificationOpts {
             boolean keyBindingRequired,
             int allowedMaxAge,
             String nonce,
-            String aud,
+            Pattern aud,
             boolean validateExpirationClaim,
             boolean validateNotBeforeClaim) {
         this.keyBindingRequired = keyBindingRequired;
@@ -66,7 +68,7 @@ public class KeyBindingJwtVerificationOpts {
         return nonce;
     }
 
-    public String getAud() {
+    public Pattern getAud() {
         return aud;
     }
 
@@ -86,7 +88,7 @@ public class KeyBindingJwtVerificationOpts {
         private boolean keyBindingRequired = true;
         private int allowedMaxAge = 5 * 60;
         private String nonce;
-        private String aud;
+        private Pattern aud;
         private boolean validateExpirationClaim = true;
         private boolean validateNotBeforeClaim = true;
 
@@ -106,6 +108,11 @@ public class KeyBindingJwtVerificationOpts {
         }
 
         public Builder withAud(String aud) {
+            this.aud = Pattern.compile(Pattern.quote(aud));
+            return this;
+        }
+
+        public Builder withAud(Pattern aud) {
             this.aud = aud;
             return this;
         }

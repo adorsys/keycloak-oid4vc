@@ -97,3 +97,6 @@ quarkus/data/*.db
 
 .env
 .env.test
+
+# Custom
+custom+oid4vp/

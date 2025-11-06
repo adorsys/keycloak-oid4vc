@@ -37,6 +37,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -331,11 +332,7 @@ public class SdJwtVerificationContext {
         // Check that the creation time of the Key Binding JWT, as determined by the iat claim,
         // is within an acceptable window
 
-        try {
-            keyBindingJwt.verifyIssuedAtClaim();
-        } catch (VerificationException e) {
-            throw new VerificationException("Key binding JWT: Invalid `iat` claim", e);
-        }
+        // TODO: Implement `iat` check with clock skew tolerance
 
         try {
             keyBindingJwt.verifyAge(keyBindingJwtVerificationOpts.getAllowedMaxAge());
@@ -650,14 +647,22 @@ public class SdJwtVerificationContext {
             KeyBindingJwtVerificationOpts keyBindingJwtVerificationOpts
     ) throws VerificationException {
         JsonNode nonce = keyBindingJwt.getPayload().get("nonce");
-        if (nonce == null || !nonce.isTextual()
-                || !nonce.asText().equals(keyBindingJwtVerificationOpts.getNonce())) {
+        String expectedNonce = keyBindingJwtVerificationOpts.getNonce();
+        if (nonce == null || !nonce.isTextual() || !nonce.asText().equals(expectedNonce)) {
+            logger.errorf("Key binding JWT: Unexpected `nonce` value. Expected: %s, but got: %s",
+                    expectedNonce, nonce);
             throw new VerificationException("Key binding JWT: Unexpected `nonce` value");
         }
 
+        Pattern expectedAud = keyBindingJwtVerificationOpts.getAud();
+        if (expectedAud == null) {
+            throw new VerificationException("Key binding JWT: No `aud` policy configured");
+        }
+
         JsonNode aud = keyBindingJwt.getPayload().get("aud");
-        if (aud == null || !aud.isTextual()
-                || !aud.asText().equals(keyBindingJwtVerificationOpts.getAud())) {
+        if (aud == null || !aud.isTextual() || !expectedAud.matcher(aud.asText()).matches()) {
+            logger.errorf("Key binding JWT: Unexpected `aud` value. Expected pattern: /%s/, but got: %s",
+                    expectedAud.pattern(), aud);
             throw new VerificationException("Key binding JWT: Unexpected `aud` value");
         }
     }

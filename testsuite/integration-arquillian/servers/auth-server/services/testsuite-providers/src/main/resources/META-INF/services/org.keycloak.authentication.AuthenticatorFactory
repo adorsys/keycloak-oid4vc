@@ -31,3 +31,4 @@ org.keycloak.examples.providersoverride.CustomValidatePassword1
 org.keycloak.examples.providersoverride.CustomValidatePassword2
 org.keycloak.examples.providersoverride.CustomValidatePassword3
 org.keycloak.examples.providersoverride.CustomValidateOTP
+org.keycloak.testsuite.oid4vp.CustomSdJwtAuthenticatorFactory

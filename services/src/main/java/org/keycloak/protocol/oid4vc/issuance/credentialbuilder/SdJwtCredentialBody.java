@@ -30,8 +30,8 @@ import java.util.Map;
  */
 public class SdJwtCredentialBody implements CredentialBody {
 
-    private static final String CNF_CLAIM = "cnf";
-    private static final String JWK_CLAIM = "jwk";
+    public static final String CNF_CLAIM = "cnf";
+    public static final String JWK_CLAIM = "jwk";
 
     private final SdJwt.Builder sdJwtBuilder;
     private final Map<String, Object> claimSet;
