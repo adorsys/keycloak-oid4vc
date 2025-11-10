@@ -93,8 +93,8 @@ public abstract class SdJws {
     protected static JWSInput sign(JsonNode payload, SignatureSignerContext signer, String jwsType, KeyWrapper keyWrapper) {
         JWSBuilder jwsBuilder = new JWSBuilder().type(jwsType);
 
-        // Add x5c certificate chain if available (required by HAIP-6.1.1)
-        // JWSBuilder.sign() will automatically omit kid when x5c is present
+        // Add x5c certificate chain if available (required by HAIP for SD-JWT VC)
+       // see: https://openid.github.io/OpenID4VC-HAIP/openid4vc-high-assurance-interoperability-profile-wg-draft.html#section-6.1
         if (keyWrapper != null) {
             addCertificateHeaders(jwsBuilder, keyWrapper);
         }

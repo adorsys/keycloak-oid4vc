@@ -172,8 +172,10 @@ public class JWSBuilder {
 
         public String sign(SignatureSignerContext signer) {
             if (x5c == null || x5c.isEmpty()) {
+                // No certificate chain → use the key ID
                 kid = signer.getKid();
             } else {
+                // Certificate chain present → omit key ID
                 kid = null;
             }
 
