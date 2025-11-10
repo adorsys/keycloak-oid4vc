@@ -155,6 +155,8 @@ public class OID4VCIssuerEndpoint {
 
     private Cors cors;
 
+    private AuthenticationManager.AuthResult cachedAuthResult;
+
     private static final String CODE_LIFESPAN_REALM_ATTRIBUTE_KEY = "preAuthorizedCodeLifespanS";
     private static final int DEFAULT_CODE_LIFESPAN_S = 30;
 
@@ -409,7 +411,9 @@ public class OID4VCIssuerEndpoint {
         String vcIssuanceFlow = clientSession.getNote(PreAuthorizedCodeGrantType.VC_ISSUANCE_FLOW);
 
         if (vcIssuanceFlow == null || !vcIssuanceFlow.equals(PreAuthorizedCodeGrantTypeFactory.GRANT_TYPE)) {
-            AccessToken accessToken = bearerTokenAuthenticator.authenticate().token();
+            // Use getAuthResult() instead of bearerTokenAuthenticator.authenticate() directly
+            // This ensures we benefit from the cachedAuthResult caching that prevents DPoP proof reuse
+            AccessToken accessToken = getAuthResult().getToken();
             if (Arrays.stream(accessToken.getScope().split(" "))
                     .noneMatch(tokenScope -> tokenScope.equals(requestedCredential.getScope()))) {
                 LOGGER.debugf("Scope check failure: required scope = %s, " +
@@ -959,13 +963,17 @@ public class OID4VCIssuerEndpoint {
     }
 
     private AuthenticationManager.AuthResult getAuthResult() {
+        if (cachedAuthResult != null) {
+            return cachedAuthResult;
+        }
+
         AuthenticationManager.AuthResult authResult = bearerTokenAuthenticator.authenticate();
         if (authResult == null) {
             throw new BadRequestException(getErrorResponse(ErrorType.INVALID_TOKEN));
         }
 
         // Validate DPoP nonce if present in the DPoP proof
-        DPoP dPoP = session.getAttribute(DPoPUtil.DPOP_SESSION_ATTRIBUTE, DPoP.class);
+        DPoP dPoP = (DPoP) session.getAttribute(DPoPUtil.DPOP_SESSION_ATTRIBUTE);
         if (dPoP != null) {
             Object nonceClaim = Optional.ofNullable(dPoP.getOtherClaims())
                     .map(m -> m.get("nonce"))
@@ -987,16 +995,25 @@ public class OID4VCIssuerEndpoint {
             }
         }
 
-        return authResult;
+        // Cache for this request lifecycle
+        cachedAuthResult = authResult;
+        return cachedAuthResult;
     }
 
     // get the auth result from the authentication manager
     private AuthenticationManager.AuthResult getAuthResult(WebApplicationException errorResponse) {
+        if (cachedAuthResult != null) {
+            return cachedAuthResult;
+        }
+
         AuthenticationManager.AuthResult authResult = bearerTokenAuthenticator.authenticate();
         if (authResult == null) {
             throw errorResponse;
         }
-        return authResult;
+
+        // Cache for this request lifecycle
+        cachedAuthResult = authResult;
+        return cachedAuthResult;
     }
 
     /**
@@ -1031,7 +1048,7 @@ public class OID4VCIssuerEndpoint {
                 .filter(Objects::nonNull)
                 .toList();
 
-        VCIssuanceContext vcIssuanceContext = getVCToSign(protocolMappers, credentialConfig, authResult, credentialRequestVO);
+        VCIssuanceContext vcIssuanceContext = getVCToSign(protocolMappers, credentialConfig, authResult, credentialRequestVO, credentialScopeModel);
 
         // Enforce key binding prior to signing if necessary
         enforceKeyBindingIfProofProvided(vcIssuanceContext);
@@ -1118,7 +1135,8 @@ public class OID4VCIssuerEndpoint {
 
     // builds the unsigned credential by applying all protocol mappers.
     private VCIssuanceContext getVCToSign(List<OID4VCMapper> protocolMappers, SupportedCredentialConfiguration credentialConfig,
-                                          AuthenticationManager.AuthResult authResult, CredentialRequest credentialRequestVO) {
+                                          AuthenticationManager.AuthResult authResult, CredentialRequest credentialRequestVO,
+                                          CredentialScopeModel credentialScopeModel) {
 
         // Compute issuance date and apply correlation-mitigation according to realm configuration
         Instant issuance = Instant.ofEpochMilli(timeProvider.currentTimeMillis());
@@ -1126,7 +1144,7 @@ public class OID4VCIssuerEndpoint {
         Instant normalizedIssuance = timeClaimNormalizer.normalize(issuance);
 
         // Compute expiration date from client scope configuration and normalize it
-        CredentialScopeModel clientScopeModel = getClientScopeModel(credentialConfig);
+        CredentialScopeModel clientScopeModel = credentialScopeModel;
         Integer expiryInSeconds = clientScopeModel.getExpiryInSeconds();
         Instant expiration = normalizedIssuance.plusSeconds(expiryInSeconds);
         Instant normalizedExpiration = timeClaimNormalizer.normalize(expiration);
