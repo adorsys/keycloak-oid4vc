@@ -27,6 +27,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.keycloak.common.VerificationException;
+import org.keycloak.crypto.KeyWrapper;
 import org.keycloak.crypto.SignatureSignerContext;
 import org.keycloak.jose.jws.JWSInput;
 
@@ -46,6 +47,10 @@ public class IssuerSignedJWT extends SdJws {
 
     public IssuerSignedJWT(JsonNode payload, SignatureSignerContext signer, String jwsType) {
         super(payload, signer, jwsType);
+    }
+
+    public IssuerSignedJWT(JsonNode payload, SignatureSignerContext signer, String jwsType, KeyWrapper keyWrapper) {
+        super(payload, signer, jwsType, keyWrapper);
     }
 
     public static IssuerSignedJWT fromJws(String jwsString) {
@@ -68,6 +73,11 @@ public class IssuerSignedJWT extends SdJws {
     private IssuerSignedJWT(List<SdJwtClaim> claims, List<DecoyClaim> decoyClaims, String hashAlg,
                             boolean nestedDisclosures, SignatureSignerContext signer, String jwsType) {
         super(generatePayloadString(claims, decoyClaims, hashAlg, nestedDisclosures), signer, jwsType);
+    }
+
+    private IssuerSignedJWT(List<SdJwtClaim> claims, List<DecoyClaim> decoyClaims, String hashAlg,
+                            boolean nestedDisclosures, SignatureSignerContext signer, String jwsType, KeyWrapper keyWrapper) {
+        super(generatePayloadString(claims, decoyClaims, hashAlg, nestedDisclosures), signer, jwsType, keyWrapper);
     }
 
     /*
@@ -191,6 +201,7 @@ public class IssuerSignedJWT extends SdJws {
         private List<DecoyClaim> decoyClaims;
         private boolean nestedDisclosures;
         private String jwsType;
+        private KeyWrapper keyWrapper;
 
         public Builder withClaims(List<SdJwtClaim> claims) {
             this.claims = claims;
@@ -222,6 +233,11 @@ public class IssuerSignedJWT extends SdJws {
             return this;
         }
 
+        public Builder withKeyWrapper(KeyWrapper keyWrapper) {
+            this.keyWrapper = keyWrapper;
+            return this;
+        }
+
         public IssuerSignedJWT build() {
             // Preinitialize hashAlg to sha-256 if not provided
             hashAlg = hashAlg == null ? "sha-256" : hashAlg;
@@ -230,7 +246,11 @@ public class IssuerSignedJWT extends SdJws {
             claims = claims == null ? Collections.emptyList() : claims;
             decoyClaims = decoyClaims == null ? Collections.emptyList() : decoyClaims;
             if (signer != null) {
-                return new IssuerSignedJWT(claims, decoyClaims, hashAlg, nestedDisclosures, signer, jwsType);
+                if (keyWrapper != null) {
+                    return new IssuerSignedJWT(claims, decoyClaims, hashAlg, nestedDisclosures, signer, jwsType, keyWrapper);
+                } else {
+                    return new IssuerSignedJWT(claims, decoyClaims, hashAlg, nestedDisclosures, signer, jwsType);
+                }
             } else {
                 return new IssuerSignedJWT(claims, decoyClaims, hashAlg, nestedDisclosures);
             }

@@ -19,10 +19,12 @@ package org.keycloak.sdjwt;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 
 import org.keycloak.common.VerificationException;
+import org.keycloak.crypto.KeyWrapper;
 import org.keycloak.crypto.SignatureSignerContext;
 import org.keycloak.crypto.SignatureVerifierContext;
 import org.keycloak.jose.jws.JWSBuilder;
@@ -76,12 +78,36 @@ public abstract class SdJws {
 
     protected SdJws(JsonNode payload, SignatureSignerContext signer, String jwsType) {
         this.payload = payload;
-        this.jwsInput = sign(payload, signer, jwsType);
+        this.jwsInput = sign(payload, signer, jwsType, null);
+    }
+
+    protected SdJws(JsonNode payload, SignatureSignerContext signer, String jwsType, KeyWrapper keyWrapper) {
+        this.payload = payload;
+        this.jwsInput = sign(payload, signer, jwsType, keyWrapper);
     }
 
     protected static JWSInput sign(JsonNode payload, SignatureSignerContext signer, String jwsType) {
-        String jwsString = new JWSBuilder().type(jwsType).jsonContent(payload).sign(signer);
+        return sign(payload, signer, jwsType, null);
+    }
+
+    protected static JWSInput sign(JsonNode payload, SignatureSignerContext signer, String jwsType, KeyWrapper keyWrapper) {
+        JWSBuilder jwsBuilder = new JWSBuilder().type(jwsType);
+
+        // Add x5c certificate chain if available (required by HAIP-6.1.1)
+        if (keyWrapper != null) {
+            addCertificateHeaders(jwsBuilder, keyWrapper);
+        }
+        
+        String jwsString = jwsBuilder.jsonContent(payload).sign(signer);
         return parse(jwsString);
+    }
+
+    private static void addCertificateHeaders(JWSBuilder jwsBuilder, KeyWrapper keyWrapper) {
+        if (keyWrapper.getCertificateChain() != null && !keyWrapper.getCertificateChain().isEmpty()) {
+            jwsBuilder.x5c(keyWrapper.getCertificateChain());
+        } else if (keyWrapper.getCertificate() != null) {
+            jwsBuilder.x5c(Collections.singletonList(keyWrapper.getCertificate()));
+        }
     }
 
     public void verifySignature(SignatureVerifierContext verifier) throws VerificationException {

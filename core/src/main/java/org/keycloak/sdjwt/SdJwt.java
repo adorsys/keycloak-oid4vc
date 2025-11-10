@@ -25,6 +25,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import org.keycloak.common.VerificationException;
+import org.keycloak.crypto.KeyWrapper;
 import org.keycloak.crypto.SignatureSignerContext;
 import org.keycloak.crypto.SignatureVerifierContext;
 import org.keycloak.sdjwt.vp.KeyBindingJWT;
@@ -52,18 +53,32 @@ public class SdJwt {
                   SignatureSignerContext signer,
                   String hashAlgorithm,
                   String jwsType) {
+        this(disclosureSpec, claimSet, nesteSdJwts, keyBindingJWT, signer, hashAlgorithm, jwsType, null);
+    }
+
+    private SdJwt(DisclosureSpec disclosureSpec, JsonNode claimSet, List<SdJwt> nesteSdJwts,
+                  Optional<KeyBindingJWT> keyBindingJWT,
+                  SignatureSignerContext signer,
+                  String hashAlgorithm,
+                  String jwsType,
+                  KeyWrapper keyWrapper) {
         claims = new ArrayList<>();
         claimSet.fields()
                 .forEachRemaining(entry -> claims.add(createClaim(entry.getKey(), entry.getValue(), disclosureSpec)));
 
-        this.issuerSignedJWT = IssuerSignedJWT.builder()
+        IssuerSignedJWT.Builder issuerSignedJWTBuilder = IssuerSignedJWT.builder()
                 .withClaims(claims)
                 .withDecoyClaims(createdDecoyClaims(disclosureSpec))
                 .withNestedDisclosures(!nesteSdJwts.isEmpty())
                 .withSigner(signer)
                 .withHashAlg(hashAlgorithm)
-                .withJwsType(jwsType)
-                .build();
+                .withJwsType(jwsType);
+
+        if (keyWrapper != null) {
+            issuerSignedJWTBuilder.withKeyWrapper(keyWrapper);
+        }
+
+        this.issuerSignedJWT = issuerSignedJWTBuilder.build();
 
         nesteSdJwts.stream().forEach(nestedJwt -> this.disclosures.addAll(nestedJwt.getDisclosures()));
         this.disclosures.addAll(getDisclosureStrings(claims));
@@ -232,6 +247,7 @@ public class SdJwt {
         private final List<SdJwt> nestedSdJwts = new ArrayList<>();
         private String hashAlgorithm;
         private String jwsType;
+        private KeyWrapper keyWrapper;
 
         public Builder withDisclosureSpec(DisclosureSpec disclosureSpec) {
             this.disclosureSpec = disclosureSpec;
@@ -268,8 +284,13 @@ public class SdJwt {
             return this;
         }
 
+        public Builder withKeyWrapper(KeyWrapper keyWrapper) {
+            this.keyWrapper = keyWrapper;
+            return this;
+        }
+
         public SdJwt build() {
-            return new SdJwt(disclosureSpec, claimSet, nestedSdJwts, keyBindingJWT, signer, hashAlgorithm, jwsType);
+            return new SdJwt(disclosureSpec, claimSet, nestedSdJwts, keyBindingJWT, signer, hashAlgorithm, jwsType, keyWrapper);
         }
     }
 
