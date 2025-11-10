@@ -171,7 +171,11 @@ public class JWSBuilder {
     public class EncodingBuilder {
 
         public String sign(SignatureSignerContext signer) {
-            kid = signer.getKid();
+            if (x5c == null || x5c.isEmpty()) {
+                kid = signer.getKid();
+            } else {
+                kid = null;
+            }
 
             StringBuilder buffer = new StringBuilder();
             byte[] data = marshalContent();

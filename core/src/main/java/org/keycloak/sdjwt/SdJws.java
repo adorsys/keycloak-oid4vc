@@ -94,6 +94,7 @@ public abstract class SdJws {
         JWSBuilder jwsBuilder = new JWSBuilder().type(jwsType);
 
         // Add x5c certificate chain if available (required by HAIP-6.1.1)
+        // JWSBuilder.sign() will automatically omit kid when x5c is present
         if (keyWrapper != null) {
             addCertificateHeaders(jwsBuilder, keyWrapper);
         }
