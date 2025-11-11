@@ -995,25 +995,17 @@ public class OID4VCIssuerEndpoint {
             }
         }
 
-        // Cache for this request lifecycle
         cachedAuthResult = authResult;
         return cachedAuthResult;
     }
 
     // get the auth result from the authentication manager
     private AuthenticationManager.AuthResult getAuthResult(WebApplicationException errorResponse) {
-        if (cachedAuthResult != null) {
-            return cachedAuthResult;
-        }
-
-        AuthenticationManager.AuthResult authResult = bearerTokenAuthenticator.authenticate();
-        if (authResult == null) {
+        try {
+            return getAuthResult();
+        } catch (BadRequestException e) {
             throw errorResponse;
         }
-
-        // Cache for this request lifecycle
-        cachedAuthResult = authResult;
-        return cachedAuthResult;
     }
 
     /**

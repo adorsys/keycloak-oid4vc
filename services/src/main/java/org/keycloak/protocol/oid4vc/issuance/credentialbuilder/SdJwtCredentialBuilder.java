@@ -79,8 +79,11 @@ public class SdJwtCredentialBuilder implements CredentialBuilder {
         // Set exp claim from verifiable credential expiration date
         // expiry is optional, but should be set if available to comply with HAIP
         // see: https://openid.github.io/OpenID4VC-HAIP/openid4vc-high-assurance-interoperability-profile-wg-draft.html#section-6.1
-        Optional.ofNullable(verifiableCredential.getExpirationDate())
-                .ifPresent(d -> claimSet.put("exp", d.getEpochSecond()));
+        // Only set if not already set by a protocol mapper
+        if (!claimSet.containsKey("exp")) {
+            Optional.ofNullable(verifiableCredential.getExpirationDate())
+                    .ifPresent(d -> claimSet.put("exp", d.getEpochSecond()));
+        }
 
         // jti, nbf, and iat are all optional. So need to be set by a protocol mapper if needed.
         // see: https://www.ietf.org/archive/id/draft-ietf-oauth-sd-jwt-vc-03.html#name-registered-jwt-claims

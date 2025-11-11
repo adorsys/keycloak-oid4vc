@@ -18,7 +18,6 @@
 package org.keycloak.protocol.oid4vc.issuance.signing;
 
 import org.jboss.logging.Logger;
-import org.keycloak.crypto.KeyWrapper;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.CredentialBody;
 import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.SdJwtCredentialBody;
@@ -46,13 +45,6 @@ public class SdJwtCredentialSigner extends AbstractCredentialSigner<String> {
         }
 
         LOGGER.debugf("Sign credentials to sd-jwt format.");
-
-        // Get the KeyWrapper to extract certificate chain for x5c header (required by HAIP-6.1.1)
-        KeyWrapper signingKey = getKey(
-                credentialBuildConfig.getSigningKeyId(),
-                credentialBuildConfig.getSigningAlgorithm()
-        );
-
-        return sdJwtCredentialBody.sign(getSigner(credentialBuildConfig), signingKey);
+        return sdJwtCredentialBody.sign(getSigner(credentialBuildConfig));
     }
 }

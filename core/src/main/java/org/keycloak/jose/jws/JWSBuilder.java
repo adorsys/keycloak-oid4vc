@@ -121,7 +121,9 @@ public class JWSBuilder {
         }
 
         if (type != null) builder.append(",\"typ\" : \"").append(type).append("\"");
-        if (kid != null) builder.append(",\"kid\" : \"").append(kid).append("\"");
+        if (kid != null && (x5c == null || x5c.isEmpty())) {
+            builder.append(",\"kid\" : \"").append(kid).append("\"");
+        }
         if (x5t != null) builder.append(",\"x5t\" : \"").append(x5t).append("\"");
         if (x5c != null && !x5c.isEmpty()) {
             builder.append(",\"x5c\" : [");
@@ -171,13 +173,7 @@ public class JWSBuilder {
     public class EncodingBuilder {
 
         public String sign(SignatureSignerContext signer) {
-            if (x5c == null || x5c.isEmpty()) {
-                // No certificate chain → use the key ID
-                kid = signer.getKid();
-            } else {
-                // Certificate chain present → omit key ID
-                kid = null;
-            }
+            kid = signer.getKid();
 
             StringBuilder buffer = new StringBuilder();
             byte[] data = marshalContent();

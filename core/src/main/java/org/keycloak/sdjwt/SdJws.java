@@ -19,15 +19,15 @@ package org.keycloak.sdjwt;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
-import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 
 import org.keycloak.common.VerificationException;
-import org.keycloak.crypto.KeyWrapper;
 import org.keycloak.crypto.SignatureSignerContext;
 import org.keycloak.crypto.SignatureVerifierContext;
 import org.keycloak.jose.jws.JWSBuilder;
+
+import java.security.cert.X509Certificate;
 import org.keycloak.jose.jws.JWSHeader;
 import org.keycloak.jose.jws.JWSInput;
 import org.keycloak.jose.jws.JWSInputException;
@@ -78,37 +78,21 @@ public abstract class SdJws {
 
     protected SdJws(JsonNode payload, SignatureSignerContext signer, String jwsType) {
         this.payload = payload;
-        this.jwsInput = sign(payload, signer, jwsType, null);
-    }
-
-    protected SdJws(JsonNode payload, SignatureSignerContext signer, String jwsType, KeyWrapper keyWrapper) {
-        this.payload = payload;
-        this.jwsInput = sign(payload, signer, jwsType, keyWrapper);
+        this.jwsInput = sign(payload, signer, jwsType);
     }
 
     protected static JWSInput sign(JsonNode payload, SignatureSignerContext signer, String jwsType) {
-        return sign(payload, signer, jwsType, null);
-    }
-
-    protected static JWSInput sign(JsonNode payload, SignatureSignerContext signer, String jwsType, KeyWrapper keyWrapper) {
         JWSBuilder jwsBuilder = new JWSBuilder().type(jwsType);
 
         // Add x5c certificate chain if available (required by HAIP for SD-JWT VC)
-       // see: https://openid.github.io/OpenID4VC-HAIP/openid4vc-high-assurance-interoperability-profile-wg-draft.html#section-6.1
-        if (keyWrapper != null) {
-            addCertificateHeaders(jwsBuilder, keyWrapper);
+        // see: https://openid.github.io/OpenID4VC-HAIP/openid4vc-high-assurance-interoperability-profile-wg-draft.html#section-6.1
+        List<X509Certificate> certificateChain = signer.getCertificateChain();
+        if (certificateChain != null && !certificateChain.isEmpty()) {
+            jwsBuilder.x5c(certificateChain);
         }
         
         String jwsString = jwsBuilder.jsonContent(payload).sign(signer);
         return parse(jwsString);
-    }
-
-    private static void addCertificateHeaders(JWSBuilder jwsBuilder, KeyWrapper keyWrapper) {
-        if (keyWrapper.getCertificateChain() != null && !keyWrapper.getCertificateChain().isEmpty()) {
-            jwsBuilder.x5c(keyWrapper.getCertificateChain());
-        } else if (keyWrapper.getCertificate() != null) {
-            jwsBuilder.x5c(Collections.singletonList(keyWrapper.getCertificate()));
-        }
     }
 
     public void verifySignature(SignatureVerifierContext verifier) throws VerificationException {
