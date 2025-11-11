@@ -71,6 +71,7 @@ public class ElytronCertificateUtilsProvider implements CertificateUtilsProvider
      * @param caPrivateKey the CA private key
      * @param caCert the CA certificate
      * @param subject the subject name
+     * @param subjectAltNames the subject alternative names
      *
      * @return the x509 certificate
      *
@@ -79,8 +80,11 @@ public class ElytronCertificateUtilsProvider implements CertificateUtilsProvider
     @Override
     public X509Certificate generateV3Certificate(KeyPair keyPair, PrivateKey caPrivateKey,
             X509Certificate caCert,
-            String subject) throws Exception {
+            String subject, List<String> subjectAltNames) throws Exception {
         try {
+            if (subjectAltNames != null && !subjectAltNames.isEmpty()) {
+                throw new UnsupportedOperationException("SANs not supported yet by this concrete provider");
+            }
 
             X500Principal subjectdn = subjectToX500Principle(subject);
             X500Principal issuerdn = caCert.getSubjectX500Principal();
