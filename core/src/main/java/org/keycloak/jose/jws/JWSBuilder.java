@@ -121,9 +121,7 @@ public class JWSBuilder {
         }
 
         if (type != null) builder.append(",\"typ\" : \"").append(type).append("\"");
-        if (kid != null && (x5c == null || x5c.isEmpty())) {
-            builder.append(",\"kid\" : \"").append(kid).append("\"");
-        }
+        if (kid != null) builder.append(",\"kid\" : \"").append(kid).append("\"");
         if (x5t != null) builder.append(",\"x5t\" : \"").append(x5t).append("\"");
         if (x5c != null && !x5c.isEmpty()) {
             builder.append(",\"x5c\" : [");

@@ -1004,6 +1004,7 @@ public class OID4VCIssuerEndpoint {
         try {
             return getAuthResult();
         } catch (BadRequestException e) {
+            LOGGER.debugf(e, "Authentication failed, throwing error response");
             throw errorResponse;
         }
     }

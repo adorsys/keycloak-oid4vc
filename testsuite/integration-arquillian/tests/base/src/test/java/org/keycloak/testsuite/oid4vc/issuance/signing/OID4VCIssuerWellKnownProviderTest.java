@@ -196,12 +196,8 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
                 assertEquals("Algorithm should be RS256", "RS256", header.getAlgorithm().name());
                 assertEquals("Type should be openidvci-issuer-metadata+jwt",
                         SIGNED_METADATA_JWT_TYPE, header.getType());
-                if (header.getX5c() != null && !header.getX5c().isEmpty()) {
-                    assertNull("Key ID should be omitted when x5c is present", header.getKeyId());
-                    assertNotNull("x5c header should be present if certificates are configured", header.getX5c());
-                } else {
-                    assertNotNull("Key ID should be present when x5c is not available", header.getKeyId());
-                }
+                assertNotNull("Key ID should be present", header.getKeyId());
+                assertNotNull("x5c header should be present if certificates are configured", header.getX5c());
 
                 // Validate JWT claims
                 Map<String, Object> claims = JsonSerialization.readValue(jwsInput.getContent(), Map.class);
