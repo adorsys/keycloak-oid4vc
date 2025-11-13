@@ -159,15 +159,6 @@ public class AttestationValidatorUtil {
             throw new VCIssuerException("Missing 'iat' claim in attestation");
         }
 
-        if (attestationBody.getNonce() == null) {
-            throw new VCIssuerException("Missing 'nonce' in attestation");
-        }
-
-        CNonceHandler cNonceHandler = keycloakSession.getProvider(CNonceHandler.class);
-        if (cNonceHandler == null) {
-            throw new VCIssuerException("No CNonceHandler available");
-        }
-
         // Get resistance level requirements from configuration
         KeyAttestationsRequired attestationRequirements = getAttestationRequirements(vcIssuanceContext);
 
@@ -186,14 +177,22 @@ public class AttestationValidatorUtil {
                     "user_authentication");
         }
 
-        cNonceHandler.verifyCNonce(
-                attestationBody.getNonce(),
-                List.of(OID4VCIssuerWellKnownProvider.getCredentialsEndpoint(
-                        keycloakSession.getContext())),
-                Map.of(JwtCNonceHandler.SOURCE_ENDPOINT,
-                        OID4VCIssuerWellKnownProvider.getNonceEndpoint(
-                                keycloakSession.getContext()))
-        );
+        // Validate nonce if present. If provided, it must correspond to a nonce value provided by Keycloak.
+        if (attestationBody.getNonce() != null) {
+            CNonceHandler cNonceHandler = keycloakSession.getProvider(CNonceHandler.class);
+            if (cNonceHandler == null) {
+                throw new VCIssuerException("No CNonceHandler available");
+            }
+
+            cNonceHandler.verifyCNonce(
+                    attestationBody.getNonce(),
+                    List.of(OID4VCIssuerWellKnownProvider.getCredentialsEndpoint(
+                            keycloakSession.getContext())),
+                    Map.of(JwtCNonceHandler.SOURCE_ENDPOINT,
+                            OID4VCIssuerWellKnownProvider.getNonceEndpoint(
+                                    keycloakSession.getContext()))
+            );
+        }
 
         // Store attested keys in context for later use
         if (attestationBody.getAttestedKeys() != null) {
