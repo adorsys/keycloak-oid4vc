@@ -128,6 +128,9 @@ public class AttestationValidatorUtil {
         } else if (header.getKeyId() != null) {
             JWK resolvedJwk = keyResolver.resolveKey(header.getKeyId(), rawHeader,
                     JsonSerialization.mapper.convertValue(attestationBody, Map.class));
+            if (resolvedJwk == null) {
+                throw new VCIssuerException("Key with kid '" + header.getKeyId() + "' not found in trusted key registry");
+            }
             verifier = verifierFromResolvedJWK(resolvedJwk, header.getAlgorithm().name(), keycloakSession);
         } else {
             throw new VCIssuerException("Neither x5c nor kid present in attestation JWT header");
