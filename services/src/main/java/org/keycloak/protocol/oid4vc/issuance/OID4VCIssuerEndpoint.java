@@ -604,8 +604,24 @@ public class OID4VCIssuerEndpoint {
         } else {
             // Issue credentials for each proof
             Proofs originalProofs = credentialRequestVO.getProofs();
+            // Determine the proof type from the original proofs
+            String proofType = null;
+            if (originalProofs != null) {
+                if (originalProofs.getJwt() != null && !originalProofs.getJwt().isEmpty()) {
+                    proofType = ProofType.JWT;
+                } else if (originalProofs.getAttestation() != null && !originalProofs.getAttestation().isEmpty()) {
+                    proofType = ProofType.ATTESTATION;
+                }
+            }
+
             for (String currentProof : allProofs) {
-                credentialRequestVO.setProofs(new Proofs().setJwt(List.of(currentProof)));
+                Proofs proofForIteration = new Proofs();
+                if (ProofType.JWT.equals(proofType)) {
+                    proofForIteration.setJwt(List.of(currentProof));
+                } else if (ProofType.ATTESTATION.equals(proofType)) {
+                    proofForIteration.setAttestation(List.of(currentProof));
+                }
+                credentialRequestVO.setProofs(proofForIteration);
                 Object theCredential = getCredential(authResult, supportedCredential, credentialRequestVO);
                 responseVO.addCredential(theCredential);
             }
