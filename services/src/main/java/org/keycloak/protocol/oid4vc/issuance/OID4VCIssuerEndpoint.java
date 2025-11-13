@@ -802,12 +802,27 @@ public class OID4VCIssuerEndpoint {
             return allProofs; // No proofs provided
         }
 
-        if (proofs.getJwt() == null || proofs.getJwt().isEmpty()) {
+        // Count how many proof types are present
+        int proofTypeCount = 0;
+        if (proofs.getJwt() != null && !proofs.getJwt().isEmpty()) {
+            proofTypeCount++;
+            allProofs.addAll(proofs.getJwt());
+        }
+        if (proofs.getAttestation() != null && !proofs.getAttestation().isEmpty()) {
+            proofTypeCount++;
+            allProofs.addAll(proofs.getAttestation());
+        }
+
+        if (proofTypeCount == 0) {
             throw new BadRequestException(getErrorResponse(ErrorType.INVALID_PROOF,
                     "The 'proofs' object must contain exactly one proof type with non-empty array."));
         }
 
-        allProofs.addAll(proofs.getJwt());
+        if (proofTypeCount > 1) {
+            throw new BadRequestException(getErrorResponse(ErrorType.INVALID_PROOF,
+                    "The 'proofs' object must contain exactly one proof type with non-empty array."));
+        }
+
         return allProofs;
     }
 
@@ -1187,6 +1202,11 @@ public class OID4VCIssuerEndpoint {
         // Validate each JWT proof if present
         if (proofs.getJwt() != null && !proofs.getJwt().isEmpty()) {
             validateProofs(vcIssuanceContext, ProofType.JWT);
+        }
+
+        // Validate each attestation proof if present
+        if (proofs.getAttestation() != null && !proofs.getAttestation().isEmpty()) {
+            validateProofs(vcIssuanceContext, ProofType.ATTESTATION);
         }
     }
 
