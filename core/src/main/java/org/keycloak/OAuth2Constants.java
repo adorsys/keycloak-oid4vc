@@ -173,6 +173,10 @@ public interface OAuth2Constants {
     String DPOP_JWT_HEADER_TYPE = "dpop+jwt";
     String ALGS_ATTRIBUTE = "algs";
 
+    // Client Attestation - https://www.ietf.org/archive/id/draft-ietf-oauth-attestation-based-client-auth-07.html
+    String CLIENT_ATTESTATION_HTTP_HEADER = "OAuth-Client-Attestation";
+    String CLIENT_ATTESTATION_POP_HTTP_HEADER = "OAuth-Client-Attestation-PoP";
+
 }
 
 

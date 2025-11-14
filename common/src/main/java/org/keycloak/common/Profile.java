@@ -112,6 +112,8 @@ public class Profile {
 
         DPOP("OAuth 2.0 Demonstrating Proof-of-Possession at the Application Layer", Type.DEFAULT),
 
+        CLIENT_ATTESTATION("OAuth 2.0 Attestation-Based Client Authentication", Type.EXPERIMENTAL),
+
         DEVICE_FLOW("OAuth 2.0 Device Authorization Grant", Type.DEFAULT),
 
         TRANSIENT_USERS("Transient users for brokering", Type.EXPERIMENTAL),

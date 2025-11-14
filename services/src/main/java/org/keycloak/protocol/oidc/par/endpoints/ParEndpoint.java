@@ -20,6 +20,7 @@ package org.keycloak.protocol.oidc.par.endpoints;
 import jakarta.ws.rs.core.MultivaluedMap;
 import org.keycloak.events.Details;
 import org.keycloak.http.HttpRequest;
+import org.keycloak.OAuth2Constants;
 import org.keycloak.OAuthErrorException;
 import org.keycloak.common.Profile;
 import org.keycloak.events.EventBuilder;
@@ -35,9 +36,13 @@ import org.keycloak.protocol.oidc.par.ParResponse;
 import org.keycloak.protocol.oidc.par.clientpolicy.context.PushedAuthorizationRequestContext;
 import org.keycloak.protocol.oidc.par.endpoints.request.ParEndpointRequestParserProcessor;
 import org.keycloak.representations.dpop.DPoP;
+import org.keycloak.representations.oauth.ClientAttestation;
+import org.keycloak.representations.oauth.ClientAttestationPoP;
 import org.keycloak.services.clientpolicy.ClientPolicyException;
 import org.keycloak.services.cors.Cors;
 import org.keycloak.services.util.DPoPUtil;
+import org.keycloak.services.util.ClientAttestationUtil;
+import org.keycloak.services.CorsErrorResponseException;
 import org.keycloak.utils.ProfileHelper;
 
 import jakarta.ws.rs.Consumes;
@@ -103,6 +108,14 @@ public class ParEndpoint extends AbstractParEndpoint {
 
         // https://datatracker.ietf.org/doc/html/rfc9449#section-10.1
         DPoPUtil.handleDPoPHeader(session, event, cors, null);
+
+        // Handle OAuth Client Attestation headers
+        try {
+            ClientAttestationUtil.handleClientAttestationHeaders(session, event, cors);
+        } catch (CorsErrorResponseException ex) {
+            // Re-throw the CORS error response exception to ensure proper HTTP error response
+            throw ex;
+        }
 
         try {
             authorizationRequest = ParEndpointRequestParserProcessor.parseRequest(event, session, client, decodedFormParameters);
