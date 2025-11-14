@@ -689,7 +689,7 @@ export const RealmSettingsTokensTab = ({
           />
           <TimeSelectorControl
             name={convertAttributeNameToForm(
-              "attributes.oid4vci.signed_metadata.lifsespan",
+              "attributes.oid4vci.signed_metadata.lifespan",
             )}
             label={t("signedMetadataLifespan")}
             labelIcon={t("signedMetadataLifespanHelp")}
@@ -754,7 +754,7 @@ export const RealmSettingsTokensTab = ({
           </FormGroup>
           <NumberControl
             name={convertAttributeNameToForm(
-              "attributes.batch_credential_issuance_batch_size",
+              "attributes.oid4vci.batch_credential_issuance.batch_size",
             )}
             label={t("batchIssuanceSize")}
             labelIcon={t("batchIssuanceSizeHelp")}
