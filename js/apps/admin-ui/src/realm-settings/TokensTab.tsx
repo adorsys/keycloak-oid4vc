@@ -5,9 +5,12 @@ import {
   SelectVariant,
   ScrollForm,
   useAlerts,
+  SelectControl,
+  NumberControl,
 } from "@keycloak/keycloak-ui-shared";
 import {
   AlertVariant,
+  Checkbox,
   FormGroup,
   FormHelperText,
   HelperText,
@@ -24,6 +27,7 @@ import { Controller, useFormContext, useWatch } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { FormAccess } from "../components/form/FormAccess";
 import { FixedButtonsGroup } from "../components/form/FixedButtonGroup";
+import { DefaultSwitchControl } from "../components/SwitchControl";
 import { convertAttributeNameToForm } from "../util";
 import {
   TimeSelector,
@@ -673,6 +677,93 @@ export const RealmSettingsTokensTab = ({
             }}
             min={30}
             units={["second", "minute", "hour"]}
+          />
+          <DefaultSwitchControl
+            name={convertAttributeNameToForm(
+              "attributes.oid4vci.signed_metadata.enabled",
+            )}
+            label={t("signedIssuerMetadata")}
+            labelIcon={t("signedIssuerMetadataHelp")}
+            stringify
+            data-testid="signed-metadata-switch"
+          />
+          <TimeSelectorControl
+            name={convertAttributeNameToForm(
+              "attributes.oid4vci.signed_metadata.lifsespan",
+            )}
+            label={t("signedMetadataLifespan")}
+            labelIcon={t("signedMetadataLifespanHelp")}
+            controller={{
+              defaultValue: 60,
+            }}
+            units={["second", "minute", "hour"]}
+            data-testid="signed-metadata-lifespan"
+          />
+          <SelectControl
+            name={convertAttributeNameToForm(
+              "attributes.oid4vci.signed_metadata.alg",
+            )}
+            label={t("signedMetadataSigningAlgorithm")}
+            labelIcon={t("signedMetadataSigningAlgorithmHelp")}
+            controller={{
+              defaultValue: "RS256",
+            }}
+            options={defaultSigAlgOptions.map((p) => ({
+              key: p,
+              value: p,
+            }))}
+            data-testid="signed-metadata-signing-algorithm"
+          />
+          <DefaultSwitchControl
+            name={convertAttributeNameToForm(
+              "attributes.oid4vci.encryption.required",
+            )}
+            label={t("requireEncryption")}
+            labelIcon={t("requireEncryptionHelp")}
+            stringify
+            data-testid="require-encryption-switch"
+          />
+          <FormGroup
+            label={t("supportedCompressionAlgorithms")}
+            labelIcon={
+              <HelpItem
+                helpText={t("supportedCompressionAlgorithmsHelp")}
+                fieldLabelId="supportedCompressionAlgorithms"
+              />
+            }
+            fieldId="supportedCompressionAlgorithms"
+          >
+            <Controller
+              name={convertAttributeNameToForm(
+                "attributes.oid4vci.request.zip.algorithms",
+              )}
+              control={control}
+              defaultValue={"" as any}
+              render={({ field }) => (
+                <Checkbox
+                  id="deflate-compression"
+                  data-testid="deflate-compression-checkbox"
+                  label="DEF"
+                  isChecked={field.value === "DEF"}
+                  onChange={(event) => {
+                    field.onChange(event ? "DEF" : "");
+                  }}
+                />
+              )}
+            />
+          </FormGroup>
+          <NumberControl
+            name={convertAttributeNameToForm(
+              "attributes.batch_credential_issuance_batch_size",
+            )}
+            label={t("batchIssuanceSize")}
+            labelIcon={t("batchIssuanceSizeHelp")}
+            min={2}
+            controller={{
+              defaultValue: 2,
+              rules: { min: 2 },
+            }}
+            data-testid="batch-issuance-size"
           />
           <FixedButtonsGroup
             name="tokens-tab"

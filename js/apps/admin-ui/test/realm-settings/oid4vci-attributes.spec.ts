@@ -200,3 +200,132 @@ test("should show validation error for values below minimum threshold", async ({
     "Please ensure the OID4VCI attribute fields are filled with values 30 seconds or greater.";
   await expect(page.getByText(validationErrorText).first()).toBeVisible();
 });
+
+test("should correctly handle compression algorithms selection", async ({
+  page,
+}) => {
+  await using testBed = await createTestBed();
+  await login(page, { to: toRealmSettings({ realm: testBed.realm }) });
+
+  const tokensTab = page.getByTestId("rs-tokens-tab");
+  await tokensTab.click();
+
+  const oid4vciJumpLink = page.getByTestId("jump-link-oid4vci-attributes");
+  await oid4vciJumpLink.click();
+
+  const compressionSelect = page.getByTestId(
+    "supported-compression-algorithms-select",
+  );
+  await compressionSelect.click();
+  await page.getByText("DEF").click();
+
+  await page.getByTestId("tokens-tab-save").click();
+  await expect(
+    page.getByText("Realm successfully updated").first(),
+  ).toBeVisible();
+
+  const realmData = await adminClient.getRealm(testBed.realm);
+  expect(realmData?.attributes?.["oid4vci.request.zip.algorithms"]).toBe(
+    '["DEF"]',
+  );
+});
+
+test("should conditionally display time correlation fields", async ({
+  page,
+}) => {
+  await using testBed = await createTestBed();
+  await login(page, { to: toRealmSettings({ realm: testBed.realm }) });
+
+  const tokensTab = page.getByTestId("rs-tokens-tab");
+  await tokensTab.click();
+
+  const oid4vciJumpLink = page.getByTestId("jump-link-oid4vci-attributes");
+  await oid4vciJumpLink.click();
+
+  const strategySelect = page.getByTestId("time-correlation-strategy-select");
+  const randomizationWindow = page.getByTestId("randomization-window-input");
+  const roundingUnit = page.getByTestId("rounding-unit-input");
+
+  await expect(randomizationWindow).toBeHidden();
+  await expect(roundingUnit).toBeHidden();
+
+  await strategySelect.click();
+  await page.getByRole("option", { name: "randomization" }).click();
+  await expect(randomizationWindow).toBeVisible();
+  await expect(roundingUnit).toBeHidden();
+
+  await strategySelect.click();
+  await page.getByRole("option", { name: "rounding" }).click();
+  await expect(randomizationWindow).toBeHidden();
+  await expect(roundingUnit).toBeVisible();
+
+  await roundingUnit.fill("300");
+
+  await page.getByTestId("tokens-tab-save").click();
+  await expect(
+    page.getByText("Realm successfully updated").first(),
+  ).toBeVisible();
+
+  const realmData = await adminClient.getRealm(testBed.realm);
+  expect(realmData?.attributes?.["oid4vci.time_correlation.strategy"]).toBe(
+    "ROUNDING",
+  );
+  expect(
+    realmData?.attributes?.["oid4vci.time_correlation.rounding_unit"],
+  ).toBe("18000");
+});
+
+test("should save signed metadata, encryption, and batch issuance settings", async ({
+  page,
+}) => {
+  await using testBed = await createTestBed();
+  await login(page, { to: toRealmSettings({ realm: testBed.realm }) });
+
+  const tokensTab = page.getByTestId("rs-tokens-tab");
+  await tokensTab.click();
+
+  const oid4vciJumpLink = page.getByTestId("jump-link-oid4vci-attributes");
+  await oid4vciJumpLink.click();
+
+  // Signed Metadata
+  const signedMetadataSwitch = page.getByTestId(
+    "signed-metadata-enabled-switch",
+  );
+  await signedMetadataSwitch.click();
+  const signedMetadataLifespan = page.getByTestId(
+    "signed-metadata-lifespan-input",
+  );
+  await signedMetadataLifespan.fill("120");
+  const signedMetadataAlg = page.getByTestId("signed-metadata-alg-select");
+  await signedMetadataAlg.click();
+  await page.getByText("ES256").click();
+
+  // Encryption
+  const requireEncryptionSwitch = page.getByTestId(
+    "require-encryption-enabled-switch",
+  );
+  await requireEncryptionSwitch.click();
+
+  // Batch Issuance
+  const batchIssuanceSize = page.getByTestId("batch-issuance-size-input");
+  await batchIssuanceSize.fill("5");
+
+  // Save and verify
+  await page.getByTestId("tokens-tab-save").click();
+  await expect(
+    page.getByText("Realm successfully updated").first(),
+  ).toBeVisible();
+
+  const realmData = await adminClient.getRealm(testBed.realm);
+  expect(realmData?.attributes?.["oid4vci.signed_metadata.enabled"]).toBe(
+    "true",
+  );
+  expect(realmData?.attributes?.["oid4vci.signed_metadata.lifespan"]).toBe(
+    "7200",
+  );
+  expect(realmData?.attributes?.["oid4vci.signed_metadata.alg"]).toBe("ES256");
+  expect(realmData?.attributes?.["oid4vci.encryption.required"]).toBe("true");
+  expect(
+    realmData?.attributes?.["oid4vci.batch_credential_issuance.batch_size"],
+  ).toBe("5");
+});
