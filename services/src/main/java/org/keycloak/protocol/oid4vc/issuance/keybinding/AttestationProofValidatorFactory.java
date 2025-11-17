@@ -19,17 +19,18 @@ package org.keycloak.protocol.oid4vc.issuance.keybinding;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import org.jboss.logging.Logger;
-import org.keycloak.jose.jwk.JWK;
-import org.keycloak.models.KeycloakSession;
-import org.keycloak.models.RealmModel;
-import org.keycloak.protocol.oid4vc.model.ProofType;
-import org.keycloak.util.JsonSerialization;
 
 import java.io.IOException;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
+import org.keycloak.jose.jwk.JWK;
+import org.keycloak.models.KeycloakSession;
+import org.keycloak.models.RealmModel;
+import org.keycloak.protocol.oid4vc.model.ProofType;
+import org.keycloak.util.JsonSerialization;
 
 /**
  * Factory for creating AttestationProofValidator instances with configurable trusted keys.

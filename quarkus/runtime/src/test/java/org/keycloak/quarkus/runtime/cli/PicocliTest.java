@@ -17,16 +17,6 @@
 
 package org.keycloak.quarkus.runtime.cli;
 
-import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.containsString;
-import static org.hamcrest.Matchers.is;
-import static org.hamcrest.Matchers.not;
-import static org.hamcrest.Matchers.nullValue;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
-
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
@@ -39,23 +29,33 @@ import java.util.Properties;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 
-import org.apache.commons.io.FileUtils;
-import org.junit.Ignore;
-import org.junit.Test;
 import org.keycloak.common.Profile;
 import org.keycloak.config.LoggingOptions;
 import org.keycloak.quarkus.runtime.Environment;
 import org.keycloak.quarkus.runtime.KeycloakMain;
-import org.keycloak.quarkus.runtime.cli.command.AbstractCommand;
 import org.keycloak.quarkus.runtime.cli.command.AbstractAutoBuildCommand;
+import org.keycloak.quarkus.runtime.cli.command.AbstractCommand;
 import org.keycloak.quarkus.runtime.configuration.AbstractConfigurationTest;
 import org.keycloak.quarkus.runtime.configuration.Configuration;
 import org.keycloak.quarkus.runtime.configuration.KeycloakConfigSourceProvider;
 import org.keycloak.quarkus.runtime.configuration.PersistedConfigSource;
 
 import io.smallrye.config.SmallRyeConfig;
+import org.apache.commons.io.FileUtils;
+import org.junit.Ignore;
+import org.junit.Test;
 import picocli.CommandLine;
 import picocli.CommandLine.Help;
+
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.nullValue;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
 public class PicocliTest extends AbstractConfigurationTest {
 
@@ -397,7 +397,7 @@ public class PicocliTest extends AbstractConfigurationTest {
     private NonRunningPicocli build(Consumer<String> outChecker, String... args) {
         int code = CommandLine.ExitCode.OK;
         if (Stream.of(args).anyMatch("start-dev"::equals)) {
-            Environment.setRebuildCheck();
+            Environment.setRebuildCheck(true);
             code = AbstractAutoBuildCommand.REBUILT_EXIT_CODE;
         }
         NonRunningPicocli nonRunningPicocli = pseudoLaunch(args);
@@ -423,7 +423,7 @@ public class PicocliTest extends AbstractConfigurationTest {
         build("build", "--db=dev-file");
 
         NonRunningPicocli nonRunningPicocli = pseudoLaunch("export", "--db=dev-file", "--file=file");
-        assertEquals(AbstractAutoBuildCommand.REBUILT_EXIT_CODE, nonRunningPicocli.exitCode);
+        assertEquals(CommandLine.ExitCode.OK, nonRunningPicocli.exitCode);
         assertFalse(nonRunningPicocli.reaug);
     }
 
@@ -450,7 +450,7 @@ public class PicocliTest extends AbstractConfigurationTest {
         build("start-dev");
 
         NonRunningPicocli nonRunningPicocli = pseudoLaunch("--profile=dev", "export", "--file=file");
-        assertEquals(AbstractAutoBuildCommand.REBUILT_EXIT_CODE, nonRunningPicocli.exitCode);
+        assertEquals(CommandLine.ExitCode.OK, nonRunningPicocli.exitCode);
         assertFalse(nonRunningPicocli.reaug);
     }
 

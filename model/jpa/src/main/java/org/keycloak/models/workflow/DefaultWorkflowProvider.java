@@ -1,9 +1,5 @@
 package org.keycloak.models.workflow;
 
-import static java.util.Optional.ofNullable;
-import static org.keycloak.representations.workflows.WorkflowConstants.CONFIG_ENABLED;
-import static org.keycloak.representations.workflows.WorkflowConstants.CONFIG_NAME;
-
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -15,7 +11,8 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import jakarta.ws.rs.BadRequestException;
-import org.jboss.logging.Logger;
+
+import org.keycloak.common.util.DurationConverter;
 import org.keycloak.common.util.MultivaluedHashMap;
 import org.keycloak.component.ComponentFactory;
 import org.keycloak.component.ComponentModel;
@@ -28,6 +25,13 @@ import org.keycloak.representations.workflows.WorkflowConstants;
 import org.keycloak.representations.workflows.WorkflowRepresentation;
 import org.keycloak.representations.workflows.WorkflowStepRepresentation;
 import org.keycloak.utils.StringUtil;
+
+import org.jboss.logging.Logger;
+
+import static java.util.Optional.ofNullable;
+
+import static org.keycloak.representations.workflows.WorkflowConstants.CONFIG_ENABLED;
+import static org.keycloak.representations.workflows.WorkflowConstants.CONFIG_NAME;
 
 public class DefaultWorkflowProvider implements WorkflowProvider {
 
@@ -128,12 +132,17 @@ public class DefaultWorkflowProvider implements WorkflowProvider {
     }
 
     @Override
-    public void bind(Workflow workflow, ResourceType type, String resourceId) {
+    public void activate(Workflow workflow, ResourceType type, String resourceId) {
         processEvent(Stream.of(workflow), new AdhocWorkflowEvent(type, resourceId));
     }
 
     @Override
-    public void bindToAllEligibleResources(Workflow workflow) {
+    public void deactivate(Workflow workflow, String resourceId) {
+        stateProvider.removeByWorkflowAndResource(workflow.getId(),  resourceId);
+    }
+
+    @Override
+    public void activateForAllEligibleResources(Workflow workflow) {
         if (workflow.isEnabled()) {
             WorkflowProvider provider = getWorkflowProvider(workflow);
             ResourceTypeSelector selector = provider.getResourceTypeSelector(ResourceType.USERS);
@@ -228,8 +237,8 @@ public class DefaultWorkflowProvider implements WorkflowProvider {
                         if (isAlreadyScheduledInSession(event, workflow)) {
                             return;
                         }
-                        // If the workflow has a notBefore set, schedule the first step with it
-                        if (workflow.getNotBefore() != null && workflow.getNotBefore() > 0) {
+                        // If the workflow has a positive notBefore set, schedule the first step with it
+                        if (DurationConverter.isPositiveDuration(workflow.getNotBefore())) {
                             scheduleWorkflow(event, workflow);
                         } else {
                             DefaultWorkflowExecutionContext context = new DefaultWorkflowExecutionContext(session, workflow, event);
@@ -316,7 +325,7 @@ public class DefaultWorkflowProvider implements WorkflowProvider {
                 throw new WorkflowInvalidStateException("Workflow restart step must be the last step.");
             }
             boolean hasScheduledStep = steps.stream()
-                    .anyMatch(step -> Integer.parseInt(ofNullable(step.getAfter()).orElse("0")) > 0);
+                    .anyMatch(step -> DurationConverter.isPositiveDuration(step.getAfter()));
             if (!hasScheduledStep) {
                 throw new WorkflowInvalidStateException("A workflow with a restart step must have at least one step with a time delay.");
             }

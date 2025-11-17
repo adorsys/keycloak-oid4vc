@@ -1,9 +1,10 @@
 package org.keycloak.models.workflow;
 
-import org.jboss.logging.Logger;
 import org.keycloak.models.KeycloakContext;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
+
+import org.jboss.logging.Logger;
 
 final class ScheduleWorkflowTask extends WorkflowTransactionalTask {
 
@@ -32,7 +33,7 @@ final class ScheduleWorkflowTask extends WorkflowTransactionalTask {
         WorkflowStep firstStep = workflow.getSteps().findFirst().orElseThrow(() -> new WorkflowInvalidStateException("No steps found for workflow " + workflow.getName()));
         log.debugf("Scheduling first step '%s' of workflow '%s' for resource %s based on on event %s with notBefore %d",
                 firstStep.getProviderId(), workflow.getName(), event.getResourceId(), event.getOperation(), workflow.getNotBefore());
-        Long originalAfter = firstStep.getAfter();
+        String originalAfter = firstStep.getAfter();
         try {
             firstStep.setAfter(workflow.getNotBefore());
             WorkflowStateProvider stateProvider = session.getProvider(WorkflowStateProvider.class);
