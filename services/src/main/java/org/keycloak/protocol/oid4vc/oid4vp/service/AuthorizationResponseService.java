@@ -33,10 +33,12 @@ import org.keycloak.protocol.oid4vc.oid4vp.model.dto.AuthorizationContext;
 import org.keycloak.protocol.oid4vc.oid4vp.model.dto.AuthorizationContextStatus;
 import org.keycloak.protocol.oid4vc.oid4vp.model.dto.ProcessingError;
 import org.keycloak.protocol.oid4vc.oid4vp.model.prex.Descriptor;
+import org.keycloak.protocol.oidc.OIDCLoginProtocol;
 import org.keycloak.protocol.oidc.utils.OAuth2Code;
 import org.keycloak.protocol.oidc.utils.OAuth2CodeParser;
 import org.keycloak.representations.idm.OAuth2ErrorRepresentation;
 import org.keycloak.sdjwt.vp.SdJwtVP;
+import org.keycloak.services.Urls;
 import org.keycloak.sessions.AuthenticationSessionModel;
 import org.keycloak.utils.MediaType;
 
@@ -207,6 +209,11 @@ public class AuthorizationResponseService {
      * Issues an authorization code provided successful authentication.
      */
     private String produceAuthorizationCode(AuthenticatedClientSessionModel clientSession) {
+        clientSession.setNote(OIDCLoginProtocol.ISSUER, Urls.realmIssuer(
+                session.getContext().getUri().getBaseUri(),
+                session.getContext().getRealm().getName())
+        );
+
         String code = UUID.randomUUID().toString();
         String nonce = SecretGenerator.getInstance().randomString();
         int expiration = Time.currentTime() + clientSession.getRealm().getAccessCodeLifespan();

@@ -595,6 +595,9 @@ public class OID4VPUserAuthEndpointTest extends OID4VCIssuerEndpointTest {
 
         // Assert authenticating user
         assertEquals(opts.getTestUser(), accessToken.getPreferredUsername());
+
+        // Assert token issuer
+        assertEquals(getRealmPath(TEST_REALM_NAME), accessToken.getIssuer());
     }
 
     /**
