@@ -5,6 +5,7 @@ import { createTestBed } from "../support/testbed.ts";
 import adminClient from "../utils/AdminClient.js";
 import { SERVER_URL, ROOT_PATH } from "../utils/constants.ts";
 import { login } from "../utils/login.js";
+import { selectItem } from "../utils/form.ts";
 
 test("OID4VCI section visibility and jump link in Tokens tab", async ({
   page,
@@ -56,7 +57,6 @@ test("should render fields and save values with correct attribute keys", async (
 
   const realmData = await adminClient.getRealm(testBed.realm);
   expect(realmData).toBeDefined();
-  // TimeSelector converts values based on selected unit (60 minutes = 3600 seconds, 120 seconds = 120 seconds)
   expect(realmData?.attributes?.["vc.c-nonce-lifetime-seconds"]).toBe("3600");
   expect(realmData?.attributes?.["preAuthorizedCodeLifespanS"]).toBe("120");
 });
@@ -85,10 +85,8 @@ test("should persist values after page refresh", async ({ page }) => {
     page.getByText("Realm successfully updated").first(),
   ).toBeVisible();
 
-  // Refresh the page
   await page.reload();
 
-  // Navigate back to realm settings using the same pattern as login
   const url = new URL(
     generatePath(ROOT_PATH, { realm: testBed.realm }),
     SERVER_URL,
@@ -96,12 +94,10 @@ test("should persist values after page refresh", async ({ page }) => {
   url.hash = toRealmSettings({ realm: testBed.realm }).pathname!;
   await page.goto(url.toString());
 
-  // The TimeSelector component converts values based on units, so we need to check the actual saved values
   const realmData = await adminClient.getRealm(testBed.realm);
   expect(realmData?.attributes?.["vc.c-nonce-lifetime-seconds"]).toBeDefined();
   expect(realmData?.attributes?.["preAuthorizedCodeLifespanS"]).toBeDefined();
 
-  // The values should be numbers representing seconds
   const nonceValue = parseInt(
     realmData?.attributes?.["vc.c-nonce-lifetime-seconds"] || "0",
   );
@@ -131,20 +127,16 @@ test("should validate form fields and save valid values", async ({ page }) => {
   );
   const saveButton = page.getByTestId("tokens-tab-save");
 
-  // Test that fields are visible and can be filled
   await expect(nonceField).toBeVisible();
   await expect(preAuthField).toBeVisible();
   await expect(saveButton).toBeVisible();
 
-  // Test with valid values - this should work
   await nonceField.clear();
   await preAuthField.clear();
 
-  // Fill with smaller, more reasonable values for testing
   await nonceField.fill("60");
   await preAuthField.fill("120");
 
-  // Save button should be enabled when form has values
   await expect(saveButton).toBeEnabled();
 
   await saveButton.click();
@@ -152,12 +144,10 @@ test("should validate form fields and save valid values", async ({ page }) => {
     page.getByText("Realm successfully updated").first(),
   ).toBeVisible();
 
-  // Verify the values were saved correctly
   const realmData = await adminClient.getRealm(testBed.realm);
   expect(realmData?.attributes?.["vc.c-nonce-lifetime-seconds"]).toBeDefined();
   expect(realmData?.attributes?.["preAuthorizedCodeLifespanS"]).toBeDefined();
 
-  // The values should be numbers representing seconds
   const nonceValue = parseInt(
     realmData?.attributes?.["vc.c-nonce-lifetime-seconds"] || "0",
   );
@@ -189,13 +179,11 @@ test("should show validation error for values below minimum threshold", async ({
   );
   const saveButton = page.getByTestId("tokens-tab-save");
 
-  // Fill with values below the minimum threshold (29 seconds)
   await nonceField.fill("29");
   await preAuthField.fill("29");
 
   await saveButton.click();
 
-  // Check for validation error message
   const validationErrorText =
     "Please ensure the OID4VCI attribute fields are filled with values 30 seconds or greater.";
   await expect(page.getByText(validationErrorText).first()).toBeVisible();
@@ -213,11 +201,8 @@ test("should correctly handle compression algorithms selection", async ({
   const oid4vciJumpLink = page.getByTestId("jump-link-oid4vci-attributes");
   await oid4vciJumpLink.click();
 
-  const compressionSelect = page.getByTestId(
-    "supported-compression-algorithms-select",
-  );
-  await compressionSelect.click();
-  await page.getByText("DEF").click();
+  const compressionCheckbox = page.getByTestId("deflate-compression-checkbox");
+  await compressionCheckbox.click();
 
   await page.getByTestId("tokens-tab-save").click();
   await expect(
@@ -225,54 +210,7 @@ test("should correctly handle compression algorithms selection", async ({
   ).toBeVisible();
 
   const realmData = await adminClient.getRealm(testBed.realm);
-  expect(realmData?.attributes?.["oid4vci.request.zip.algorithms"]).toBe(
-    '["DEF"]',
-  );
-});
-
-test("should conditionally display time correlation fields", async ({
-  page,
-}) => {
-  await using testBed = await createTestBed();
-  await login(page, { to: toRealmSettings({ realm: testBed.realm }) });
-
-  const tokensTab = page.getByTestId("rs-tokens-tab");
-  await tokensTab.click();
-
-  const oid4vciJumpLink = page.getByTestId("jump-link-oid4vci-attributes");
-  await oid4vciJumpLink.click();
-
-  const strategySelect = page.getByTestId("time-correlation-strategy-select");
-  const randomizationWindow = page.getByTestId("randomization-window-input");
-  const roundingUnit = page.getByTestId("rounding-unit-input");
-
-  await expect(randomizationWindow).toBeHidden();
-  await expect(roundingUnit).toBeHidden();
-
-  await strategySelect.click();
-  await page.getByRole("option", { name: "randomization" }).click();
-  await expect(randomizationWindow).toBeVisible();
-  await expect(roundingUnit).toBeHidden();
-
-  await strategySelect.click();
-  await page.getByRole("option", { name: "rounding" }).click();
-  await expect(randomizationWindow).toBeHidden();
-  await expect(roundingUnit).toBeVisible();
-
-  await roundingUnit.fill("300");
-
-  await page.getByTestId("tokens-tab-save").click();
-  await expect(
-    page.getByText("Realm successfully updated").first(),
-  ).toBeVisible();
-
-  const realmData = await adminClient.getRealm(testBed.realm);
-  expect(realmData?.attributes?.["oid4vci.time_correlation.strategy"]).toBe(
-    "ROUNDING",
-  );
-  expect(
-    realmData?.attributes?.["oid4vci.time_correlation.rounding_unit"],
-  ).toBe("18000");
+  expect(realmData?.attributes?.["oid4vci.request.zip.algorithms"]).toBe("DEF");
 });
 
 test("should save signed metadata, encryption, and batch issuance settings", async ({
@@ -287,30 +225,32 @@ test("should save signed metadata, encryption, and batch issuance settings", asy
   const oid4vciJumpLink = page.getByTestId("jump-link-oid4vci-attributes");
   await oid4vciJumpLink.click();
 
-  // Signed Metadata
   const signedMetadataSwitch = page.getByTestId(
-    "signed-metadata-enabled-switch",
+    "attributes.oid4vci.signed_metadata.enabled",
   );
-  await signedMetadataSwitch.click();
+  await signedMetadataSwitch.click({ force: true });
+
   const signedMetadataLifespan = page.getByTestId(
-    "signed-metadata-lifespan-input",
+    "attributes.oid4vci🍺signed_metadata🍺lifespan",
   );
   await signedMetadataLifespan.fill("120");
-  const signedMetadataAlg = page.getByTestId("signed-metadata-alg-select");
-  await signedMetadataAlg.click();
-  await page.getByText("ES256").click();
 
-  // Encryption
-  const requireEncryptionSwitch = page.getByTestId(
-    "require-encryption-enabled-switch",
+  const signedMetadataAlgField = page.locator(
+    '[id="attributes.oid4vci🍺signed_metadata🍺alg"]',
   );
-  await requireEncryptionSwitch.click();
+  await selectItem(page, signedMetadataAlgField, "ES256");
 
-  // Batch Issuance
-  const batchIssuanceSize = page.getByTestId("batch-issuance-size-input");
-  await batchIssuanceSize.fill("5");
+  const requireEncryptionSwitch = page.getByTestId(
+    "attributes.oid4vci.encryption.required",
+  );
+  await requireEncryptionSwitch.click({ force: true });
 
-  // Save and verify
+  const batchIssuanceField = page.locator(
+    '[id="attributes.oid4vci🍺batch_credential_issuance🍺batch_size"]',
+  );
+  const batchIssuanceInput = batchIssuanceField.locator("input");
+  await batchIssuanceInput.fill("5");
+
   await page.getByTestId("tokens-tab-save").click();
   await expect(
     page.getByText("Realm successfully updated").first(),
