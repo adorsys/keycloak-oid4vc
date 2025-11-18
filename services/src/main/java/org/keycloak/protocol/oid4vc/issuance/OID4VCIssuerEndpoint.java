@@ -860,7 +860,11 @@ public class OID4VCIssuerEndpoint {
             }
             credentialRequest.setProofs(proofsArray);
             credentialRequest.setProof(null);
+            validateProofTypes(proofsArray);
+            return;
         }
+
+        validateProofTypes(credentialRequest.getProofs());
     }
 
     private String selectKeyManagementAlg(CredentialResponseEncryptionMetadata metadata, JWK jwk) {
@@ -897,28 +901,33 @@ public class OID4VCIssuerEndpoint {
             return allProofs; // No proofs provided
         }
 
-        // Count how many proof types are present
-        int proofTypeCount = 0;
-        if (proofs.getJwt() != null && !proofs.getJwt().isEmpty()) {
-            proofTypeCount++;
+        // Validation already happened in normalizeProofFields, so we can safely extract proofs
+        if (hasProofEntries(proofs.getJwt())) {
             allProofs.addAll(proofs.getJwt());
-        }
-        if (proofs.getAttestation() != null && !proofs.getAttestation().isEmpty()) {
-            proofTypeCount++;
+        } else if (hasProofEntries(proofs.getAttestation())) {
             allProofs.addAll(proofs.getAttestation());
         }
 
-        if (proofTypeCount == 0) {
-            throw new BadRequestException(getErrorResponse(ErrorType.INVALID_PROOF,
-                    "The 'proofs' object must contain exactly one proof type with non-empty array."));
-        }
-
-        if (proofTypeCount > 1) {
-            throw new BadRequestException(getErrorResponse(ErrorType.INVALID_PROOF,
-                    "The 'proofs' object must contain exactly one proof type with non-empty array."));
-        }
-
         return allProofs;
+    }
+
+    private void validateProofTypes(Proofs proofs) {
+        if (proofs == null) {
+            return;
+        }
+
+        boolean hasJwtProofs = hasProofEntries(proofs.getJwt());
+        boolean hasAttestationProofs = hasProofEntries(proofs.getAttestation());
+
+        if (hasJwtProofs && hasAttestationProofs) {
+            LOGGER.debug("The 'proofs' object must not contain multiple proof types.");
+            throw new BadRequestException(getErrorResponse(ErrorType.INVALID_PROOF,
+                    "The 'proofs' object must not contain multiple proof types."));
+        }
+    }
+
+    private boolean hasProofEntries(List<String> proofs) {
+        return proofs != null && !proofs.isEmpty();
     }
 
     /**
