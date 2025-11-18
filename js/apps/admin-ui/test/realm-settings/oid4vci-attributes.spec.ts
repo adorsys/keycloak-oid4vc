@@ -57,6 +57,7 @@ test("should render fields and save values with correct attribute keys", async (
 
   const realmData = await adminClient.getRealm(testBed.realm);
   expect(realmData).toBeDefined();
+  // TimeSelector converts values based on selected unit (60 minutes = 3600 seconds, 120 seconds = 120 seconds)
   expect(realmData?.attributes?.["vc.c-nonce-lifetime-seconds"]).toBe("3600");
   expect(realmData?.attributes?.["preAuthorizedCodeLifespanS"]).toBe("120");
 });
@@ -85,8 +86,10 @@ test("should persist values after page refresh", async ({ page }) => {
     page.getByText("Realm successfully updated").first(),
   ).toBeVisible();
 
+  // Refresh the page
   await page.reload();
 
+  // Navigate back to realm settings using the same pattern as login
   const url = new URL(
     generatePath(ROOT_PATH, { realm: testBed.realm }),
     SERVER_URL,
@@ -94,10 +97,12 @@ test("should persist values after page refresh", async ({ page }) => {
   url.hash = toRealmSettings({ realm: testBed.realm }).pathname!;
   await page.goto(url.toString());
 
+  // The TimeSelector component converts values based on units, so we need to check the actual saved values
   const realmData = await adminClient.getRealm(testBed.realm);
   expect(realmData?.attributes?.["vc.c-nonce-lifetime-seconds"]).toBeDefined();
   expect(realmData?.attributes?.["preAuthorizedCodeLifespanS"]).toBeDefined();
 
+  // The values should be numbers representing seconds
   const nonceValue = parseInt(
     realmData?.attributes?.["vc.c-nonce-lifetime-seconds"] || "0",
   );
@@ -127,16 +132,20 @@ test("should validate form fields and save valid values", async ({ page }) => {
   );
   const saveButton = page.getByTestId("tokens-tab-save");
 
+  // Test that fields are visible and can be filled
   await expect(nonceField).toBeVisible();
   await expect(preAuthField).toBeVisible();
   await expect(saveButton).toBeVisible();
 
+  // Test with valid values - this should work
   await nonceField.clear();
   await preAuthField.clear();
 
+  // Fill with smaller, more reasonable values for testing
   await nonceField.fill("60");
   await preAuthField.fill("120");
 
+  // Save button should be enabled when form has values
   await expect(saveButton).toBeEnabled();
 
   await saveButton.click();
@@ -144,10 +153,12 @@ test("should validate form fields and save valid values", async ({ page }) => {
     page.getByText("Realm successfully updated").first(),
   ).toBeVisible();
 
+  // Verify the values were saved correctly
   const realmData = await adminClient.getRealm(testBed.realm);
   expect(realmData?.attributes?.["vc.c-nonce-lifetime-seconds"]).toBeDefined();
   expect(realmData?.attributes?.["preAuthorizedCodeLifespanS"]).toBeDefined();
 
+  // The values should be numbers representing seconds
   const nonceValue = parseInt(
     realmData?.attributes?.["vc.c-nonce-lifetime-seconds"] || "0",
   );
@@ -179,11 +190,13 @@ test("should show validation error for values below minimum threshold", async ({
   );
   const saveButton = page.getByTestId("tokens-tab-save");
 
+  // Fill with values below the minimum threshold (29 seconds)
   await nonceField.fill("29");
   await preAuthField.fill("29");
 
   await saveButton.click();
 
+  // Check for validation error message
   const validationErrorText =
     "Please ensure the OID4VCI attribute fields are filled with values 30 seconds or greater.";
   await expect(page.getByText(validationErrorText).first()).toBeVisible();
@@ -268,4 +281,49 @@ test("should save signed metadata, encryption, and batch issuance settings", asy
   expect(
     realmData?.attributes?.["oid4vci.batch_credential_issuance.batch_size"],
   ).toBe("5");
+});
+
+test("should save time-based correlation mitigation settings", async ({
+  page,
+}) => {
+  await using testBed = await createTestBed();
+  await login(page, { to: toRealmSettings({ realm: testBed.realm }) });
+
+  const tokensTab = page.getByTestId("rs-tokens-tab");
+  await tokensTab.click();
+
+  const oid4vciJumpLink = page.getByTestId("jump-link-oid4vci-attributes");
+  await oid4vciJumpLink.click();
+
+  const strategyField = page.locator(
+    '[id="attributes.oid4vci🍺correlation🍺strategy"]',
+  );
+  await selectItem(page, strategyField, "relaxed");
+
+  const randomizationWindowField = page.locator(
+    '[id="attributes.oid4vci🍺correlation🍺randomization_window_seconds"]',
+  );
+  const randomizationWindowInput = randomizationWindowField.locator("input");
+  await randomizationWindowInput.fill("10");
+
+  const roundingUnitField = page.locator(
+    '[id="attributes.oid4vci🍺correlation🍺rounding_unit"]',
+  );
+  await selectItem(page, roundingUnitField, "Minutes");
+
+  await page.getByTestId("tokens-tab-save").click();
+  await expect(
+    page.getByText("Realm successfully updated").first(),
+  ).toBeVisible();
+
+  const realmData = await adminClient.getRealm(testBed.realm);
+  expect(realmData?.attributes?.["oid4vci.correlation.strategy"]).toBe(
+    "relaxed",
+  );
+  expect(
+    realmData?.attributes?.["oid4vci.correlation.randomization_window_seconds"],
+  ).toBe("10");
+  expect(realmData?.attributes?.["oid4vci.correlation.rounding_unit"]).toBe(
+    "minutes",
+  );
 });

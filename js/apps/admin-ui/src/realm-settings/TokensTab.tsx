@@ -765,6 +765,56 @@ export const RealmSettingsTokensTab = ({
             }}
             data-testid="batch-issuance-size"
           />
+          <Text
+            className="kc-override-action-tokens-subtitle"
+            component={TextVariants.h1}
+          >
+            {t("timeBasedCorrelation")}
+          </Text>
+          <SelectControl
+            name={convertAttributeNameToForm(
+              "attributes.oid4vci.correlation.strategy",
+            )}
+            label={t("correlationStrategy")}
+            labelIcon={t("correlationStrategyHelp")}
+            controller={{
+              defaultValue: "strict",
+            }}
+            options={[
+              { key: "strict", value: t("strict") },
+              { key: "relaxed", value: t("relaxed") },
+              { key: "disabled", value: t("disabled") },
+            ]}
+            data-testid="correlation-strategy"
+          />
+          <NumberControl
+            name={convertAttributeNameToForm(
+              "attributes.oid4vci.correlation.randomization_window_seconds",
+            )}
+            label={t("randomizationWindow")}
+            labelIcon={t("randomizationWindowHelp")}
+            min={0}
+            controller={{
+              defaultValue: 0,
+            }}
+            data-testid="randomization-window"
+          />
+          <SelectControl
+            name={convertAttributeNameToForm(
+              "attributes.oid4vci.correlation.rounding_unit",
+            )}
+            label={t("roundingUnit")}
+            labelIcon={t("roundingUnitHelp")}
+            controller={{
+              defaultValue: "seconds",
+            }}
+            options={[
+              { key: "seconds", value: t("seconds") },
+              { key: "minutes", value: t("minutes") },
+              { key: "hours", value: t("hours") },
+            ]}
+            data-testid="rounding-unit"
+          />
           <FixedButtonsGroup
             name="tokens-tab"
             isSubmit
