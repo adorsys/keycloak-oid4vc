@@ -855,9 +855,30 @@ public class OID4VCIssuerEndpoint {
             LOGGER.debugf("Converting single 'proof' field to 'proofs' array for backward compatibility");
             JwtProof singleProof = credentialRequest.getProof();
             Proofs proofsArray = new Proofs();
-            if (singleProof.getJwt() != null) {
-                proofsArray.setJwt(List.of(singleProof.getJwt()));
+
+            String proofType = singleProof.getProofType();
+
+            // Handle attestation proof type (Draft 15 compatibility)
+            if (ProofType.ATTESTATION.equals(proofType)) {
+                String attestationValue = singleProof.getAttestation();
+                if (attestationValue == null) {
+                    attestationValue = singleProof.getJwt();
+                }
+                if (attestationValue != null) {
+                    proofsArray.setAttestation(List.of(attestationValue));
+                }
             }
+            // Handle jwt proof type (default)
+            else {
+                String jwtValue = singleProof.getJwt();
+                if (jwtValue == null) {
+                    jwtValue = singleProof.getAttestation();
+                }
+                if (jwtValue != null) {
+                    proofsArray.setJwt(List.of(jwtValue));
+                }
+            }
+
             credentialRequest.setProofs(proofsArray);
             credentialRequest.setProof(null);
             validateProofTypes(proofsArray);
