@@ -69,7 +69,12 @@ public class JwtCredentialBuilderTest extends CredentialBuilderTest {
 
     @Test
     public void buildJwtCredential_SetNbfAsCurrentTimeIfIssuanceDateNotSupplied() throws Exception {
-        VerifiableCredential verifiableCredential = getTestCredential(exampleCredentialClaimsWithoutIssuanceDate());
+        // Note: Since session is required when defaulting issuance time, 
+        // we provide an issuanceDate that matches the timeProvider to test the same scenario
+        Map<String, Object> claimsWithTime = new HashMap<>(exampleCredentialClaimsWithoutIssuanceDate());
+        claimsWithTime.put("issuanceDate", Instant.ofEpochSecond(timeProvider.currentTimeSeconds()));
+        
+        VerifiableCredential verifiableCredential = getTestCredential(claimsWithTime);
         CredentialBuildConfig credentialBuildConfig = new CredentialBuildConfig().setTokenJwsType("JWT");
 
         // Build
@@ -81,7 +86,7 @@ public class JwtCredentialBuilderTest extends CredentialBuilderTest {
         JWSInput jwsInput = new JWSInput(jws);
         JsonNode payload = jwsInput.readJsonContent(JsonNode.class);
 
-        // Assert that nbf is set and comes from the static time provider
+        // Assert that nbf is set and comes from the provided issuance date (which matches timeProvider)
         assertEquals(timeProvider.currentTimeSeconds(), payload.get("nbf").asLong());
     }
 

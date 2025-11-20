@@ -25,6 +25,8 @@ import org.keycloak.common.VerificationException;
 import org.keycloak.crypto.SignatureSignerContext;
 import org.keycloak.crypto.SignatureVerifierContext;
 import org.keycloak.jose.jws.JWSBuilder;
+
+import java.security.cert.X509Certificate;
 import org.keycloak.jose.jws.JWSHeader;
 import org.keycloak.jose.jws.JWSInput;
 import org.keycloak.jose.jws.JWSInputException;
@@ -79,7 +81,16 @@ public abstract class SdJws {
     }
 
     protected static JWSInput sign(JsonNode payload, SignatureSignerContext signer, String jwsType) {
-        String jwsString = new JWSBuilder().type(jwsType).jsonContent(payload).sign(signer);
+        JWSBuilder jwsBuilder = new JWSBuilder().type(jwsType);
+
+        // Add x5c certificate chain if available (required by HAIP for SD-JWT VC)
+        // see: https://openid.github.io/OpenID4VC-HAIP/openid4vc-high-assurance-interoperability-profile-wg-draft.html#section-6.1
+        List<X509Certificate> certificateChain = signer.getCertificateChain();
+        if (certificateChain != null && !certificateChain.isEmpty()) {
+            jwsBuilder.x5c(certificateChain);
+        }
+        
+        String jwsString = jwsBuilder.jsonContent(payload).sign(signer);
         return parse(jwsString);
     }
 
