@@ -17,14 +17,12 @@
 
 package org.keycloak.models.workflow;
 
-import static java.util.Optional.ofNullable;
-import static org.keycloak.representations.workflows.WorkflowConstants.CONFIG_ENABLED;
-import static org.keycloak.representations.workflows.WorkflowConstants.CONFIG_ERROR;
-import static org.keycloak.representations.workflows.WorkflowConstants.CONFIG_NAME;
-
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Stream;
+
+import jakarta.ws.rs.BadRequestException;
 
 import org.keycloak.common.util.MultivaluedHashMap;
 import org.keycloak.component.ComponentModel;
@@ -33,13 +31,19 @@ import org.keycloak.models.ModelValidationException;
 import org.keycloak.models.RealmModel;
 import org.keycloak.representations.workflows.WorkflowStepRepresentation;
 
+import static java.util.Optional.ofNullable;
+
+import static org.keycloak.representations.workflows.WorkflowConstants.CONFIG_ENABLED;
+import static org.keycloak.representations.workflows.WorkflowConstants.CONFIG_ERROR;
+import static org.keycloak.representations.workflows.WorkflowConstants.CONFIG_NAME;
+
 public class Workflow {
 
+    private final String id;
     private final RealmModel realm;
     private final KeycloakSession session;
     private MultivaluedHashMap<String, String> config;
-    private String id;
-    private Long notBefore;
+    private String notBefore;
 
     public Workflow(KeycloakSession session, ComponentModel c) {
         this.session = session;
@@ -48,9 +52,10 @@ public class Workflow {
         this.config = c.getConfig();
     }
 
-    public Workflow(KeycloakSession session, Map<String, List<String>> config) {
+    public Workflow(KeycloakSession session, String id, Map<String, List<String>> config) {
         this.session = session;
         this.realm = session.getContext().getRealm();
+        this.id = id;
         MultivaluedHashMap<String, String> c = new MultivaluedHashMap<>();
         config.forEach(c::addAll);
         this.config = c;
@@ -72,11 +77,11 @@ public class Workflow {
         return config != null && Boolean.parseBoolean(config.getFirstOrDefault(CONFIG_ENABLED, "true"));
     }
 
-    public Long getNotBefore() {
+    public String getNotBefore() {
         return notBefore;
     }
 
-    public void setNotBefore(Long notBefore) {
+    public void setNotBefore(String notBefore) {
         this.notBefore = notBefore;
     }
 
@@ -92,6 +97,21 @@ public class Workflow {
             config = new MultivaluedHashMap<>();
         }
         config.putSingle(CONFIG_ERROR, message);
+    }
+
+    public void updateConfig(MultivaluedHashMap<String, String> config, List<WorkflowStepRepresentation> steps) {
+        ComponentModel component = getWorkflowComponent(this.id, WorkflowProvider.class.getName());
+        component.setConfig(config);
+        realm.updateComponent(component);
+
+        // check if there are steps to be updated as well
+        if (steps != null) {
+            steps.forEach(step -> {
+                ComponentModel stepComponent = getWorkflowComponent(step.getId(), WorkflowStepProvider.class.getName());
+                stepComponent.setConfig(step.getConfig());
+                realm.updateComponent(stepComponent);
+            });
+        }
     }
 
     public Stream<WorkflowStep> getSteps() {
@@ -133,22 +153,15 @@ public class Workflow {
     }
 
     private WorkflowStep toModel(WorkflowStepRepresentation rep) {
-        WorkflowStep step = new WorkflowStep(rep.getUses(), rep.getConfig());
-        validateStep(step);
-        return step;
+        return new WorkflowStep(rep.getUses(), rep.getConfig());
     }
 
-    private void validateStep(WorkflowStep step) throws ModelValidationException {
-        if (step.getAfter() < 0) {
-            throw new ModelValidationException("Step 'after' time condition cannot be negative.");
-        }
+    private ComponentModel getWorkflowComponent(String id, String providerType) {
+        ComponentModel component = realm.getComponent(id);
 
-        // verify the step does have valid provider
-        WorkflowStepProviderFactory<WorkflowStepProvider> factory = (WorkflowStepProviderFactory<WorkflowStepProvider>) session
-                .getKeycloakSessionFactory().getProviderFactory(WorkflowStepProvider.class, step.getProviderId());
-
-        if (factory == null) {
-            throw new WorkflowInvalidStateException("Step not found: " + step.getProviderId());
+        if (component == null || !Objects.equals(providerType, component.getProviderType())) {
+            throw new BadRequestException("Not a valid resource workflow: " + id);
         }
+        return component;
     }
 }

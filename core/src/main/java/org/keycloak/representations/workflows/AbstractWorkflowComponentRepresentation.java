@@ -1,19 +1,20 @@
 package org.keycloak.representations.workflows;
 
-import static org.keycloak.common.util.reflections.Reflections.isArrayType;
-import static org.keycloak.representations.workflows.WorkflowConstants.CONFIG_WITH;
-
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
+import org.keycloak.common.util.MultivaluedHashMap;
+import org.keycloak.common.util.reflections.Reflections;
+
 import com.fasterxml.jackson.annotation.JsonAnySetter;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import org.keycloak.common.util.MultivaluedHashMap;
-import org.keycloak.common.util.reflections.Reflections;
+
+import static org.keycloak.common.util.reflections.Reflections.isArrayType;
+import static org.keycloak.representations.workflows.WorkflowConstants.CONFIG_WITH;
 
 public abstract class AbstractWorkflowComponentRepresentation {
 
@@ -24,7 +25,7 @@ public abstract class AbstractWorkflowComponentRepresentation {
 
     public AbstractWorkflowComponentRepresentation(String id, MultivaluedHashMap<String, String> config) {
         this.id = id;
-        this.config = config;
+        this.setConfig(config);
     }
 
     public String getId() {
@@ -40,10 +41,12 @@ public abstract class AbstractWorkflowComponentRepresentation {
     }
 
     public void setConfig(MultivaluedHashMap<String, String> config) {
-        if (this.config == null) {
-            this.config = config;
+        if (config != null) {
+            if (this.config == null) {
+                this.config = new MultivaluedHashMap<>();
+            }
+            this.config.putAll(config);
         }
-        this.config.putAll(config);
     }
 
     public void setConfig(String key, String value) {
@@ -77,24 +80,6 @@ public abstract class AbstractWorkflowComponentRepresentation {
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
-    }
-
-    protected <T> T getConfigValuesOrSingle(String key) {
-        if (config == null) {
-            return null;
-        }
-
-        List<String> values = config.get(key);
-
-        if (values == null || values.isEmpty()) {
-            return null;
-        }
-
-        if (values.size() == 1) {
-            return (T) values.get(0);
-        }
-
-        return (T) values;
     }
 
     protected void setConfigValue(String key, Object... values) {
