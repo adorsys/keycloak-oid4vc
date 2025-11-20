@@ -64,6 +64,19 @@ public class KeyAttestationsRequired {
         return this;
     }
 
+    /**
+     * Checks if this object is empty (both key_storage and user_authentication are null or empty).
+     * According to the spec, if the Credential Issuer does not require a key attestation,
+     * the key_attestations_required parameter MUST NOT be present in the metadata.
+     *
+     * @return true if both fields are null or empty, false otherwise
+     */
+    public boolean isEmpty() {
+        boolean keyStorageEmpty = keyStorage == null || keyStorage.isEmpty();
+        boolean userAuthEmpty = userAuthentication == null || userAuthentication.isEmpty();
+        return keyStorageEmpty && userAuthEmpty;
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;

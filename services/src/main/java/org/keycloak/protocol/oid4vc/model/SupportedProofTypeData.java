@@ -58,7 +58,17 @@ public class SupportedProofTypeData {
         return this;
     }
 
+    /**
+     * Returns the key attestations required, or null if empty.
+     * According to the spec, if the Credential Issuer does not require a key attestation,
+     * the key_attestations_required parameter MUST NOT be present in the metadata.
+     *
+     * @return KeyAttestationsRequired if not empty, null otherwise
+     */
     public KeyAttestationsRequired getKeyAttestationsRequired() {
+        if (keyAttestationsRequired != null && keyAttestationsRequired.isEmpty()) {
+            return null;
+        }
         return keyAttestationsRequired;
     }
 
