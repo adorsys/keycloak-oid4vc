@@ -295,21 +295,30 @@ test("should save time-based correlation mitigation settings", async ({
   const oid4vciJumpLink = page.getByTestId("jump-link-oid4vci-attributes");
   await oid4vciJumpLink.click();
 
+  // Set strategy to randomize and fill window
   const strategyField = page.locator(
-    '[id="attributes.oid4vci🍺correlation🍺strategy"]',
+    '[id="attributes.oid4vci🍺time🍺claims🍺strategy"]',
   );
-  await selectItem(page, strategyField, "relaxed");
+  await selectItem(page, strategyField, "Randomize");
 
   const randomizationWindowField = page.locator(
-    '[id="attributes.oid4vci🍺correlation🍺randomization_window_seconds"]',
+    '[id="attributes.oid4vci🍺time🍺randomize🍺window🍺seconds"]',
   );
   const randomizationWindowInput = randomizationWindowField.locator("input");
-  await randomizationWindowInput.fill("10");
+  await randomizationWindowInput.fill("3600");
+
+  await page.getByTestId("tokens-tab-save").click();
+  await expect(
+    page.getByText("Realm successfully updated").first(),
+  ).toBeVisible();
+
+  // Change strategy to round and set unit
+  await selectItem(page, strategyField, "Round");
 
   const roundingUnitField = page.locator(
-    '[id="attributes.oid4vci🍺correlation🍺rounding_unit"]',
+    '[id="attributes.oid4vci🍺time🍺round🍺unit"]',
   );
-  await selectItem(page, roundingUnitField, "Minutes");
+  await selectItem(page, roundingUnitField, "Minute");
 
   await page.getByTestId("tokens-tab-save").click();
   await expect(
@@ -317,13 +326,9 @@ test("should save time-based correlation mitigation settings", async ({
   ).toBeVisible();
 
   const realmData = await adminClient.getRealm(testBed.realm);
-  expect(realmData?.attributes?.["oid4vci.correlation.strategy"]).toBe(
-    "relaxed",
+  expect(realmData?.attributes?.["oid4vci.time.claims.strategy"]).toBe("round");
+  expect(realmData?.attributes?.["oid4vci.time.randomize.window.seconds"]).toBe(
+    "3600",
   );
-  expect(
-    realmData?.attributes?.["oid4vci.correlation.randomization_window_seconds"],
-  ).toBe("10");
-  expect(realmData?.attributes?.["oid4vci.correlation.rounding_unit"]).toBe(
-    "minutes",
-  );
+  expect(realmData?.attributes?.["oid4vci.time.round.unit"]).toBe("MINUTE");
 });

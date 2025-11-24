@@ -41,7 +41,7 @@ import useIsFeatureEnabled, { Feature } from "../utils/useIsFeatureEnabled";
 
 import "./realm-settings-section.css";
 
-type RealmSettingsSessionsTabProps = {
+type RealmSettingsTokensTabProps = {
   realm: RealmRepresentation;
   save: (realm: RealmRepresentation) => void;
 };
@@ -49,7 +49,7 @@ type RealmSettingsSessionsTabProps = {
 export const RealmSettingsTokensTab = ({
   realm,
   save,
-}: RealmSettingsSessionsTabProps) => {
+}: RealmSettingsTokensTabProps) => {
   const { t } = useTranslation();
   const { addAlert } = useAlerts();
   const serverInfo = useServerInfo();
@@ -88,6 +88,11 @@ export const RealmSettingsTokensTab = ({
     name: "revokeRefreshToken",
     defaultValue: false,
   });
+
+  const strategy: string = (useWatch({
+    control,
+    name: convertAttributeNameToForm("attributes.oid4vci.time.claims.strategy"),
+  }) ?? "off") as string;
 
   const sections = [
     {
@@ -769,52 +774,58 @@ export const RealmSettingsTokensTab = ({
             className="kc-override-action-tokens-subtitle"
             component={TextVariants.h1}
           >
-            {t("timeBasedCorrelation")}
+            {t("timeClaimCorrelationMitigation")}
           </Text>
           <SelectControl
             name={convertAttributeNameToForm(
-              "attributes.oid4vci.correlation.strategy",
+              "attributes.oid4vci.time.claims.strategy",
             )}
-            label={t("correlationStrategy")}
-            labelIcon={t("correlationStrategyHelp")}
+            label={t("timeClaimsStrategy")}
+            labelIcon={t("timeClaimsStrategyHelp")}
             controller={{
-              defaultValue: "strict",
+              defaultValue: "off",
             }}
             options={[
-              { key: "strict", value: t("strict") },
-              { key: "relaxed", value: t("relaxed") },
-              { key: "disabled", value: t("disabled") },
+              { key: "off", value: t("off") },
+              { key: "randomize", value: t("randomize") },
+              { key: "round", value: t("round") },
             ]}
-            data-testid="correlation-strategy"
+            data-testid="time-claims-strategy"
           />
-          <NumberControl
-            name={convertAttributeNameToForm(
-              "attributes.oid4vci.correlation.randomization_window_seconds",
-            )}
-            label={t("randomizationWindow")}
-            labelIcon={t("randomizationWindowHelp")}
-            min={0}
-            controller={{
-              defaultValue: 0,
-            }}
-            data-testid="randomization-window"
-          />
-          <SelectControl
-            name={convertAttributeNameToForm(
-              "attributes.oid4vci.correlation.rounding_unit",
-            )}
-            label={t("roundingUnit")}
-            labelIcon={t("roundingUnitHelp")}
-            controller={{
-              defaultValue: "seconds",
-            }}
-            options={[
-              { key: "seconds", value: t("seconds") },
-              { key: "minutes", value: t("minutes") },
-              { key: "hours", value: t("hours") },
-            ]}
-            data-testid="rounding-unit"
-          />
+          {strategy === "randomize" && (
+            <NumberControl
+              name={convertAttributeNameToForm(
+                "attributes.oid4vci.time.randomize.window.seconds",
+              )}
+              label={t("randomizeWindow")}
+              labelIcon={t("randomizeWindowHelp")}
+              min={1}
+              controller={{
+                defaultValue: 86400,
+                rules: { min: 1 },
+              }}
+              data-testid="randomize-window"
+            />
+          )}
+          {strategy === "round" && (
+            <SelectControl
+              name={convertAttributeNameToForm(
+                "attributes.oid4vci.time.round.unit",
+              )}
+              label={t("roundUnit")}
+              labelIcon={t("roundUnitHelp")}
+              controller={{
+                defaultValue: "SECOND",
+              }}
+              options={[
+                { key: "SECOND", value: t("second") },
+                { key: "MINUTE", value: t("minute") },
+                { key: "HOUR", value: t("hour") },
+                { key: "DAY", value: t("day") },
+              ]}
+              data-testid="round-unit"
+            />
+          )}
           <FixedButtonsGroup
             name="tokens-tab"
             isSubmit
