@@ -17,9 +17,11 @@
 
 package org.keycloak.testsuite.oid4vc.issuance.signing;
 
+import java.io.IOException;
+import java.util.Map;
+
 import jakarta.ws.rs.core.Response;
-import org.apache.http.HttpStatus;
-import org.junit.Test;
+
 import org.keycloak.TokenVerifier;
 import org.keycloak.common.VerificationException;
 import org.keycloak.constants.Oid4VciConstants;
@@ -35,8 +37,8 @@ import org.keycloak.sdjwt.vp.SdJwtVP;
 import org.keycloak.services.managers.AppAuthManager;
 import org.keycloak.util.JsonSerialization;
 
-import java.io.IOException;
-import java.util.Map;
+import org.apache.http.HttpStatus;
+import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
@@ -90,7 +92,7 @@ public class OID4VCTimeNormalizationSdJwtTest extends OID4VCSdJwtIssuingEndpoint
 
                 // Parse SD-JWT and check iat rounding (multiple of 86400)
                 SdJwtVP sdJwtVP = SdJwtVP.of(credentialResponse.getCredentials().get(0).getCredential().toString());
-                JsonWebToken jwt = TokenVerifier.create(sdJwtVP.getIssuerSignedJWT().toJws(), JsonWebToken.class).getToken();
+                JsonWebToken jwt = TokenVerifier.create(sdJwtVP.getIssuerSignedJWT().getJws(), JsonWebToken.class).getToken();
                 Long iat = jwt.getIat();
                 assertNotNull(iat);
                 assertEquals(0, iat % 86400);

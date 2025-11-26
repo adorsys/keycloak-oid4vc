@@ -89,6 +89,7 @@ const Fields = ({ readOnly, isOIDC }: DiscoverySettingsProps) => {
           <DefaultSwitchControl
             name="config.validateSignature"
             label={t("validateSignature")}
+            labelIcon={t("validateSignatureHelp")}
             isDisabled={readOnly}
             stringify
           />
@@ -97,6 +98,7 @@ const Fields = ({ readOnly, isOIDC }: DiscoverySettingsProps) => {
               <DefaultSwitchControl
                 name="config.useJwksUrl"
                 label={t("useJwksUrl")}
+                labelIcon={t("useJwksUrlHelp")}
                 isDisabled={readOnly}
                 stringify
               />

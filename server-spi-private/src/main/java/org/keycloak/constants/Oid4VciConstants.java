@@ -19,6 +19,9 @@
 package org.keycloak.constants;
 
 /**
+ * Keycloak specific constants related to OID4VC and related functionality. Useful for example for internal constants (EG. name of Keycloak realm attributes).
+ * For protocol constants defined in the specification, see {@link org.keycloak.OID4VCConstants}
+ *
  * @author Pascal Knüppel
  */
 public final class Oid4VciConstants {
@@ -27,14 +30,9 @@ public final class Oid4VciConstants {
 
     public static final String C_NONCE_LIFETIME_IN_SECONDS = "vc.c-nonce-lifetime-seconds";
 
-    public static final String CREDENTIAL_SUBJECT = "credentialSubject";
-
-    public static final String SIGNED_METADATA_JWT_TYPE = "openidvci-issuer-metadata+jwt";
-
-    // --- Endpoints/Well-Known ---
-    public static final String WELL_KNOWN_OPENID_CREDENTIAL_ISSUER = "openid-credential-issuer";
-    public static final String RESPONSE_TYPE_IMG_PNG = "image/png";
-    public static final String CREDENTIAL_OFFER_URI_CODE_SCOPE = "credential-offer";
+    public static final String TIME_CLAIMS_STRATEGY = "oid4vci.time.claims.strategy";
+    public static final String TIME_RANDOMIZE_WINDOW_SECONDS = "oid4vci.time.randomize.window.seconds";
+    public static final String TIME_ROUND_UNIT = "oid4vci.time.round.unit";
 
     // --- Keybinding/Credential Builder ---
     public static final String SOURCE_ENDPOINT = "source_endpoint";

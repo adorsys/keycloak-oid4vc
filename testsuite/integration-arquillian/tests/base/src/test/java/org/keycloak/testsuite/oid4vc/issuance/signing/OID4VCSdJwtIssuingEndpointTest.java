@@ -323,7 +323,7 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
         CredentialsOffer credentialsOffer = JsonSerialization.readValue(s, CredentialsOffer.class);
 
         // 3. Get the issuer metadata
-        HttpGet getIssuerMetadata = new HttpGet(credentialsOffer.getCredentialIssuer() + "/.well-known/openid-credential-issuer");
+        HttpGet getIssuerMetadata = new HttpGet(credentialsOffer.getIssuerMetadataUrl());
         CloseableHttpResponse issuerMetadataResponse = httpClient.execute(getIssuerMetadata);
         assertEquals(HttpStatus.SC_OK, issuerMetadataResponse.getStatusLine().getStatusCode());
         s = IOUtils.toString(issuerMetadataResponse.getEntity().getContent(), StandardCharsets.UTF_8);
@@ -550,7 +550,7 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
         protected void handleCredentialResponse(CredentialResponse credentialResponse, ClientScopeRepresentation clientScope) throws VerificationException {
             // SDJWT have a special format.
             SdJwtVP sdJwtVP = SdJwtVP.of(credentialResponse.getCredentials().get(0).getCredential().toString());
-            JsonWebToken jsonWebToken = TokenVerifier.create(sdJwtVP.getIssuerSignedJWT().toJws(), JsonWebToken.class).getToken();
+            JsonWebToken jsonWebToken = TokenVerifier.create(sdJwtVP.getIssuerSignedJWT().getJws(), JsonWebToken.class).getToken();
 
             assertNotNull("A valid credential string should have been responded", jsonWebToken);
             assertNotNull("The credentials should include the id claim", jsonWebToken.getId());

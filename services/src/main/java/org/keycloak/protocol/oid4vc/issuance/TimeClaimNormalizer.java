@@ -17,16 +17,18 @@
 
 package org.keycloak.protocol.oid4vc.issuance;
 
-import org.keycloak.models.KeycloakSession;
-import org.keycloak.models.RealmModel;
-
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.Locale;
-import org.jboss.logging.Logger;
+
+import org.keycloak.constants.Oid4VciConstants;
+import org.keycloak.models.KeycloakSession;
+import org.keycloak.models.RealmModel;
 import org.keycloak.utils.StringUtil;
+
+import org.jboss.logging.Logger;
 
 /**
  * Utility to apply correlation-mitigation to time-related claims
@@ -35,17 +37,13 @@ import org.keycloak.utils.StringUtil;
  * Configuration via realm attributes (all optional):
  * - oid4vci.time.claims.strategy: off | randomize | round (default: off)
  * - oid4vci.time.randomize.window.seconds: integer seconds (default: 86400)
- * - oid4vci.time.round.unit: MINUTE | HOUR | DAY (default: DAY)
+ * - oid4vci.time.round.unit: SECOND | MINUTE | HOUR | DAY (default: SECOND)
  *
  * @author <a href="mailto:Rodrick.Awambeng@adorsys.com">Rodrick Awambeng</a>
  */
 public class TimeClaimNormalizer {
 
     private static final Logger logger = Logger.getLogger(TimeClaimNormalizer.class);
-
-    public static final String ATTR_STRATEGY = "oid4vci.time.claims.strategy";
-    public static final String ATTR_RANDOM_WINDOW = "oid4vci.time.randomize.window.seconds";
-    public static final String ATTR_ROUND_UNIT = "oid4vci.time.round.unit";
 
     public enum Strategy {
         OFF,
@@ -54,6 +52,7 @@ public class TimeClaimNormalizer {
     }
 
     public enum RoundUnit {
+        SECOND,
         MINUTE,
         HOUR,
         DAY
@@ -63,18 +62,18 @@ public class TimeClaimNormalizer {
     private final long randomizeWindowSeconds;
     private final RoundUnit roundUnit;
 
-    private static final long DEFAULT_RANDOMIZE_WINDOW = 86400; // 24h default
-    private static final Strategy DEFAULT_STRATEGY = Strategy.OFF;
-    private static final RoundUnit DEFAULT_ROUND_UNIT = RoundUnit.DAY;
+    public static final long DEFAULT_RANDOMIZE_WINDOW = 86400; // 24h default
+    public static final Strategy DEFAULT_STRATEGY = Strategy.OFF;
+    public static final RoundUnit DEFAULT_ROUND_UNIT = RoundUnit.SECOND;
 
     public TimeClaimNormalizer(KeycloakSession session) {
         this(session.getContext().getRealm());
     }
 
     public TimeClaimNormalizer(RealmModel realm) {
-        this.strategy = parseStrategy(realm.getAttribute(ATTR_STRATEGY));
-        this.randomizeWindowSeconds = parseRandomizeWindow(realm.getAttribute(ATTR_RANDOM_WINDOW));
-        this.roundUnit = parseRoundUnit(realm.getAttribute(ATTR_ROUND_UNIT));
+        this.strategy = parseStrategy(realm.getAttribute(Oid4VciConstants.TIME_CLAIMS_STRATEGY));
+        this.randomizeWindowSeconds = parseRandomizeWindow(realm.getAttribute(Oid4VciConstants.TIME_RANDOMIZE_WINDOW_SECONDS));
+        this.roundUnit = parseRoundUnit(realm.getAttribute(Oid4VciConstants.TIME_ROUND_UNIT));
     }
 
     TimeClaimNormalizer(Strategy strategy, Long randomizeWindowSeconds, RoundUnit roundUnit) {
@@ -104,6 +103,7 @@ public class TimeClaimNormalizer {
         // Truncate in UTC by design to ensure consistent, timezone-independent rounding
         ZonedDateTime zdt = original.atZone(ZoneOffset.UTC);
         return switch (roundUnit) {
+            case SECOND -> zdt.truncatedTo(ChronoUnit.SECONDS).toInstant();
             case MINUTE -> zdt.truncatedTo(ChronoUnit.MINUTES).toInstant();
             case HOUR -> zdt.truncatedTo(ChronoUnit.HOURS).toInstant();
             case DAY -> zdt.toLocalDate().atStartOfDay(ZoneOffset.UTC).toInstant();

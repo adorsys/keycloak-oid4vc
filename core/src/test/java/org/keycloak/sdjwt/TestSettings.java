@@ -41,6 +41,8 @@ import org.keycloak.crypto.SignatureVerifierContext;
 
 import com.fasterxml.jackson.databind.JsonNode;
 
+import static org.keycloak.OID4VCConstants.CLAIM_NAME_JWK;
+
 /**
  * Import test-settings from:
  * <a href="https://github.com/openwallet-foundation-labs/sd-jwt-python/blob/main/src/sd_jwt/utils/demo_settings.yml">
@@ -105,7 +107,7 @@ public class TestSettings {
         return getSignatureVerifierContext(keyPair.getPublic(), algorithm, kid);
     }
 
-    private static KeyPair readKeyPair(JsonNode keySetting) {
+    public static KeyPair readKeyPair(JsonNode keySetting) {
         String curveName = keySetting.get("crv").asText();
         String base64UrlEncodedD = keySetting.get("d").asText();
         String base64UrlEncodedX = keySetting.get("x").asText();
@@ -119,8 +121,8 @@ public class TestSettings {
     }
 
     private static PublicKey readPublicKey(JsonNode keyData) {
-        if (keyData.has("jwk")) {
-            keyData = keyData.get("jwk");
+        if (keyData.has(CLAIM_NAME_JWK)) {
+            keyData = keyData.get(CLAIM_NAME_JWK);
         }
         String curveName = keyData.get("crv").asText();
         String base64UrlEncodedX = keyData.get("x").asText();

@@ -37,6 +37,7 @@ import org.keycloak.testframework.server.KeycloakServerConfigBuilder;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.http.HttpMessage;
+import org.apache.http.client.methods.HttpDelete;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPatch;
 import org.apache.http.client.methods.HttpPost;
@@ -90,23 +91,10 @@ public class ClientApiV2Test {
     public void jsonPatchClient() throws Exception {
         HttpPatch request = new HttpPatch(HOSTNAME_LOCAL_ADMIN + "/realms/master/clients/account");
         setAuthHeader(request);
-        request.setEntity(new StringEntity("not json"));
         request.setHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_PATCH_JSON);
         try (var response = client.execute(request)) {
             EntityUtils.consumeQuietly(response.getEntity());
-            assertEquals(400, response.getStatusLine().getStatusCode());
-        }
-
-        request.setEntity(new StringEntity(
-                """
-                [{"op": "add", "path": "/description", "value": "I'm a description"}]
-                """));
-
-        try (var response = client.execute(request)) {
-            assertEquals(200, response.getStatusLine().getStatusCode());
-
-            ClientRepresentation client = mapper.createParser(response.getEntity().getContent()).readValueAs(ClientRepresentation.class);
-            assertEquals("I'm a description", client.getDescription());
+            assertEquals(415, response.getStatusLine().getStatusCode());
         }
     }
 
@@ -171,6 +159,39 @@ public class ClientApiV2Test {
             assertEquals(200, response.getStatusLine().getStatusCode());
             ClientRepresentation client = mapper.createParser(response.getEntity().getContent()).readValueAs(ClientRepresentation.class);
             assertEquals("I'm updated", client.getDescription());
+        }
+    }
+
+    @Test
+    public void deleteClient() throws Exception {
+        HttpPut createRequest = new HttpPut(HOSTNAME_LOCAL_ADMIN + "/realms/master/clients/to-delete");
+        setAuthHeader(createRequest);
+        createRequest.setHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON);
+
+        ClientRepresentation rep = new ClientRepresentation();
+        rep.setClientId("to-delete");
+        rep.setEnabled(true);
+
+        createRequest.setEntity(new StringEntity(mapper.writeValueAsString(rep)));
+
+        try (var response = client.execute(createRequest)) {
+            assertEquals(200, response.getStatusLine().getStatusCode());
+        }
+
+        HttpGet getRequest = new HttpGet(HOSTNAME_LOCAL_ADMIN + "/realms/master/clients/to-delete");
+        setAuthHeader(getRequest);
+        try (var response = client.execute(getRequest)) {
+            assertEquals(200, response.getStatusLine().getStatusCode());
+        }
+
+        HttpDelete deleteRequest = new HttpDelete(HOSTNAME_LOCAL_ADMIN + "/realms/master/clients/to-delete");
+        setAuthHeader(deleteRequest);
+        try (var response = client.execute(deleteRequest)) {
+            assertEquals(204, response.getStatusLine().getStatusCode());
+        }
+
+        try (var response = client.execute(getRequest)) {
+            assertEquals(404, response.getStatusLine().getStatusCode());
         }
     }
 
