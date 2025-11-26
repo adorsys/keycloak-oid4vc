@@ -214,8 +214,8 @@ test("should correctly handle compression algorithms selection", async ({
   const oid4vciJumpLink = page.getByTestId("jump-link-oid4vci-attributes");
   await oid4vciJumpLink.click();
 
-  const compressionCheckbox = page.getByTestId("deflate-compression-checkbox");
-  await compressionCheckbox.click();
+  const compressionSwitch = page.getByTestId("deflate-compression-switch");
+  await compressionSwitch.click();
 
   await page.getByTestId("tokens-tab-save").click();
   await expect(
@@ -223,7 +223,9 @@ test("should correctly handle compression algorithms selection", async ({
   ).toBeVisible();
 
   const realmData = await adminClient.getRealm(testBed.realm);
-  expect(realmData?.attributes?.["oid4vci.request.zip.algorithms"]).toBe("DEF");
+  expect(realmData?.attributes?.["oid4vci.request.zip.algorithms"]).toBe(
+    "true",
+  );
 });
 
 test("should save signed metadata, encryption, and batch issuance settings", async ({

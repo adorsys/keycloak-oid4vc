@@ -10,7 +10,6 @@ import {
 } from "@keycloak/keycloak-ui-shared";
 import {
   AlertVariant,
-  Checkbox,
   FormGroup,
   FormHelperText,
   HelperText,
@@ -92,7 +91,9 @@ export const RealmSettingsTokensTab = ({
   const strategy: string = (useWatch({
     control,
     name: convertAttributeNameToForm("attributes.oid4vci.time.claims.strategy"),
-  }) ?? "off") as string;
+  }) ??
+    realm.attributes?.["oid4vci.time.claims.strategy"] ??
+    "off") as string;
 
   const sections = [
     {
@@ -728,35 +729,15 @@ export const RealmSettingsTokensTab = ({
             stringify
             data-testid="require-encryption-switch"
           />
-          <FormGroup
-            label={t("supportedCompressionAlgorithms")}
-            labelIcon={
-              <HelpItem
-                helpText={t("supportedCompressionAlgorithmsHelp")}
-                fieldLabelId="supportedCompressionAlgorithms"
-              />
-            }
-            fieldId="supportedCompressionAlgorithms"
-          >
-            <Controller
-              name={convertAttributeNameToForm(
-                "attributes.oid4vci.request.zip.algorithms",
-              )}
-              control={control}
-              defaultValue={"" as any}
-              render={({ field }) => (
-                <Checkbox
-                  id="deflate-compression"
-                  data-testid="deflate-compression-checkbox"
-                  label="DEF"
-                  isChecked={field.value === "DEF"}
-                  onChange={(event) => {
-                    field.onChange(event ? "DEF" : "");
-                  }}
-                />
-              )}
-            />
-          </FormGroup>
+          <DefaultSwitchControl
+            name={convertAttributeNameToForm(
+              "attributes.oid4vci.request.zip.algorithms",
+            )}
+            label={t("enableDeflateCompression")}
+            labelIcon={t("enableDeflateCompressionHelp")}
+            data-testid="deflate-compression-switch"
+            stringify
+          />
           <NumberControl
             name={convertAttributeNameToForm(
               "attributes.oid4vci.batch_credential_issuance.batch_size",
