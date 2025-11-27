@@ -202,32 +202,6 @@ test("should show validation error for values below minimum threshold", async ({
   await expect(page.getByText(validationErrorText).first()).toBeVisible();
 });
 
-test("should correctly handle compression algorithms selection", async ({
-  page,
-}) => {
-  await using testBed = await createTestBed();
-  await login(page, { to: toRealmSettings({ realm: testBed.realm }) });
-
-  const tokensTab = page.getByTestId("rs-tokens-tab");
-  await tokensTab.click();
-
-  const oid4vciJumpLink = page.getByTestId("jump-link-oid4vci-attributes");
-  await oid4vciJumpLink.click();
-
-  const compressionSwitch = page.getByTestId("deflate-compression-switch");
-  await compressionSwitch.click();
-
-  await page.getByTestId("tokens-tab-save").click();
-  await expect(
-    page.getByText("Realm successfully updated").first(),
-  ).toBeVisible();
-
-  const realmData = await adminClient.getRealm(testBed.realm);
-  expect(realmData?.attributes?.["oid4vci.request.zip.algorithms"]).toBe(
-    "true",
-  );
-});
-
 test("should save signed metadata, encryption, and batch issuance settings", async ({
   page,
 }) => {
@@ -333,4 +307,80 @@ test("should save time-based correlation mitigation settings", async ({
     "3600",
   );
   expect(realmData?.attributes?.["oid4vci.time.round.unit"]).toBe("MINUTE");
+});
+
+test("should save Deflate Compression setting", async ({ page }) => {
+  await using testBed = await createTestBed();
+  await login(page, { to: toRealmSettings({ realm: testBed.realm }) });
+
+  const tokensTab = page.getByTestId("rs-tokens-tab");
+  await tokensTab.click();
+
+  const oid4vciJumpLink = page.getByTestId("jump-link-oid4vci-attributes");
+  await oid4vciJumpLink.click();
+
+  const deflateSwitch = page.getByTestId(
+    "attributes.oid4vci.request.zip.algorithms",
+  );
+  await deflateSwitch.click({ force: true });
+
+  await page.getByTestId("tokens-tab-save").click();
+  await expect(
+    page.getByText("Realm successfully updated").first(),
+  ).toBeVisible();
+
+  let realmData = await adminClient.getRealm(testBed.realm);
+  expect(realmData?.attributes?.["oid4vci.request.zip.algorithms"]).toBe(
+    "true",
+  );
+
+  // Toggle it off and save again
+  await deflateSwitch.click({ force: true });
+  await page.getByTestId("tokens-tab-save").click();
+  await expect(
+    page.getByText("Realm successfully updated").first(),
+  ).toBeVisible();
+
+  realmData = await adminClient.getRealm(testBed.realm);
+  expect(realmData?.attributes?.["oid4vci.request.zip.algorithms"]).toBe(
+    "false",
+  );
+});
+
+test("should save time-based correlation mitigation settings with offset", async ({
+  page,
+}) => {
+  await using testBed = await createTestBed();
+  await login(page, { to: toRealmSettings({ realm: testBed.realm }) });
+
+  const tokensTab = page.getByTestId("rs-tokens-tab");
+  await tokensTab.click();
+
+  const oid4vciJumpLink = page.getByTestId("jump-link-oid4vci-attributes");
+  await oid4vciJumpLink.click();
+
+  // Set strategy to offset and fill window
+  const strategyField = page.locator(
+    '[id="attributes.oid4vci🍺time🍺claims🍺strategy"]',
+  );
+  await selectItem(page, strategyField, "Offset");
+
+  const offsetWindowField = page.locator(
+    '[id="attributes.oid4vci🍺time🍺offset🍺window🍺seconds"]',
+  );
+  const offsetWindowInput = offsetWindowField.locator("input");
+  await offsetWindowInput.fill("3600");
+
+  await page.getByTestId("tokens-tab-save").click();
+  await expect(
+    page.getByText("Realm successfully updated").first(),
+  ).toBeVisible();
+
+  const realmData = await adminClient.getRealm(testBed.realm);
+  expect(realmData?.attributes?.["oid4vci.time.claims.strategy"]).toBe(
+    "offset",
+  );
+  expect(realmData?.attributes?.["oid4vci.time.offset.window.seconds"]).toBe(
+    "3600",
+  );
 });
