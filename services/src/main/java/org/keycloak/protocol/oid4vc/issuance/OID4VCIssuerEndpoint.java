@@ -91,6 +91,7 @@ import org.keycloak.protocol.oid4vc.model.CredentialsOffer;
 import org.keycloak.protocol.oid4vc.model.ErrorResponse;
 import org.keycloak.protocol.oid4vc.model.ErrorType;
 import org.keycloak.protocol.oid4vc.model.Format;
+import org.keycloak.protocol.oid4vc.model.AttestationProof;
 import org.keycloak.protocol.oid4vc.model.JwtProof;
 import org.keycloak.protocol.oid4vc.model.NonceResponse;
 import org.keycloak.protocol.oid4vc.model.OfferUriType;
@@ -853,30 +854,43 @@ public class OID4VCIssuerEndpoint {
 
         if (credentialRequest.getProof() != null) {
             LOGGER.debugf("Converting single 'proof' field to 'proofs' array for backward compatibility");
-            JwtProof singleProof = credentialRequest.getProof();
+            Object singleProof = credentialRequest.getProof();
             Proofs proofsArray = new Proofs();
 
-            String proofType = singleProof.getProofType();
-
-            // Handle attestation proof type (Draft 15 compatibility)
-            if (ProofType.ATTESTATION.equals(proofType)) {
-                String attestationValue = singleProof.getAttestation();
-                if (attestationValue == null) {
-                    attestationValue = singleProof.getJwt();
+            if (singleProof instanceof Map) {
+                try {
+                    Map<String, Object> proofMap = (Map<String, Object>) singleProof;
+                    if (proofMap.containsKey("attestation")) {
+                        singleProof = JsonSerialization.mapper.convertValue(proofMap, AttestationProof.class);
+                    } else {
+                        singleProof = JsonSerialization.mapper.convertValue(proofMap, JwtProof.class);
+                    }
+                } catch (Exception e) {
+                    String message = "Failed to deserialize proof: " + e.getMessage();
+                    LOGGER.debug(message, e);
+                    throw new BadRequestException(getErrorResponse(ErrorType.INVALID_CREDENTIAL_REQUEST, message));
                 }
+            }
+
+            // Handle AttestationProof
+            if (singleProof instanceof AttestationProof) {
+                AttestationProof attestationProof = (AttestationProof) singleProof;
+                String attestationValue = attestationProof.getAttestation();
                 if (attestationValue != null) {
                     proofsArray.setAttestation(List.of(attestationValue));
                 }
             }
-            // Handle jwt proof type (default)
-            else {
-                String jwtValue = singleProof.getJwt();
-                if (jwtValue == null) {
-                    jwtValue = singleProof.getAttestation();
-                }
+            // Handle JwtProof
+            else if (singleProof instanceof JwtProof) {
+                JwtProof jwtProof = (JwtProof) singleProof;
+                String jwtValue = jwtProof.getJwt();
                 if (jwtValue != null) {
                     proofsArray.setJwt(List.of(jwtValue));
                 }
+            } else {
+                String message = "Unsupported proof type: " + (singleProof != null ? singleProof.getClass().getName() : "null");
+                LOGGER.debug(message);
+                throw new BadRequestException(getErrorResponse(ErrorType.INVALID_CREDENTIAL_REQUEST, message));
             }
 
             credentialRequest.setProofs(proofsArray);

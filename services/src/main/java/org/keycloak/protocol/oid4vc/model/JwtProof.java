@@ -24,7 +24,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
  * Deprecated: Represents a single JWT-based proof (historical 'proof' structure).
  * Prefer using {@link Proofs} with the appropriate array field (e.g., jwt).
  * This class is kept for backward compatibility only.
- * Supports both 'jwt' and 'attestation' proof types as per OID4VCI Draft 15.
+ * Supports 'jwt' proof type as per OID4VCI Draft 15.
  *
  * @see <a href="https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0-15.html#name-credential-request">OID4VCI Credential Request</a>
  */
@@ -34,9 +34,6 @@ public class JwtProof {
 
     @JsonProperty("jwt")
     private String jwt;
-
-    @JsonProperty("attestation")
-    private String attestation;
 
     @JsonProperty("proof_type")
     private String proofType;
@@ -55,15 +52,6 @@ public class JwtProof {
 
     public JwtProof setJwt(String jwt) {
         this.jwt = jwt;
-        return this;
-    }
-
-    public String getAttestation() {
-        return attestation;
-    }
-
-    public JwtProof setAttestation(String attestation) {
-        this.attestation = attestation;
         return this;
     }
 
