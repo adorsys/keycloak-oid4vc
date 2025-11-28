@@ -55,15 +55,18 @@ import org.keycloak.jose.jws.Algorithm;
 import org.keycloak.jose.jws.JWSHeader;
 import org.keycloak.jose.jws.JWSInput;
 import org.keycloak.jose.jws.JWSInputException;
+import org.keycloak.models.KeycloakContext;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerWellKnownProvider;
 import org.keycloak.protocol.oid4vc.issuance.VCIssuanceContext;
 import org.keycloak.protocol.oid4vc.issuance.VCIssuerException;
+import org.keycloak.protocol.oid4vc.model.ErrorType;
 import org.keycloak.protocol.oid4vc.model.ISO18045ResistanceLevel;
 import org.keycloak.protocol.oid4vc.model.KeyAttestationJwtBody;
 import org.keycloak.protocol.oid4vc.model.KeyAttestationsRequired;
 import org.keycloak.protocol.oid4vc.model.SupportedProofTypeData;
 import org.keycloak.util.JsonSerialization;
+import org.jboss.logging.Logger;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -78,7 +81,11 @@ import static org.keycloak.services.clientpolicy.executor.FapiConstant.ALLOWED_A
  */
 public class AttestationValidatorUtil {
 
+    private static final Logger LOGGER = Logger.getLogger(AttestationValidatorUtil.class);
+
     public static final String ATTESTATION_JWT_TYP = "key-attestation+jwt";
+    @Deprecated
+    public static final String LEGACY_ATTESTATION_JWT_TYP = "keyattestation+jwt";
     private static final String CACERTS_PATH = System.getProperty("javax.net.ssl.trustStore",
             System.getProperty("java.home") + "/lib/security/cacerts");
     private static final char[] DEFAULT_TRUSTSTORE_PASSWORD = System.getProperty(
@@ -129,6 +136,9 @@ public class AttestationValidatorUtil {
         } else if (header.getKeyId() != null) {
             JWK resolvedJwk = keyResolver.resolveKey(header.getKeyId(), rawHeader,
                     JsonSerialization.mapper.convertValue(attestationBody, Map.class));
+            if (resolvedJwk == null) {
+                throw new VCIssuerException("Key with kid '" + header.getKeyId() + "' not found in trusted key registry");
+            }
             verifier = verifierFromResolvedJWK(resolvedJwk, header.getAlgorithm().name(), keycloakSession);
         } else {
             throw new VCIssuerException("Neither x5c nor kid present in attestation JWT header");
@@ -157,15 +167,6 @@ public class AttestationValidatorUtil {
             throw new VCIssuerException("Missing 'iat' claim in attestation");
         }
 
-        if (attestationBody.getNonce() == null) {
-            throw new VCIssuerException("Missing 'nonce' in attestation");
-        }
-
-        CNonceHandler cNonceHandler = keycloakSession.getProvider(CNonceHandler.class);
-        if (cNonceHandler == null) {
-            throw new VCIssuerException("No CNonceHandler available");
-        }
-
         // Get resistance level requirements from configuration
         KeyAttestationsRequired attestationRequirements = getAttestationRequirements(vcIssuanceContext);
 
@@ -184,14 +185,34 @@ public class AttestationValidatorUtil {
                     "user_authentication");
         }
 
-        cNonceHandler.verifyCNonce(
-                attestationBody.getNonce(),
-                List.of(OID4VCIssuerWellKnownProvider.getCredentialsEndpoint(
-                        keycloakSession.getContext())),
-                Map.of(JwtCNonceHandler.SOURCE_ENDPOINT,
-                        OID4VCIssuerWellKnownProvider.getNonceEndpoint(
-                                keycloakSession.getContext()))
-        );
+        KeycloakContext keycloakContext = keycloakSession.getContext();
+        CNonceHandler cNonceHandler = keycloakSession.getProvider(CNonceHandler.class);
+
+        // If CNonceHandler is available, nonce endpoint exists and nonce is required
+        boolean nonceRequired = cNonceHandler != null;
+
+        if (nonceRequired && attestationBody.getNonce() == null) {
+            throw new VCIssuerException("Missing 'nonce' in attestation");
+        }
+
+        // Validate nonce if present. If provided, it must correspond to a nonce value provided by Keycloak.
+        if (attestationBody.getNonce() != null) {
+            if (cNonceHandler == null) {
+                throw new VCIssuerException("No CNonceHandler available");
+            }
+
+            try {
+                cNonceHandler.verifyCNonce(
+                        attestationBody.getNonce(),
+                        List.of(OID4VCIssuerWellKnownProvider.getCredentialsEndpoint(keycloakContext)),
+                        Map.of(JwtCNonceHandler.SOURCE_ENDPOINT,
+                                OID4VCIssuerWellKnownProvider.getNonceEndpoint(keycloakContext))
+                );
+            } catch (VerificationException e) {
+                throw new VCIssuerException(ErrorType.INVALID_NONCE,
+                        "The key attestation uses an invalid nonce", e);
+            }
+        }
 
         // Store attested keys in context for later use
         if (attestationBody.getAttestedKeys() != null) {
@@ -264,8 +285,16 @@ public class AttestationValidatorUtil {
                     ". Allowed algorithms: " + ALLOWED_ALGORITHMS);
         }
 
-        if (!ATTESTATION_JWT_TYP.equals(header.getType())) {
-            throw new VCIssuerException("Invalid JWT typ: expected " + ATTESTATION_JWT_TYP);
+        String typ = Optional.ofNullable(header.getType())
+                .map(Object::toString)
+                .orElseThrow(() -> new VCIssuerException("Missing typ in JWS header"));
+
+        if (!ATTESTATION_JWT_TYP.equals(typ)) {
+            if (LEGACY_ATTESTATION_JWT_TYP.equals(typ)) {
+                LOGGER.debugf("Accepting deprecated attestation JWT typ '%s' for backward compatibility", typ);
+            } else {
+                throw new VCIssuerException("Invalid JWT typ: expected " + ATTESTATION_JWT_TYP);
+            }
         }
     }
 

@@ -118,7 +118,7 @@ public abstract class OID4VCTest extends AbstractTestRealmKeycloakTest {
 	protected static final String CONTEXT_URL = "https://www.w3.org/2018/credentials/v1";
 	protected static final URI TEST_DID = URI.create("did:web:test.org");
 	protected static final List<String> TEST_TYPES = List.of("VerifiableCredential");
-	protected static final Instant TEST_EXPIRATION_DATE = Instant.ofEpochSecond(2000);
+protected static final Instant TEST_EXPIRATION_DATE = Instant.ofEpochSecond(4102444799L);
 	protected static final Instant TEST_ISSUANCE_DATE = Instant.ofEpochSecond(1000);
 
 	protected static final KeyWrapper RSA_KEY = getRsaKey();
@@ -640,13 +640,23 @@ public abstract class OID4VCTest extends AbstractTestRealmKeycloakTest {
 													  KeyWrapper attestationKey,
 													  JWK proofJwk,
 													  String cNonce) {
-		return createValidAttestationJwt(session, attestationKey, List.of(proofJwk), cNonce);
-	}
+        return createValidAttestationJwt(session, attestationKey, List.of(proofJwk), cNonce,
+                AttestationValidatorUtil.ATTESTATION_JWT_TYP);
+    }
 
 	protected static String createValidAttestationJwt(KeycloakSession session,
 													  KeyWrapper attestationKey,
 													  List<JWK> proofJwks,
 													  String cNonce) {
+        return createValidAttestationJwt(session, attestationKey, proofJwks, cNonce,
+                AttestationValidatorUtil.ATTESTATION_JWT_TYP);
+    }
+
+    protected static String createValidAttestationJwt(KeycloakSession session,
+                                                      KeyWrapper attestationKey,
+                                                      List<JWK> proofJwks,
+                                                      String cNonce,
+                                                      String typ) {
 		try {
 			KeyAttestationJwtBody payload = new KeyAttestationJwtBody();
 			payload.setIat((long) TIME_PROVIDER.currentTimeSeconds());
@@ -656,7 +666,7 @@ public abstract class OID4VCTest extends AbstractTestRealmKeycloakTest {
 			payload.setUserAuthentication(List.of(ISO18045ResistanceLevel.HIGH.getValue()));
 
 			return new JWSBuilder()
-					.type(AttestationValidatorUtil.ATTESTATION_JWT_TYP)
+					.type(typ)
 					.kid(attestationKey.getKid())
 					.jsonContent(payload)
 					.sign(new ECDSASignatureSignerContext(attestationKey));

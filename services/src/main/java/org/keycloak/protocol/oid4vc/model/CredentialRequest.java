@@ -52,10 +52,11 @@ public class CredentialRequest {
     /**
      * Deprecated: use {@link #proofs} instead.
      * This field is kept only for backward compatibility with clients sending a single 'proof'.
+     * Can be either {@link JwtProof} or {@link AttestationProof} depending on the proof type.
      */
     @Deprecated
     @JsonProperty("proof")
-    private JwtProof proof;
+    private Object proof;
 
     // See: https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#name-format-identifier-3
     @JsonProperty("credential_definition")
@@ -91,11 +92,11 @@ public class CredentialRequest {
         return this;
     }
 
-    public JwtProof getProof() {
+    public Object getProof() {
         return proof;
     }
 
-    public CredentialRequest setProof(JwtProof proof) {
+    public CredentialRequest setProof(Object proof) {
         this.proof = proof;
         return this;
     }
