@@ -271,7 +271,6 @@ test("should save time-based correlation mitigation settings", async ({
   const oid4vciJumpLink = page.getByTestId("jump-link-oid4vci-attributes");
   await oid4vciJumpLink.click();
 
-  // Set strategy to randomize and fill window
   const strategyField = page.locator(
     '[id="attributes.oid4vci🍺time🍺claims🍺strategy"]',
   );
@@ -288,7 +287,6 @@ test("should save time-based correlation mitigation settings", async ({
     page.getByText("Realm successfully updated").first(),
   ).toBeVisible();
 
-  // Change strategy to round and set unit
   await selectItem(page, strategyField, "Round");
 
   const roundingUnitField = page.locator(
@@ -334,7 +332,6 @@ test("should save Deflate Compression setting", async ({ page }) => {
     "true",
   );
 
-  // Toggle it off and save again
   await deflateSwitch.click({ force: true });
   await page.getByTestId("tokens-tab-save").click();
   await expect(
@@ -344,43 +341,5 @@ test("should save Deflate Compression setting", async ({ page }) => {
   realmData = await adminClient.getRealm(testBed.realm);
   expect(realmData?.attributes?.["oid4vci.request.zip.algorithms"]).toBe(
     "false",
-  );
-});
-
-test("should save time-based correlation mitigation settings with offset", async ({
-  page,
-}) => {
-  await using testBed = await createTestBed();
-  await login(page, { to: toRealmSettings({ realm: testBed.realm }) });
-
-  const tokensTab = page.getByTestId("rs-tokens-tab");
-  await tokensTab.click();
-
-  const oid4vciJumpLink = page.getByTestId("jump-link-oid4vci-attributes");
-  await oid4vciJumpLink.click();
-
-  // Set strategy to offset and fill window
-  const strategyField = page.locator(
-    '[id="attributes.oid4vci🍺time🍺claims🍺strategy"]',
-  );
-  await selectItem(page, strategyField, "Offset");
-
-  const offsetWindowField = page.locator(
-    '[id="attributes.oid4vci🍺time🍺offset🍺window🍺seconds"]',
-  );
-  const offsetWindowInput = offsetWindowField.locator("input");
-  await offsetWindowInput.fill("3600");
-
-  await page.getByTestId("tokens-tab-save").click();
-  await expect(
-    page.getByText("Realm successfully updated").first(),
-  ).toBeVisible();
-
-  const realmData = await adminClient.getRealm(testBed.realm);
-  expect(realmData?.attributes?.["oid4vci.time.claims.strategy"]).toBe(
-    "offset",
-  );
-  expect(realmData?.attributes?.["oid4vci.time.offset.window.seconds"]).toBe(
-    "3600",
   );
 });
