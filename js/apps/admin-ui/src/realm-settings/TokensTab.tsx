@@ -786,6 +786,7 @@ export const RealmSettingsTokensTab = ({
                 rules: { min: 1 },
               }}
               data-testid="randomize-window"
+              widthChars={6}
             />
           )}
           {strategy === "round" && (
