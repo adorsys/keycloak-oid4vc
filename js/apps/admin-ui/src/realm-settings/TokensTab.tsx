@@ -800,10 +800,10 @@ export const RealmSettingsTokensTab = ({
                 defaultValue: "SECOND",
               }}
               options={[
-                { key: "SECOND", value: t("second") },
-                { key: "MINUTE", value: t("minute") },
-                { key: "HOUR", value: t("hour") },
-                { key: "DAY", value: t("day") },
+                { key: "SECOND", value: t("times.seconds") },
+                { key: "MINUTE", value: t("times.minutes") },
+                { key: "HOUR", value: t("times.hours") },
+                { key: "DAY", value: t("times.days") },
               ]}
               data-testid="round-unit"
             />

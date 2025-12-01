@@ -292,7 +292,7 @@ test("should save time-based correlation mitigation settings", async ({
   const roundingUnitField = page.locator(
     '[id="attributes.oid4vci🍺time🍺round🍺unit"]',
   );
-  await selectItem(page, roundingUnitField, "Minute");
+  await selectItem(page, roundingUnitField, "Minutes");
 
   await page.getByTestId("tokens-tab-save").click();
   await expect(
