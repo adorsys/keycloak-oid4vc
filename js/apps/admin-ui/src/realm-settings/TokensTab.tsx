@@ -88,23 +88,18 @@ export const RealmSettingsTokensTab = ({
     defaultValue: false,
   });
 
-  const signedMetadataEnabled =
-    useWatch({
-      control,
-      name: convertAttributeNameToForm(
-        "attributes.oid4vci.signed_metadata.enabled",
-      ),
-      defaultValue: realm.attributes?.["oid4vci.signed_metadata.enabled"],
-    }) === "true";
-
-  const encryptionRequired =
-    useWatch({
-      control,
-      name: convertAttributeNameToForm(
-        "attributes.oid4vci.encryption.required",
-      ),
-      defaultValue: realm.attributes?.["oid4vci.encryption.required"],
-    }) === "true";
+  const signedMetadataEnabled = useWatch({
+    control,
+    name: convertAttributeNameToForm(
+      "attributes.oid4vci.signed_metadata.enabled",
+    ),
+    defaultValue: realm.attributes?.["oid4vci.signed_metadata.enabled"],
+  });
+  const encryptionRequired = useWatch({
+    control,
+    name: convertAttributeNameToForm("attributes.oid4vci.encryption.required"),
+    defaultValue: realm.attributes?.["oid4vci.encryption.required"],
+  });
 
   const strategy = useWatch({
     control,
@@ -710,7 +705,7 @@ export const RealmSettingsTokensTab = ({
             stringify
             data-testid="signed-metadata-switch"
           />
-          {signedMetadataEnabled && (
+          {signedMetadataEnabled === "true" && (
             <>
               <TimeSelectorControl
                 name={convertAttributeNameToForm(
@@ -750,7 +745,7 @@ export const RealmSettingsTokensTab = ({
             stringify
             data-testid="require-encryption-switch"
           />
-          {encryptionRequired && (
+          {encryptionRequired === "true" && (
             <DefaultSwitchControl
               name={convertAttributeNameToForm(
                 "attributes.oid4vci.request.zip.algorithms",
