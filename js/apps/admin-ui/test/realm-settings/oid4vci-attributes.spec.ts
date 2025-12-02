@@ -317,6 +317,11 @@ test("should save Deflate Compression setting", async ({ page }) => {
   const oid4vciJumpLink = page.getByTestId("jump-link-oid4vci-attributes");
   await oid4vciJumpLink.click();
 
+  const encryptionSwitch = page.getByTestId(
+    "attributes.oid4vci.encryption.required",
+  );
+  await encryptionSwitch.click({ force: true });
+
   const deflateSwitch = page.getByTestId(
     "attributes.oid4vci.request.zip.algorithms",
   );

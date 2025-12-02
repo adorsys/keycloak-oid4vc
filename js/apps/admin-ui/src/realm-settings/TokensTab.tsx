@@ -88,12 +88,29 @@ export const RealmSettingsTokensTab = ({
     defaultValue: false,
   });
 
-  const strategy: string = (useWatch({
+  const signedMetadataEnabled =
+    useWatch({
+      control,
+      name: convertAttributeNameToForm(
+        "attributes.oid4vci.signed_metadata.enabled",
+      ),
+      defaultValue: realm.attributes?.["oid4vci.signed_metadata.enabled"],
+    }) === "true";
+
+  const encryptionRequired =
+    useWatch({
+      control,
+      name: convertAttributeNameToForm(
+        "attributes.oid4vci.encryption.required",
+      ),
+      defaultValue: realm.attributes?.["oid4vci.encryption.required"],
+    }) === "true";
+
+  const strategy = useWatch({
     control,
     name: convertAttributeNameToForm("attributes.oid4vci.time.claims.strategy"),
-  }) ??
-    realm.attributes?.["oid4vci.time.claims.strategy"] ??
-    "off") as string;
+    defaultValue: realm.attributes?.["oid4vci.time.claims.strategy"] ?? "off",
+  });
 
   const sections = [
     {
@@ -693,33 +710,37 @@ export const RealmSettingsTokensTab = ({
             stringify
             data-testid="signed-metadata-switch"
           />
-          <TimeSelectorControl
-            name={convertAttributeNameToForm(
-              "attributes.oid4vci.signed_metadata.lifespan",
-            )}
-            label={t("signedMetadataLifespan")}
-            labelIcon={t("signedMetadataLifespanHelp")}
-            controller={{
-              defaultValue: 60,
-            }}
-            units={["second", "minute", "hour"]}
-            data-testid="signed-metadata-lifespan"
-          />
-          <SelectControl
-            name={convertAttributeNameToForm(
-              "attributes.oid4vci.signed_metadata.alg",
-            )}
-            label={t("signedMetadataSigningAlgorithm")}
-            labelIcon={t("signedMetadataSigningAlgorithmHelp")}
-            controller={{
-              defaultValue: "RS256",
-            }}
-            options={defaultSigAlgOptions.map((p) => ({
-              key: p,
-              value: p,
-            }))}
-            data-testid="signed-metadata-signing-algorithm"
-          />
+          {signedMetadataEnabled && (
+            <>
+              <TimeSelectorControl
+                name={convertAttributeNameToForm(
+                  "attributes.oid4vci.signed_metadata.lifespan",
+                )}
+                label={t("signedMetadataLifespan")}
+                labelIcon={t("signedMetadataLifespanHelp")}
+                controller={{
+                  defaultValue: 60,
+                }}
+                units={["second", "minute", "hour"]}
+                data-testid="signed-metadata-lifespan"
+              />
+              <SelectControl
+                name={convertAttributeNameToForm(
+                  "attributes.oid4vci.signed_metadata.alg",
+                )}
+                label={t("signedMetadataSigningAlgorithm")}
+                labelIcon={t("signedMetadataSigningAlgorithmHelp")}
+                controller={{
+                  defaultValue: "RS256",
+                }}
+                options={defaultSigAlgOptions.map((p) => ({
+                  key: p,
+                  value: p,
+                }))}
+                data-testid="signed-metadata-signing-algorithm"
+              />
+            </>
+          )}
           <DefaultSwitchControl
             name={convertAttributeNameToForm(
               "attributes.oid4vci.encryption.required",
@@ -729,15 +750,17 @@ export const RealmSettingsTokensTab = ({
             stringify
             data-testid="require-encryption-switch"
           />
-          <DefaultSwitchControl
-            name={convertAttributeNameToForm(
-              "attributes.oid4vci.request.zip.algorithms",
-            )}
-            label={t("enableDeflateCompression")}
-            labelIcon={t("enableDeflateCompressionHelp")}
-            data-testid="deflate-compression-switch"
-            stringify
-          />
+          {encryptionRequired && (
+            <DefaultSwitchControl
+              name={convertAttributeNameToForm(
+                "attributes.oid4vci.request.zip.algorithms",
+              )}
+              label={t("enableDeflateCompression")}
+              labelIcon={t("enableDeflateCompressionHelp")}
+              data-testid="deflate-compression-switch"
+              stringify
+            />
+          )}
           <NumberControl
             name={convertAttributeNameToForm(
               "attributes.oid4vci.batch_credential_issuance.batch_size",
