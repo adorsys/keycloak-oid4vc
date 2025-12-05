@@ -99,16 +99,28 @@ export async function requestVCOffer(
   supportedCredentialConfiguration: SupportedCredentialConfiguration,
   credentialsIssuer: CredentialsIssuer,
 ) {
+  // Get the current user's username from the token for the user_id parameter
+  // The pre_authorized flow requires user_id when enabled
+  const username = context.keycloak.idTokenParsed?.preferred_username || 
+                   context.keycloak.tokenParsed?.preferred_username;
+  
+  const searchParams: Record<string, string> = {
+    credential_configuration_id: supportedCredentialConfiguration.id,
+    type: "qr-code",
+    width: "500",
+    height: "500",
+  };
+  
+  // Include user_id if available (required for pre-authorized flow)
+  if (username) {
+    searchParams.user_id = username;
+  }
+  
   const response = await request(
     "/protocol/oid4vc/credential-offer-uri",
     context,
     {
-      searchParams: {
-        credential_configuration_id: supportedCredentialConfiguration.id,
-        type: "qr-code",
-        width: "500",
-        height: "500",
-      },
+      searchParams,
     },
     new URL(
       joinPath(

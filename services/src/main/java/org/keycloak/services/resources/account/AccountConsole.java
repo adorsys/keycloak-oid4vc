@@ -55,6 +55,7 @@ import org.keycloak.urls.UrlType;
 import org.keycloak.util.JsonSerialization;
 import org.keycloak.utils.MediaType;
 import org.keycloak.utils.SecureContextResolver;
+import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerEndpoint;
 
 import org.jboss.resteasy.reactive.NoCache;
 
@@ -190,7 +191,17 @@ public class AccountConsole implements AccountResourceProvider {
 
         map.put("isViewGroupsEnabled", isViewGroupsEnabled);
         map.put("isViewOrganizationsEnabled", realm.isOrganizationsEnabled());
-        map.put("isOid4VciEnabled", realm.isVerifiableCredentialsEnabled());
+        
+        // Check if realm has verifiable credentials enabled AND the account-console client has oid4vci enabled
+        boolean isOid4VciEnabled = false;
+        if (realm.isVerifiableCredentialsEnabled()) {
+            ClientModel accountConsoleClient = realm.getClientByClientId(Constants.ACCOUNT_CONSOLE_CLIENT_ID);
+            if (accountConsoleClient != null) {
+                String oid4vciEnabled = accountConsoleClient.getAttributes().get(OID4VCIssuerEndpoint.OID4VCI_ENABLED_ATTRIBUTE_KEY);
+                isOid4VciEnabled = Boolean.parseBoolean(oid4vciEnabled);
+            }
+        }
+        map.put("isOid4VciEnabled", isOid4VciEnabled);
 
         map.put("updateEmailFeatureEnabled", Profile.isFeatureEnabled(Profile.Feature.UPDATE_EMAIL));
         map.put("updateEmailActionEnabled", UpdateEmail.isEnabled(realm));
