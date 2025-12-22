@@ -1,28 +1,27 @@
 package org.keycloak.authentication.authenticators.client;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.Response;
 import org.keycloak.Config;
 import org.keycloak.OAuthErrorException;
-import org.keycloak.TokenVerifier;
 import org.keycloak.authentication.AuthenticationFlowError;
 import org.keycloak.authentication.ClientAuthenticationFlowContext;
 import org.keycloak.common.Profile;
 import org.keycloak.common.VerificationException;
 import org.keycloak.crypto.AsymmetricSignatureVerifierContext;
 import org.keycloak.crypto.KeyWrapper;
-import org.keycloak.crypto.ServerECDSASignatureVerifierContext;
 import org.keycloak.jose.jwk.JWK;
 import org.keycloak.jose.jwk.JWKParser;
-import org.keycloak.jose.jws.Algorithm;
+import org.keycloak.jose.jws.JWSHeader;
 import org.keycloak.jose.jws.JWSInput;
 import org.keycloak.jose.jws.JWSInputException;
-import org.keycloak.keys.loader.PublicKeyStorageManager;
 import org.keycloak.models.AuthenticationExecutionModel;
 import org.keycloak.models.ClientModel;
 import org.keycloak.models.RealmModel;
 import org.keycloak.models.SingleUseObjectProvider;
 import org.keycloak.protocol.oauth2.attestation.AttestationChallenge;
+import org.keycloak.protocol.oauth2.attestation.AttestationValidationUtil;
+import org.keycloak.protocol.oauth2.attestation.AttesterJwksLoader;
 import org.keycloak.protocol.oidc.OIDCLoginProtocol;
 import org.keycloak.provider.EnvironmentDependentProviderFactory;
 import org.keycloak.provider.ProviderConfigProperty;
@@ -33,10 +32,8 @@ import org.keycloak.util.JWKSUtils;
 import org.keycloak.util.JsonSerialization;
 
 import java.io.IOException;
-import java.security.PublicKey;
 import java.util.Collections;
 import java.util.HashSet;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -66,19 +63,19 @@ public class OAuthClientAttestationClientAuthenticator extends AbstractClientAut
 
     @Override
     public String getHelpText() {
-        return "OAuth 2.0 Attestation based Client Authentication validates client based on signed client attestation JWT issued by a Client Attester and signed with the Client private key. See https://datatracker.ietf.org/doc/html/draft-ietf-oauth-attestation-based-client-auth-06";
+        return "OAuth 2.0 Attestation based Client Authentication validates client based on signed client attestation JWT issued by a Client Attester and signed with the Client private key. See https://datatracker.ietf.org/doc/html/draft-ietf-oauth-attestation-based-client-auth-07";
     }
 
     @Override
     public void authenticateClient(ClientAuthenticationFlowContext context) {
-
-
         var httpHeaders = context.getHttpRequest().getHttpHeaders();
+        RealmModel realm = context.getRealm();
 
+        // Extract attestation headers
         String clientAttestationHeader = httpHeaders.getHeaderString(OAUTH_CLIENT_ATTESTATION_HEADER);
         if (clientAttestationHeader == null || clientAttestationHeader.isEmpty()) {
-            Response challengeResponse = ClientAuthUtil.errorResponse(Response.Status.BAD_REQUEST.getStatusCode(), OAuthErrorException.INVALID_CLIENT, "Client authentication with client attestation failed: missing client attestation");
-            context.failure(AuthenticationFlowError.INVALID_CLIENT_CREDENTIALS, challengeResponse);
+            failWithAttestationError(context, OAuthErrorException.INVALID_CLIENT_ATTESTATION, 
+                    "Missing OAuth-Client-Attestation header", null);
             return;
         }
 
@@ -86,39 +83,73 @@ public class OAuthClientAttestationClientAuthenticator extends AbstractClientAut
 
         String oauthClientAttestation = clientAttestationHeader;
         String oauthClientAttestationPoP = clientAttestationPopHeader;
-        // handle Concatenated Serialization for Client Attestations
+        
+        // Handle Concatenated Serialization for Client Attestations
         // see: https://datatracker.ietf.org/doc/html/draft-ietf-oauth-attestation-based-client-auth-07#section-7
         if (clientAttestationHeader.contains("~")) {
-            // ignore clientAttestationPopHeader and split clientAttes
-            String[] attestationAndPop = clientAttestationHeader.split("~");
+            String[] attestationAndPop = clientAttestationHeader.split("~", 2);
+            if (attestationAndPop.length != 2) {
+                failWithAttestationError(context, OAuthErrorException.INVALID_CLIENT_ATTESTATION,
+                        "Invalid concatenated serialization format", null);
+                return;
+            }
             oauthClientAttestation = attestationAndPop[0];
             oauthClientAttestationPoP = attestationAndPop[1];
         }
 
-        // parse client attestation
-        JsonWebToken clientAttestation;
-        Algorithm clientAttestationAlg;
-        try {
-            var clientAttestationJws = new JWSInput(oauthClientAttestation);
-            clientAttestation = clientAttestationJws.readJsonContent(JsonWebToken.class);
-            clientAttestationAlg = clientAttestationJws.getHeader().getAlgorithm();
-        } catch (JWSInputException e) {
-            ServicesLogger.LOGGER.errorValidatingAssertion(e);
-            Response challengeResponse = ClientAuthUtil.errorResponse(Response.Status.BAD_REQUEST.getStatusCode(), OAuthErrorException.INVALID_CLIENT, "Client authentication with client attestation failed: " + e.getMessage());
-            context.failure(AuthenticationFlowError.INVALID_CLIENT_CREDENTIALS, challengeResponse);
+        if (oauthClientAttestationPoP == null || oauthClientAttestationPoP.isEmpty()) {
+            failWithAttestationError(context, OAuthErrorException.INVALID_CLIENT_ATTESTATION,
+                    "Missing OAuth-Client-Attestation-PoP header", null);
             return;
         }
 
+        // Parse and validate Client Attestation JWT
+        JWSInput clientAttestationJws;
+        JWSHeader clientAttestationHeaderObj;
+        JsonWebToken clientAttestation;
+        String clientAttestationAlg;
+        try {
+            clientAttestationJws = new JWSInput(oauthClientAttestation);
+            clientAttestationHeaderObj = clientAttestationJws.getHeader();
+            clientAttestation = clientAttestationJws.readJsonContent(JsonWebToken.class);
+            clientAttestationAlg = clientAttestationHeaderObj.getRawAlgorithm();
+        } catch (JWSInputException e) {
+            ServicesLogger.LOGGER.errorValidatingAssertion(e);
+            failWithAttestationError(context, OAuthErrorException.INVALID_CLIENT_ATTESTATION,
+                    "Failed to parse Client Attestation JWT: " + e.getMessage(), null);
+            return;
+        }
+
+        // Validate typ header for Attestation JWT
+        try {
+            AttestationValidationUtil.validateTypHeader(clientAttestationHeaderObj, "client-attestation+jwt");
+        } catch (VerificationException e) {
+            failWithAttestationError(context, OAuthErrorException.INVALID_CLIENT_ATTESTATION,
+                    e.getMessage(), null);
+            return;
+        }
+
+        // Validate algorithm for Attestation JWT
+        try {
+            AttestationValidationUtil.validateAlgorithm(clientAttestationAlg);
+        } catch (VerificationException e) {
+            failWithAttestationError(context, OAuthErrorException.INVALID_CLIENT_ATTESTATION,
+                    "Invalid algorithm: " + e.getMessage(), null);
+            return;
+        }
+
+        // Extract and validate client ID from subject
         String clientId = clientAttestation.getSubject();
-        if (clientId == null) {
-            Response challengeResponse = ClientAuthUtil.errorResponse(Response.Status.BAD_REQUEST.getStatusCode(), "invalid_client", "Missing sub claim");
-            context.challenge(challengeResponse);
+        if (clientId == null || clientId.isEmpty()) {
+            failWithAttestationError(context, OAuthErrorException.INVALID_CLIENT_ATTESTATION,
+                    "Missing sub claim in Client Attestation", null);
             return;
         }
 
         context.getEvent().client(clientId);
 
-        ClientModel client = context.getSession().clients().getClientByClientId(context.getRealm(), clientId);
+        // Get client
+        ClientModel client = context.getSession().clients().getClientByClientId(realm, clientId);
         if (client == null) {
             context.failure(AuthenticationFlowError.CLIENT_NOT_FOUND, null);
             return;
@@ -131,91 +162,207 @@ public class OAuthClientAttestationClientAuthenticator extends AbstractClientAut
             return;
         }
 
-        // extract iss claim from client attestation
+        // Validate issuer
         String issuer = clientAttestation.getIssuer();
-        String allowedIssuer = client.getAttribute(ALLOWED_ISSUER_ATTR);
-
-        if (!allowedIssuer.endsWith(issuer)) {
-            context.getEvent().detail("client_attestation_issuer", issuer);
-            context.getEvent().error("invalid_client_attestation_issuer");
-            context.failure(AuthenticationFlowError.INVALID_CLIENT_CREDENTIALS, null);
+        if (issuer == null || issuer.isEmpty()) {
+            failWithAttestationError(context, OAuthErrorException.INVALID_CLIENT_ATTESTATION,
+                    "Missing iss claim in Client Attestation", null);
             return;
         }
 
-        // extract cnf claim from clientAttestation
+        String allowedIssuer = client.getAttribute(ALLOWED_ISSUER_ATTR);
+        if (allowedIssuer == null || allowedIssuer.isEmpty()) {
+            failWithAttestationError(context, OAuthErrorException.INVALID_CLIENT_ATTESTATION,
+                    "Client attestation issuer not configured", null);
+            return;
+        }
+
+        // Validate issuer matches (exact match, not endsWith)
+        if (!issuer.equals(allowedIssuer)) {
+            context.getEvent().detail("client_attestation_issuer", issuer);
+            context.getEvent().detail("allowed_issuer", allowedIssuer);
+            failWithAttestationError(context, OAuthErrorException.INVALID_CLIENT_ATTESTATION,
+                    "Issuer mismatch", null);
+            return;
+        }
+
+        // Load attester public keys and verify Client Attestation signature
+        String kid = clientAttestationHeaderObj.getKeyId();
+        KeyWrapper attesterKeyWrapper = AttesterJwksLoader.getAttesterPublicKeyWrapper(
+                context.getSession(), client, realm, issuer, kid, clientAttestationAlg);
+        
+        if (attesterKeyWrapper == null) {
+            failWithAttestationError(context, OAuthErrorException.INVALID_CLIENT_ATTESTATION,
+                    "Unable to load attester public key", null);
+            return;
+        }
+
+        // Verify Client Attestation signature
+        try {
+            AsymmetricSignatureVerifierContext attesterVerifierContext = 
+                    AttestationValidationUtil.createVerifierContext(attesterKeyWrapper, clientAttestationAlg);
+            
+            // Validate claims (iss, sub, aud, nbf, exp, etc.)
+            // Note: aud claim validation may need to be adjusted based on spec requirements
+            AttestationValidationUtil.validateJwtClaims(oauthClientAttestation, issuer, clientId, 
+                    null, attesterVerifierContext);
+        } catch (VerificationException e) {
+            context.getEvent().error("invalid_client_attestation_signature");
+            failWithAttestationError(context, OAuthErrorException.INVALID_CLIENT_ATTESTATION,
+                    "Client Attestation signature validation failed: " + e.getMessage(), null);
+            return;
+        }
+
+        // Extract cnf claim
+        @SuppressWarnings("unchecked")
         var cnf = (Map<String, Object>) clientAttestation.getOtherClaims().get("cnf");
         if (cnf == null) {
-            context.getEvent().error("invalid_client_attestation_cnf_missing");
-            context.failure(AuthenticationFlowError.INVALID_CLIENT_CREDENTIALS, null);
+            failWithAttestationError(context, OAuthErrorException.INVALID_CLIENT_ATTESTATION,
+                    "Missing cnf claim in Client Attestation", null);
             return;
         }
 
-        // extract jwk from cnf
+        // Extract jwk from cnf
+        @SuppressWarnings("unchecked")
         var jwkMap = (Map<String, Object>) cnf.get("jwk");
         if (jwkMap == null) {
-            context.getEvent().error("invalid_client_attestation_cnf_jwk_missing");
-            context.failure(AuthenticationFlowError.INVALID_CLIENT_CREDENTIALS, null);
+            failWithAttestationError(context, OAuthErrorException.INVALID_CLIENT_ATTESTATION,
+                    "Missing jwk in cnf claim", null);
             return;
         }
 
-        // create JWKS from jwk
+        // Validate that jwk contains only public key (no private key components)
+        try {
+            AttestationValidationUtil.validateJwkIsPublicKeyOnly(jwkMap);
+        } catch (VerificationException e) {
+            failWithAttestationError(context, OAuthErrorException.INVALID_CLIENT_ATTESTATION,
+                    "JWK in cnf contains private key material: " + e.getMessage(), null);
+            return;
+        }
+
+        // Create KeyWrapper from jwk
         KeyWrapper keyWrapper;
         try {
             String jwkString = JsonSerialization.writeValueAsString(jwkMap);
             JWKParser parser = JWKParser.create().parse(jwkString);
             JWK jwk = parser.getJwk();
             keyWrapper = JWKSUtils.getKeyWrapper(jwk);
-        } catch (IOException e) {
+            if (keyWrapper == null) {
+                failWithAttestationError(context, OAuthErrorException.INVALID_CLIENT_ATTESTATION,
+                        "Failed to create key wrapper from JWK", null);
+                return;
+            }
+        } catch (IOException | RuntimeException e) {
             context.getEvent().error("invalid_client_attestation_invalid_jwk");
-            context.failure(AuthenticationFlowError.INVALID_CLIENT_CREDENTIALS, null);
+            failWithAttestationError(context, OAuthErrorException.INVALID_CLIENT_ATTESTATION,
+                    "Invalid JWK in cnf: " + e.getMessage(), null);
             return;
         }
 
-        // verify signature of clientAttestationPop with JWKS
+        // Parse and validate PoP JWT
+        JWSInput popJws;
+        JWSHeader popHeader;
         JsonWebToken clientAttestationPop;
+        String popAlg;
         try {
-            // TODO fix creation of verifierContext
-            AsymmetricSignatureVerifierContext verifierContext = switch (clientAttestationAlg.name()) {
-                case org.keycloak.crypto.Algorithm.ES256, org.keycloak.crypto.Algorithm.ES384,
-                     org.keycloak.crypto.Algorithm.ES512 ->
-                        verifierContext = new ServerECDSASignatureVerifierContext(keyWrapper);
-                default -> verifierContext = new AsymmetricSignatureVerifierContext(keyWrapper);
-            };
-
-            TokenVerifier<JsonWebToken> popVerifier = TokenVerifier.create(oauthClientAttestationPoP, JsonWebToken.class)
-                    .verifierContext(verifierContext);
-            popVerifier.verify();
-            clientAttestationPop = popVerifier.getToken();
-        } catch (VerificationException e) {
-            context.getEvent().error("invalid_client_attestation_invalid_pop_signature");
-            context.failure(AuthenticationFlowError.INVALID_CLIENT_CREDENTIALS, null);
+            popJws = new JWSInput(oauthClientAttestationPoP);
+            popHeader = popJws.getHeader();
+            clientAttestationPop = popJws.readJsonContent(JsonWebToken.class);
+            popAlg = popHeader.getRawAlgorithm();
+        } catch (JWSInputException e) {
+            context.getEvent().error("invalid_client_attestation_pop_parse");
+            failWithAttestationError(context, OAuthErrorException.INVALID_CLIENT_ATTESTATION,
+                    "Failed to parse PoP JWT: " + e.getMessage(), null);
             return;
         }
 
-        // verify challenge
-        String nonce = (String)clientAttestationPop.getOtherClaims().get("nonce");
-        RealmModel realm = context.getRealm();
+        // Validate typ header for PoP JWT
+        try {
+            AttestationValidationUtil.validateTypHeader(popHeader, "pop+jwt");
+        } catch (VerificationException e) {
+            failWithAttestationError(context, OAuthErrorException.INVALID_CLIENT_ATTESTATION,
+                    "Invalid PoP typ header: " + e.getMessage(), null);
+            return;
+        }
+
+        // Validate algorithm for PoP JWT
+        try {
+            AttestationValidationUtil.validateAlgorithm(popAlg);
+        } catch (VerificationException e) {
+            failWithAttestationError(context, OAuthErrorException.INVALID_CLIENT_ATTESTATION,
+                    "Invalid PoP algorithm: " + e.getMessage(), null);
+            return;
+        }
+
+        // Verify PoP signature using key from cnf
+        try {
+            AsymmetricSignatureVerifierContext popVerifierContext = 
+                    AttestationValidationUtil.createVerifierContext(keyWrapper, popAlg);
+            
+            // Validate PoP claims (iss, sub, aud, nbf, exp, etc.)
+            // Note: aud claim validation may need to be adjusted based on spec requirements
+            AttestationValidationUtil.validateJwtClaims(oauthClientAttestationPoP, clientId, clientId,
+                    null, popVerifierContext);
+        } catch (VerificationException e) {
+            context.getEvent().error("invalid_client_attestation_pop_signature");
+            failWithAttestationError(context, OAuthErrorException.INVALID_CLIENT_ATTESTATION,
+                    "PoP signature validation failed: " + e.getMessage(), null);
+            return;
+        }
+
+        // Validate client_id matches Attestation sub and PoP iss
+        try {
+            AttestationValidationUtil.validateClientIdMatches(clientId, 
+                    clientAttestation.getSubject(), clientAttestationPop.getIssuer());
+        } catch (VerificationException e) {
+            failWithAttestationError(context, OAuthErrorException.INVALID_CLIENT_ATTESTATION,
+                    e.getMessage(), null);
+            return;
+        }
+
+        // Verify challenge (replaced nonce with challenge)
+        String challenge = (String) clientAttestationPop.getOtherClaims().get("challenge");
+        if (challenge == null || challenge.isEmpty()) {
+            failWithAttestationError(context, OAuthErrorException.INVALID_CLIENT_ATTESTATION,
+                    "Missing challenge claim in PoP JWT", null);
+            return;
+        }
+
         SingleUseObjectProvider singleUse = context.getSession().getProvider(SingleUseObjectProvider.class);
-        Map<String, String> challengeNotes = singleUse.get(AttestationChallenge.generateChallengeKey(realm, nonce));
+        Map<String, String> challengeNotes = singleUse.get(AttestationChallenge.generateChallengeKey(realm, challenge));
         if (challengeNotes == null) {
             context.getEvent().error("invalid_client_attestation_challenge");
-            context.failure(AuthenticationFlowError.INVALID_CLIENT_CREDENTIALS, null);
+            failWithAttestationError(context, OAuthErrorException.USE_FRESH_ATTESTATION,
+                    "Challenge not found or already used", null);
             return;
         }
+
+        // Mark challenge as used (optional, depending on spec requirements)
+        // singleUse.remove(AttestationChallenge.generateChallengeKey(realm, challenge));
 
         context.success();
     }
 
-    protected PublicKey getSignatureValidationKey(ClientModel client, ClientAuthenticationFlowContext context, JWSInput jws) {
-        PublicKey publicKey = PublicKeyStorageManager.getClientPublicKey(context.getSession(), client, jws);
-        if (publicKey == null) {
-            Response challengeResponse = ClientAuthUtil.errorResponse(Response.Status.BAD_REQUEST.getStatusCode(), OAuthErrorException.INVALID_CLIENT, "Unable to load public key");
-            context.failure(AuthenticationFlowError.CLIENT_CREDENTIALS_SETUP_REQUIRED, challengeResponse);
-            return null;
-        } else {
-            return publicKey;
+    /**
+     * Helper method to fail with proper attestation error response format.
+     */
+    @SuppressWarnings("unused")
+    private void failWithAttestationError(ClientAuthenticationFlowContext context, String error, 
+                                         String errorDescription, String challengeHeader) {
+        Response.ResponseBuilder responseBuilder = Response.status(Response.Status.UNAUTHORIZED)
+                .type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON_TYPE);
+        
+        if (challengeHeader != null) {
+            responseBuilder.header(HttpHeaders.WWW_AUTHENTICATE, challengeHeader);
         }
+        
+        org.keycloak.representations.idm.OAuth2ErrorRepresentation errorRep = 
+                new org.keycloak.representations.idm.OAuth2ErrorRepresentation(error, errorDescription);
+        Response challengeResponse = responseBuilder.entity(errorRep).build();
+        
+        context.failure(AuthenticationFlowError.INVALID_CLIENT_CREDENTIALS, challengeResponse);
     }
+
 
     @Override
     public boolean isConfigurable() {

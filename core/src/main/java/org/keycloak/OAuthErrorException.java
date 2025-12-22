@@ -59,6 +59,10 @@ public class OAuthErrorException extends Exception {
     // DPoP
     public static final String INVALID_DPOP_PROOF = "invalid_dpop_proof";
 
+    // Attestation-Based Client Authentication
+    public static final String INVALID_CLIENT_ATTESTATION = "invalid_client_attestation";
+    public static final String USE_FRESH_ATTESTATION = "use_fresh_attestation";
+
     // Others
     public static final String INVALID_CLIENT = "invalid_client";
     public static final String INVALID_GRANT = "invalid_grant";
