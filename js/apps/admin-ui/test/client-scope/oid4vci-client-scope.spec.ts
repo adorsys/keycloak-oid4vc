@@ -171,6 +171,18 @@ test.describe("OID4VCI Client Scope Functionality", () => {
       TEST_VALUES.HASH_ALGORITHM,
     );
 
+    await selectItem(
+      page,
+      OID4VCI_FIELDS.SIGNING_ALGORITHM,
+      TEST_VALUES.SIGNING_ALG,
+    );
+
+    await selectItem(
+      page,
+      OID4VCI_FIELDS.HASH_ALGORITHM,
+      TEST_VALUES.HASH_ALGORITHM,
+    );
+
     await page.getByTestId(OID4VCI_FIELDS.DISPLAY).fill(TEST_VALUES.DISPLAY);
     await page
       .getByTestId(OID4VCI_FIELDS.SUPPORTED_CREDENTIAL_TYPES)
