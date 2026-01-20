@@ -457,7 +457,7 @@ public abstract class OID4VCAuthorizationCodeFlowTestBase extends OID4VCIssuerEn
 
         // Construct claim path based on credential format
         List<Object> claimPath;
-        if ("sd_jwt_vc".equals(getCredentialFormat())) {
+        if ("dc+sd-jwt".equals(getCredentialFormat())) {
             claimPath = Collections.singletonList(getExpectedClaimPath());
         } else {
             claimPath = Arrays.asList("credentialSubject", getExpectedClaimPath());

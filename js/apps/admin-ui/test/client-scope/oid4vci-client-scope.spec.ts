@@ -25,10 +25,7 @@ async function createClientScope(
 async function createClientScopeAndSelectProtocolAndFormat(
   page: Page,
   testBed: Awaited<ReturnType<typeof createTestBed>>,
-  format?:
-    | "SD-JWT VC (dc+sd-jwt)"
-    | "JWT VC JSON (jwt_vc_json)"
-    | "LDP VC (ldp_vc)",
+  format?: "SD-JWT VC (dc+sd-jwt)" | "JWT VC JSON (jwt_vc_json)",
 ) {
   await createClientScope(page, testBed);
 

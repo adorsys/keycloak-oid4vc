@@ -405,7 +405,7 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
                     assertEquals("The sd-jwt-credential should offer type test-credential",
                             scopeName,
                             jwtVcConfig.getScope());
-                    assertEquals("The sd-jwt-credential should be offered in the sd_jwt_vc format.",
+                    assertEquals("The sd-jwt-credential should be offered in the dc+sd-jwt format.",
                             Format.SD_JWT_VC,
                             jwtVcConfig.getFormat());
 
