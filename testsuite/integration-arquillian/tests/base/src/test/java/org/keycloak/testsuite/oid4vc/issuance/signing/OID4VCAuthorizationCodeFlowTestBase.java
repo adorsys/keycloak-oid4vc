@@ -96,7 +96,7 @@ public abstract class OID4VCAuthorizationCodeFlowTestBase extends OID4VCIssuerEn
     }
 
     /**
-     * Get the credential format (jwt_vc or sd_jwt_vc)
+     * Get the credential format (jwt_vc_json or dc+sd-jwt)
      */
     protected abstract String getCredentialFormat();
 

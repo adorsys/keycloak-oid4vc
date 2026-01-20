@@ -60,7 +60,7 @@ public class OID4VCTargetRoleMapperTest extends OID4VCTest {
 						OID4VCTargetRoleMapper roleMapper = new OID4VCTargetRoleMapper(session);
 						ProtocolMapperModel pmm = new ProtocolMapperModel();
 						pmm.setConfig(Map.of(OID4VCTargetRoleMapper.CLIENT_CONFIG_KEY, "newClient"));
-						roleMapper.setMapperModel(pmm, "jwt_vc");
+						roleMapper.setMapperModel(pmm, "jwt_vc_json");
 						AppAuthManager.BearerTokenAuthenticator authenticator = new AppAuthManager.BearerTokenAuthenticator(session);
 						authenticator.setTokenString(token);
 						UserSessionModel userSessionModel = authenticator.authenticate().session();

@@ -24,7 +24,7 @@ public class JwtCredentialSignerFactory implements CredentialSignerFactory {
 
     @Override
     public String getSupportedFormat() {
-        return Format.JWT_VC;
+        return Format.JWT_VC_JSON;
     }
 
     @Override

@@ -150,7 +150,7 @@ public class SupportedCredentialConfiguration {
      * For iso mdl (not yet supported) we have a "doctype" See:
      * https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#name-credential-request-5
      * <p>
-     * For jwt_vc and ldp_vc, we will be inferring from the "credential_definition" See:
+     * For jwt_vc_json and ldp_vc, we will be inferring from the "credential_definition" See:
      * https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#name-credential-request-3
      *
      * @return

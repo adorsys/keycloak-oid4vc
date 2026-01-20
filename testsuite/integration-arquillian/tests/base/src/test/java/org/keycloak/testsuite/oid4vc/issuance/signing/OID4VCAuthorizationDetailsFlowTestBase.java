@@ -90,7 +90,7 @@ public abstract class OID4VCAuthorizationDetailsFlowTestBase extends OID4VCIssue
     /**
      * Get the credential format for this test implementation.
      *
-     * @return the credential format (e.g., "jwt_vc", "sd_jwt_vc")
+     * @return the credential format (e.g., "jwt_vc_json", "sd_jwt_vc")
      */
     protected abstract String getCredentialFormat();
 

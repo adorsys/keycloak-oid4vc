@@ -9,6 +9,10 @@ public class OID4VCConstants {
     public static final String SDJWT_DELIMITER = "~";
     public static final String SD_HASH = "sd_hash";
     /**
+     * JWT-Credentials {@see https://identity.foundation/jwt-vc-issuance-profile/}
+     */
+    public static final String JWT_VC_FORMAT = "jwt_vc_json";
+    /**
      * SD-JWT-Credentials {@see https://drafts.oauth.net/oauth-sd-jwt-vc/draft-ietf-oauth-sd-jwt-vc.html}
      */
     public static final String SD_JWT_VC_FORMAT = "dc+sd-jwt";

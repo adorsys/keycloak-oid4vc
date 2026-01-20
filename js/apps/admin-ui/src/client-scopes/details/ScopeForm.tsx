@@ -32,7 +32,7 @@ import { toClientScopes } from "../routes/ClientScopes";
 import { removeEmptyOid4vcAttributes } from "./oid4vciAttributes";
 
 const OID4VC_PROTOCOL = "oid4vc";
-const VC_FORMAT_JWT_VC = "jwt_vc";
+const VC_FORMAT_JWT_VC_JSON = "jwt_vc_json";
 const VC_FORMAT_SD_JWT = "dc+sd-jwt";
 
 // Validation function for comma-separated lists
@@ -359,8 +359,8 @@ export const ScopeForm = ({ clientScope, save }: ScopeFormProps) => {
                   value: `SD-JWT VC (${VC_FORMAT_SD_JWT})`,
                 },
                 {
-                  key: VC_FORMAT_JWT_VC,
-                  value: `JWT VC (${VC_FORMAT_JWT_VC})`,
+                  key: VC_FORMAT_JWT_VC_JSON,
+                  value: `JWT VC JSON (${VC_FORMAT_JWT_VC_JSON})`,
                 },
               ]}
             />
@@ -450,7 +450,7 @@ export const ScopeForm = ({ clientScope, save }: ScopeFormProps) => {
                 },
               }}
             />
-            {(selectedFormat === VC_FORMAT_JWT_VC ||
+            {(selectedFormat === VC_FORMAT_JWT_VC_JSON ||
               selectedFormat === VC_FORMAT_SD_JWT) && (
               <TextControl
                 name={convertAttributeNameToForm<ClientScopeDefaultOptionalType>(

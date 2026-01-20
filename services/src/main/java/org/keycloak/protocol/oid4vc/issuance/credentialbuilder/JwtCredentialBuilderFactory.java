@@ -35,12 +35,12 @@ public class JwtCredentialBuilderFactory implements CredentialBuilderFactory {
 
     @Override
     public String getSupportedFormat() {
-        return Format.JWT_VC;
+        return Format.JWT_VC_JSON;
     }
 
     @Override
     public String getHelpText() {
-        return "Builds verifiable credentials on the JWT-VC format (https://identity.foundation/jwt-vc-presentation-profile).";
+        return "Builds verifiable credentials on JWT-VC JSON format (https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#section-A.1.1).";
     }
 
     @Override

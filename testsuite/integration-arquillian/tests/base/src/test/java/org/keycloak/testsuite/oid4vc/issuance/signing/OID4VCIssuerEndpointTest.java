@@ -231,7 +231,7 @@ public abstract class OID4VCIssuerEndpointTest extends OID4VCTest {
                                                                    jwtTypeCredentialConfigurationIdName,
                                                                    jwtTypeCredentialScopeName,
                                                                    null,
-                                                                   Format.JWT_VC,
+                                                                   Format.JWT_VC_JSON,
                                                                    TEST_CREDENTIAL_MAPPERS_FILE,
                                                                    Collections.emptyList());
         minimalJwtTypeCredentialClientScope = registerOptionalClientScope("vc-with-minimal-config",
