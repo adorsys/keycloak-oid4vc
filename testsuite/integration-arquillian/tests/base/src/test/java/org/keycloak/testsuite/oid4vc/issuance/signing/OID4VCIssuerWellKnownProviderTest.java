@@ -764,7 +764,7 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
                     assertEquals("The expected server should have been returned.", expectedAuthorizationServer, credentialIssuer.getAuthorizationServers().get(0));
                     assertTrue("The test-credential should be supported.", credentialIssuer.getCredentialsSupported().containsKey("test-credential"));
                     assertEquals("The test-credential should offer type VerifiableCredential", "VerifiableCredential", credentialIssuer.getCredentialsSupported().get("test-credential").getScope());
-                    assertEquals("The test-credential should be offered in the jwt-vc json format.", Format.JWT_VC_JSON, credentialIssuer.getCredentialsSupported().get("test-credential").getFormat());
+                    assertEquals("The test-credential should be offered in the jwt_vc_json format.", Format.JWT_VC_JSON, credentialIssuer.getCredentialsSupported().get("test-credential").getFormat());
                     assertNotNull("The test-credential can optionally provide a claims claim.",
                             credentialIssuer.getCredentialsSupported().get("test-credential").getCredentialMetadata() != null ?
                                     credentialIssuer.getCredentialsSupported().get("test-credential").getCredentialMetadata().getClaims() : null);
