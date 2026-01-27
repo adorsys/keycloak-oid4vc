@@ -92,7 +92,7 @@ public abstract class OID4VCAuthorizationDetailsFlowTestBase extends OID4VCIssue
     /**
      * Get the credential format for this test implementation.
      *
-     * @return the credential format (e.g., "jwt_vc", "sd_jwt_vc")
+     * @return the credential format (e.g., "jwt_vc_json", "dc+sd-jwt")
      */
     protected abstract String getCredentialFormat();
 
@@ -226,7 +226,7 @@ public abstract class OID4VCAuthorizationDetailsFlowTestBase extends OID4VCIssue
 
         // Construct claim path based on credential format
         List<Object> claimPath;
-        if ("sd_jwt_vc".equals(getCredentialFormat())) {
+        if ("dc+sd-jwt".equals(getCredentialFormat())) {
             // SD-JWT doesn't use credentialSubject prefix
             claimPath = Arrays.asList(getExpectedClaimPath());
         } else {
@@ -267,7 +267,7 @@ public abstract class OID4VCAuthorizationDetailsFlowTestBase extends OID4VCIssue
             ClaimsDescription responseClaim = authDetailResponse.getClaims().get(0);
 
             List<Object> expectedClaimPath;
-            if ("sd_jwt_vc".equals(getCredentialFormat())) {
+            if ("dc+sd-jwt".equals(getCredentialFormat())) {
                 expectedClaimPath = Arrays.asList(getExpectedClaimPath());
             } else {
                 expectedClaimPath = Arrays.asList("credentialSubject", getExpectedClaimPath());
@@ -754,7 +754,7 @@ public abstract class OID4VCAuthorizationDetailsFlowTestBase extends OID4VCIssue
 
         // Construct claim path based on credential format
         List<Object> claimPath;
-        if ("sd_jwt_vc".equals(getCredentialFormat())) {
+        if ("dc+sd-jwt".equals(getCredentialFormat())) {
             claimPath = Arrays.asList(getExpectedClaimPath());
         } else {
             claimPath = Arrays.asList("credentialSubject", getExpectedClaimPath());

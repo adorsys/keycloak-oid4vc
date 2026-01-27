@@ -37,7 +37,7 @@ public class OID4VCJwtAuthorizationCodeFlowTest extends OID4VCAuthorizationCodeF
 
     @Override
     protected String getCredentialFormat() {
-        return "jwt_vc";
+        return "jwt_vc_json";
     }
 
     @Override

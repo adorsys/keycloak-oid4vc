@@ -20,6 +20,7 @@ package org.keycloak.protocol.oid4vc.model;
 import java.util.Collections;
 import java.util.Set;
 
+import static org.keycloak.OID4VCConstants.JWT_VC_FORMAT;
 import static org.keycloak.OID4VCConstants.SD_JWT_VC_FORMAT;
 
 /**
@@ -35,14 +36,14 @@ public class Format {
     public static final String LDP_VC = "ldp_vc";
 
     /**
-     * JWT-Credentials {@see https://identity.foundation/jwt-vc-presentation-profile/}
+     * JWT-Credentials (JSON format) {@see https://identity.foundation/jwt-vc-issuance-profile/}
      */
-    public static final String JWT_VC = "jwt_vc";
+    public static final String JWT_VC_JSON = JWT_VC_FORMAT;
 
     /**
      * SD-JWT-Credentials {@see https://drafts.oauth.net/oauth-sd-jwt-vc/draft-ietf-oauth-sd-jwt-vc.html}
      */
     public static final String SD_JWT_VC = SD_JWT_VC_FORMAT;
 
-    public static final Set<String> SUPPORTED_FORMATS = Collections.unmodifiableSet(Set.of(JWT_VC, LDP_VC, SD_JWT_VC_FORMAT));
+    public static final Set<String> SUPPORTED_FORMATS = Collections.unmodifiableSet(Set.of(JWT_VC_JSON, LDP_VC, SD_JWT_VC_FORMAT));
 }

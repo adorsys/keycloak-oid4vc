@@ -97,7 +97,7 @@ public abstract class OID4VCAuthorizationCodeFlowTestBase extends OID4VCIssuerEn
     }
 
     /**
-     * Get the credential format (jwt_vc or sd_jwt_vc)
+     * Get the credential format (jwt_vc_json or dc+sd-jwt)
      */
     protected abstract String getCredentialFormat();
 
@@ -604,7 +604,7 @@ public abstract class OID4VCAuthorizationCodeFlowTestBase extends OID4VCIssuerEn
 
         // Construct claim path based on credential format
         List<Object> claimPath;
-        if ("sd_jwt_vc".equals(getCredentialFormat())) {
+        if ("dc+sd-jwt".equals(getCredentialFormat())) {
             claimPath = Collections.singletonList(getExpectedClaimPath());
         } else {
             claimPath = Arrays.asList("credentialSubject", getExpectedClaimPath());

@@ -328,7 +328,7 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
             Assert.fail("Should have thrown an exception");
         } catch (Exception e) {
             Assert.assertTrue(e instanceof BadRequestException);
-            Assert.assertEquals("No credential builder found for format jwt_vc", e.getMessage());
+            Assert.assertEquals("No credential builder found for format jwt_vc_json", e.getMessage());
         }
     }
 
@@ -695,21 +695,21 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
                     assertEquals("Since the authorization server is equal to the issuer, just 1 should be returned.", 1, credentialIssuer.getAuthorizationServers().size());
                     assertEquals("The expected server should have been returned.", expectedAuthorizationServer, credentialIssuer.getAuthorizationServers().get(0));
 
-                    assertTrue("The jwt_vc-credential should be supported.",
+                    assertTrue("The jwt_vc_json-credential should be supported.",
                             credentialIssuer.getCredentialsSupported()
                                     .containsKey(credentialConfigurationId));
 
                     SupportedCredentialConfiguration jwtVcConfig =
                             credentialIssuer.getCredentialsSupported().get(credentialConfigurationId);
-                    assertEquals("The jwt_vc-credential should offer type test-credential",
+                    assertEquals("The jwt_vc_json-credential should offer type test-credential",
                             scopeName,
                             jwtVcConfig.getScope());
-                    assertEquals("The jwt_vc-credential should be offered in the jwt_vc format.",
-                            Format.JWT_VC,
+                    assertEquals("The jwt_vc_json-credential should be offered in the jwt_vc_json format.",
+                            Format.JWT_VC_JSON,
                             jwtVcConfig.getFormat());
 
                     Claims jwtVcClaims = jwtVcConfig.getCredentialMetadata() != null ? jwtVcConfig.getCredentialMetadata().getClaims() : null;
-                    assertNotNull("The jwt_vc-credential can optionally provide a claims claim.",
+                    assertNotNull("The jwt_vc_json-credential can optionally provide a claims claim.",
                             jwtVcClaims);
 
                     assertEquals(6, jwtVcClaims.size());
@@ -776,17 +776,17 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
                         assertNull("credentialSubject.scope-name has no display", claim.getDisplay());
                     }
 
-                    assertEquals("The jwt_vc-credential should offer vct",
+                    assertEquals("The jwt_vc_json-credential should offer vct",
                             verifiableCredentialType,
                             jwtVcConfig.getVct());
 
                     // We are offering key binding only for identity credential
-                    assertTrue("The jwt_vc-credential should contain a cryptographic binding method supported named jwk",
+                    assertTrue("The jwt_vc_json-credential should contain a cryptographic binding method supported named jwk",
                             jwtVcConfig.getCryptographicBindingMethodsSupported()
                                     .contains(CredentialScopeModel.CRYPTOGRAPHIC_BINDING_METHODS_DEFAULT));
-                    assertTrue("The jwt_vc-credential should contain a credential signing algorithm named RS256",
+                    assertTrue("The jwt_vc_json-credential should contain a credential signing algorithm named RS256",
                             jwtVcConfig.getCredentialSigningAlgValuesSupported().contains("RS256"));
-                    assertTrue("The jwt_vc-credential should support a proof of type jwt with signing algorithm RS256",
+                    assertTrue("The jwt_vc_json-credential should support a proof of type jwt with signing algorithm RS256",
                             credentialIssuer.getCredentialsSupported()
                                     .get(credentialConfigurationId)
                                     .getProofTypesSupported()
@@ -794,7 +794,7 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
                                     .get("jwt")
                                     .getSigningAlgorithmsSupported()
                                     .contains("RS256"));
-                    assertEquals("The jwt_vc-credential should display as Test Credential",
+                    assertEquals("The jwt_vc_json-credential should display as Test Credential",
                             credentialConfigurationId,
                             jwtVcConfig.getCredentialMetadata() != null && jwtVcConfig.getCredentialMetadata().getDisplay() != null ?
                                     jwtVcConfig.getCredentialMetadata().getDisplay().get(0).getName() : null);

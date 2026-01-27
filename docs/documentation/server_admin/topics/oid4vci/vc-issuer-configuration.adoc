@@ -243,7 +243,7 @@ Create a JSON file (e.g., `client-scopes.json`) with the following content:
     "vc.issuer_did": "did:web:vc.example.com",
     "vc.credential_configuration_id": "my-credential-configuration-id",
     "vc.credential_identifier": "my-credential-identifier",
-    "vc.format": "jwt_vc",
+    "vc.format": "jwt_vc_json",
     "vc.expiry_in_seconds": 31536000,
     "vc.verifiable_credential_type": "my-vct",
     "vc.supported_credential_types": "credential-type-1,credential-type-2",
@@ -340,7 +340,7 @@ _Default_: `$\{name}+`
 
 | `vc.format`
 | optional
-| Defines the VC format (e.g., `jwt_vc`). +
+| Defines the VC format (e.g., `jwt_vc_json`). +
 _Default_: `dc+sd-jwt`
 
 | `vc.verifiable_credential_type`
