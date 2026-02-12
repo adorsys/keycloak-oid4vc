@@ -80,6 +80,7 @@ import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.CredentialBuilder
 import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.CredentialBuilderFactory;
 import org.keycloak.protocol.oid4vc.issuance.credentialoffer.CredentialOfferStorage;
 import org.keycloak.protocol.oid4vc.issuance.credentialoffer.CredentialOfferStorage.CredentialOfferState;
+import org.keycloak.protocol.oid4vc.issuance.credentialoffer.preauth.PreAuthCodeHandler;
 import org.keycloak.protocol.oid4vc.issuance.keybinding.CNonceHandler;
 import org.keycloak.protocol.oid4vc.issuance.keybinding.JwtCNonceHandler;
 import org.keycloak.protocol.oid4vc.issuance.keybinding.ProofValidator;
@@ -478,9 +479,13 @@ public class OID4VCIssuerEndpoint {
         CredentialOfferState offerState = new CredentialOfferState(credOffer, appClientId, userId, expiration);
 
         if (preAuthorized) {
-            String code = "urn:oid4vci:code:" + SecretGenerator.getInstance().randomString(64);
+            String code = createPreAuthorizedCode(offerState);
             credOffer.setGrants(new PreAuthorizedGrant().setPreAuthorizedCode(
                     new PreAuthorizedCode().setPreAuthorizedCode(code)));
+
+            // Because the code embeds most data about the offer state,
+            // we don't need to store the full offer state
+            offerState = new CredentialOfferState().setNonce(offerState.getNonce());
         }
 
         CredentialOfferStorage offerStorage = session.getProvider(CredentialOfferStorage.class);
@@ -1468,6 +1473,28 @@ public class OID4VCIssuerEndpoint {
                 .build();
     }
 
+    /**
+     * Creates pre-authorized code to associate with a credential offer state.
+     */
+    private String createPreAuthorizedCode(CredentialOfferState offerState) {
+        PreAuthCodeHandler preAuthCodeHandler = session.getProvider(PreAuthCodeHandler.class);
+        if (preAuthCodeHandler == null) {
+            throw new IllegalStateException("No PreAuthCodeHandler provider available");
+        }
+
+        // We pass a distinct, partial copy to be explicit about the data that can be made public.
+        // For example, transactions codes must never leak into the pre-auth code.
+        CredentialOfferState publicOfferState = new CredentialOfferState()
+                .setCredentialsOffer(offerState.getCredentialsOffer())
+                .setAuthorizationDetails(offerState.getAuthorizationDetails())
+                .setNonce(offerState.getNonce())
+                .setClientId(offerState.getClientId())
+                .setUserId(offerState.getUserId())
+                .setExpiration(offerState.getExpiration());
+
+        return preAuthCodeHandler.createPreAuthCode(publicOfferState);
+    }
+
     // builds the unsigned credential by applying all protocol mappers.
     private VCIssuanceContext getVCToSign(List<OID4VCMapper> protocolMappers, SupportedCredentialConfiguration credentialConfig,
                                           AuthenticationManager.AuthResult authResult, CredentialRequest credentialRequestVO,
@@ -1627,7 +1654,6 @@ public class OID4VCIssuerEndpoint {
             throw new BadRequestException(errorMessage);
         }
     }
-
 
     private List<ClaimsDescription> getClaimsFromAuthzDetails(String scope, UserSessionModel userSession) {
         String username = userSession.getUser().getUsername();

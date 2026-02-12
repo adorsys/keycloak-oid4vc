@@ -52,7 +52,7 @@ public interface CredentialOfferStorage extends Provider {
         }
 
         // For json serialization
-        CredentialOfferState() {
+        public CredentialOfferState() {
         }
 
         @Transient
@@ -92,28 +92,34 @@ public interface CredentialOfferStorage extends Provider {
             return authorizationDetails;
         }
 
-        public void setAuthorizationDetails(OID4VCAuthorizationDetailsResponse authorizationDetails) {
+        public CredentialOfferState setAuthorizationDetails(OID4VCAuthorizationDetailsResponse authorizationDetails) {
             this.authorizationDetails = authorizationDetails;
+            return this;
         }
 
-        void setCredentialsOffer(CredentialsOffer credentialsOffer) {
+        public CredentialOfferState setCredentialsOffer(CredentialsOffer credentialsOffer) {
             this.credentialsOffer = credentialsOffer;
+            return this;
         }
 
-        void setClientId(String clientId) {
+        public CredentialOfferState setClientId(String clientId) {
             this.clientId = clientId;
+            return this;
         }
 
-        void setUserId(String userId) {
+        public CredentialOfferState setUserId(String userId) {
             this.userId = userId;
+            return this;
         }
 
-        void setNonce(String nonce) {
+        public CredentialOfferState setNonce(String nonce) {
             this.nonce = nonce;
+            return this;
         }
 
-        void setExpiration(int expiration) {
+        public CredentialOfferState setExpiration(int expiration) {
             this.expiration = expiration;
+            return this;
         }
     }
 
