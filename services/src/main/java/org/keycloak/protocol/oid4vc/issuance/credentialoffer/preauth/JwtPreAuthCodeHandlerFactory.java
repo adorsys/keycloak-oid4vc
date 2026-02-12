@@ -1,6 +1,7 @@
 package org.keycloak.protocol.oid4vc.issuance.credentialoffer.preauth;
 
 import org.keycloak.models.KeycloakSession;
+import org.keycloak.protocol.oid4vc.issuance.OffsetTimeProvider;
 
 public class JwtPreAuthCodeHandlerFactory implements PreAuthCodeHandlerFactory {
 
@@ -14,6 +15,6 @@ public class JwtPreAuthCodeHandlerFactory implements PreAuthCodeHandlerFactory {
 
     @Override
     public JwtPreAuthCodeHandler create(KeycloakSession session) {
-        return new JwtPreAuthCodeHandler();
+        return new JwtPreAuthCodeHandler(session, new OffsetTimeProvider());
     }
 }
