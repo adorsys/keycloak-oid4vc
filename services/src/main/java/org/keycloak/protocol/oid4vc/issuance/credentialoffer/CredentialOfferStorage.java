@@ -57,7 +57,8 @@ public interface CredentialOfferStorage extends Provider {
 
         @Transient
         public Optional<String> getPreAuthorizedCode() {
-            return Optional.ofNullable(credentialsOffer.getGrants())
+            return Optional.ofNullable(credentialsOffer)
+                    .map(CredentialsOffer::getGrants)
                     .map(PreAuthorizedGrant::getPreAuthorizedCode)
                     .map(PreAuthorizedCode::getPreAuthorizedCode);
         }

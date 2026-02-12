@@ -485,7 +485,10 @@ public class OID4VCIssuerEndpoint {
 
             // Because the code embeds most data about the offer state,
             // we don't need to store the full offer state
-            offerState = new CredentialOfferState().setNonce(offerState.getNonce());
+            offerState = new CredentialOfferState()
+                    .setCredentialsOffer(credOffer) // TODO: This is problematic
+                    .setNonce(offerState.getNonce())
+                    .setExpiration(offerState.getExpiration());
         }
 
         CredentialOfferStorage offerStorage = session.getProvider(CredentialOfferStorage.class);
@@ -600,7 +603,8 @@ public class OID4VCIssuerEndpoint {
 
         CredentialsOffer credOffer = offerState.getCredentialsOffer();
         LOGGER.debugf("Found credential offer state: [ids=%s, cid=%s, uid=%s, nonce=%s]",
-                credOffer.getCredentialConfigurationIds(), offerState.getClientId(), offerState.getUserId(), offerState.getNonce());
+                Optional.ofNullable(credOffer).map(CredentialsOffer::getCredentialConfigurationIds).orElse(null),
+                offerState.getClientId(), offerState.getUserId(), offerState.getNonce());
 
         if (offerState.isExpired()) {
             var errorMessage = "Credential offer already expired";
@@ -615,7 +619,10 @@ public class OID4VCIssuerEndpoint {
         if (offerState.getUserId() != null) {
             eventBuilder.user(offerState.getUserId());
         }
-        if (credOffer.getCredentialConfigurationIds() != null && !credOffer.getCredentialConfigurationIds().isEmpty()) {
+
+        if (credOffer != null
+                && credOffer.getCredentialConfigurationIds() != null
+                && !credOffer.getCredentialConfigurationIds().isEmpty()) {
             eventBuilder.detail(Details.CREDENTIAL_TYPE, String.join(",", credOffer.getCredentialConfigurationIds()));
         }
 
