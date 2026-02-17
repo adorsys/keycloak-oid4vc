@@ -1,10 +1,7 @@
 package org.keycloak.testsuite.oid4vc.issuance.credentialoffer.preauth;
 
-import java.nio.charset.StandardCharsets;
-import java.util.LinkedList;
 import java.util.List;
 
-import org.keycloak.OAuth2Constants;
 import org.keycloak.common.VerificationException;
 import org.keycloak.common.util.Time;
 import org.keycloak.crypto.Algorithm;
@@ -20,23 +17,13 @@ import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerWellKnownProvider;
 import org.keycloak.protocol.oid4vc.issuance.credentialoffer.preauth.JwtPreAuthCodeHandler;
 import org.keycloak.protocol.oid4vc.model.CredentialsOffer;
 import org.keycloak.protocol.oid4vc.model.JwtPreAuthCode;
-import org.keycloak.protocol.oid4vc.model.PreAuthorizedCode;
-import org.keycloak.protocol.oid4vc.model.PreAuthorizedGrant;
-import org.keycloak.protocol.oidc.grants.PreAuthorizedCodeGrantTypeFactory;
 import org.keycloak.protocol.oidc.representations.OIDCConfigurationRepresentation;
 import org.keycloak.representations.JsonWebToken;
 import org.keycloak.testsuite.oid4vc.issuance.signing.OID4VCIssuerEndpointTest;
 import org.keycloak.testsuite.util.oauth.AccessTokenResponse;
 import org.keycloak.util.JsonSerialization;
 
-import org.apache.http.HttpEntity;
 import org.apache.http.HttpStatus;
-import org.apache.http.NameValuePair;
-import org.apache.http.client.entity.UrlEncodedFormEntity;
-import org.apache.http.client.methods.CloseableHttpResponse;
-import org.apache.http.client.methods.HttpPost;
-import org.apache.http.message.BasicNameValuePair;
-import org.apache.http.util.EntityUtils;
 import org.junit.Test;
 
 import static org.keycloak.protocol.oid4vc.issuance.credentialoffer.CredentialOfferStorage.CredentialOfferState;
@@ -75,8 +62,9 @@ public class JwtPreAuthCodeHandlerTest extends OID4VCIssuerEndpointTest {
         }, String.class);
 
         // Ensure that the pre-auth code can be exchanged for an access token
-        String accessToken = exchangePreAuthCodeForAccessToken(preAuthorizedCode);
-        assertNotNull("Access token must not be null", accessToken);
+        AccessTokenResponse accessTokenResponse = exchangePreAuthCodeForAccessToken(preAuthorizedCode);
+        assertEquals(HttpStatus.SC_OK, accessTokenResponse.getStatusCode());
+        assertNotNull("Access token must not be null", accessTokenResponse.getAccessToken());
     }
 
     @Test
@@ -109,9 +97,10 @@ public class JwtPreAuthCodeHandlerTest extends OID4VCIssuerEndpointTest {
         });
 
         // Ensure that it cannot be exchanged for an access token
-        Exception exception = assertThrows(Exception.class,
-                () -> exchangePreAuthCodeForAccessToken(imposterPreAuthCode));
-        assertTrue(exception.getMessage().contains("Pre-authorized code failed handler verification"));
+        AccessTokenResponse accessTokenResponse = exchangePreAuthCodeForAccessToken(imposterPreAuthCode);
+        assertEquals(HttpStatus.SC_BAD_REQUEST, accessTokenResponse.getStatusCode());
+        assertEquals("Pre-authorized code failed handler verification",
+                accessTokenResponse.getErrorDescription());
     }
 
     @Test
@@ -138,7 +127,6 @@ public class JwtPreAuthCodeHandlerTest extends OID4VCIssuerEndpointTest {
         return testingClient.server(TEST_REALM_NAME).fetchString((session) -> {
             CredentialsOffer credOffer = new CredentialsOffer()
                     .setCredentialIssuer(OID4VCIssuerWellKnownProvider.getIssuer(session.getContext()))
-                    .setGrants(new PreAuthorizedGrant().setPreAuthorizedCode(new PreAuthorizedCode()))
                     .setCredentialConfigurationIds(List.of(sdJwtTypeCredentialConfigurationIdName));
 
             RealmModel realm = session.getContext().getRealm();
@@ -149,31 +137,14 @@ public class JwtPreAuthCodeHandlerTest extends OID4VCIssuerEndpointTest {
         });
     }
 
-    private String exchangePreAuthCodeForAccessToken(String preAuthCode) {
+    private AccessTokenResponse exchangePreAuthCodeForAccessToken(String preAuthCode) {
         final String endpoint = getRealmPath(TEST_REALM_NAME);
         OIDCConfigurationRepresentation oidcConfig = getAuthorizationMetadata(endpoint);
 
-        HttpPost postPreAuthorizedCode = new HttpPost(oidcConfig.getTokenEndpoint());
-        List<NameValuePair> parameters = new LinkedList<>() {{
-            add(new BasicNameValuePair(OAuth2Constants.GRANT_TYPE, PreAuthorizedCodeGrantTypeFactory.GRANT_TYPE));
-            add(new BasicNameValuePair(PreAuthorizedCodeGrantTypeFactory.CODE_REQUEST_PARAM, preAuthCode));
-        }};
-        postPreAuthorizedCode.setEntity(new UrlEncodedFormEntity(parameters, StandardCharsets.UTF_8));
-
-        try {
-            CloseableHttpResponse accessTokenResponse = httpClient.execute(postPreAuthorizedCode);
-
-            int statusCode = accessTokenResponse.getStatusLine().getStatusCode();
-            if (HttpStatus.SC_OK != statusCode) {
-                HttpEntity entity = accessTokenResponse.getEntity();
-                throw new IllegalStateException(EntityUtils.toString(entity));
-            }
-
-            return new AccessTokenResponse(accessTokenResponse)
-                    .getAccessToken();
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+        return oauth.oid4vc()
+                .preAuthorizedCodeGrantRequest(preAuthCode)
+                .endpoint(oidcConfig.getTokenEndpoint())
+                .send();
     }
 
     private static void assertValidPreAuthCodeJwt(String jwt) {
