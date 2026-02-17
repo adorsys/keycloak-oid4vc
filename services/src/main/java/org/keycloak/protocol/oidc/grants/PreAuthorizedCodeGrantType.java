@@ -24,6 +24,7 @@ import jakarta.ws.rs.core.Response;
 
 import org.keycloak.OAuth2Constants;
 import org.keycloak.OAuthErrorException;
+import org.keycloak.common.VerificationException;
 import org.keycloak.events.Details;
 import org.keycloak.events.Errors;
 import org.keycloak.events.EventType;
@@ -36,6 +37,7 @@ import org.keycloak.models.UserSessionModel;
 import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerEndpoint;
 import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerWellKnownProvider;
 import org.keycloak.protocol.oid4vc.issuance.credentialoffer.CredentialOfferStorage;
+import org.keycloak.protocol.oid4vc.issuance.credentialoffer.preauth.PreAuthCodeHandler;
 import org.keycloak.protocol.oid4vc.model.OID4VCAuthorizationDetail;
 import org.keycloak.protocol.oidc.OIDCLoginProtocol;
 import org.keycloak.protocol.oidc.TokenManager.AccessTokenResponseBuilder;
@@ -49,6 +51,7 @@ import org.keycloak.utils.MediaType;
 import org.jboss.logging.Logger;
 
 import static org.keycloak.services.util.DefaultClientSessionContext.fromClientSessionAndScopeParameter;
+import static org.keycloak.protocol.oid4vc.issuance.credentialoffer.CredentialOfferStorage.CredentialOfferState;
 
 public class PreAuthorizedCodeGrantType extends OAuth2GrantTypeBase {
 
@@ -81,10 +84,15 @@ public class PreAuthorizedCodeGrantType extends OAuth2GrantTypeBase {
                     errorMessage, Response.Status.BAD_REQUEST);
         }
 
+        // Verify the pre-auth code and retrieve the associated credential offer state.
+        // The verification logic is delegated to the configured PreAuthCodeHandler provider.
+        CredentialOfferState offerState = verifyPreAuthCode(code);
+        String nonce = offerState.getNonce();
+
         var offerStorage = session.getProvider(CredentialOfferStorage.class);
-        var offerState = offerStorage.findOfferStateByCode(session, code);
-        if (offerState == null) {
-            var errorMessage = "No credential offer state for code: " + code;
+        var storedOfferState = offerStorage.findOfferStateByNonce(session, nonce);
+        if (storedOfferState == null) {
+            var errorMessage = "No credential offer state for nonce: " + nonce;
             event.detail(Details.REASON, errorMessage).error(Errors.INVALID_CODE);
             throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_REQUEST,
                     errorMessage, Response.Status.BAD_REQUEST);
@@ -238,5 +246,26 @@ public class PreAuthorizedCodeGrantType extends OAuth2GrantTypeBase {
         String expectedAudience = OID4VCIssuerWellKnownProvider.getCredentialsEndpoint(session.getContext());
         String[] audiences = token.getAudience();
         return audiences != null && audiences.length == 1 && expectedAudience.equals(audiences[0]);
+    }
+    
+    /**
+     * Runs the pre-auth code verification logic using the configured PreAuthCodeHandler provider.
+     * A public, partial view of the CredentialOfferState is returned upon successful verification.
+     */
+    private CredentialOfferStorage.CredentialOfferState verifyPreAuthCode(String code) {
+        PreAuthCodeHandler preAuthCodeHandler = session.getProvider(PreAuthCodeHandler.class);
+        if (preAuthCodeHandler == null) {
+            throw new IllegalStateException("No PreAuthCodeHandler provider available");
+        }
+
+        try {
+            return preAuthCodeHandler.verifyPreAuthCode(code);
+        } catch (VerificationException e) {
+            String errorMessage = "Pre-authorized code failed handler verification";
+            LOGGER.error(errorMessage, e);
+            event.detail(Details.REASON, errorMessage).error(Errors.INVALID_CODE);
+            throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_REQUEST,
+                    errorMessage, Response.Status.BAD_REQUEST);
+        }
     }
 }
