@@ -18,15 +18,12 @@ package org.keycloak.protocol.oid4vc.issuance.credentialoffer;
 
 import java.beans.Transient;
 import java.util.Objects;
-import java.util.Optional;
 
 import org.keycloak.common.util.Base64Url;
 import org.keycloak.common.util.Time;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.protocol.oid4vc.model.CredentialsOffer;
 import org.keycloak.protocol.oid4vc.model.OID4VCAuthorizationDetail;
-import org.keycloak.protocol.oid4vc.model.PreAuthorizedCode;
-import org.keycloak.protocol.oid4vc.model.PreAuthorizedGrant;
 import org.keycloak.provider.Provider;
 import org.keycloak.saml.RandomSecret;
 
@@ -54,14 +51,6 @@ public interface CredentialOfferStorage extends Provider {
 
         // For json serialization
         public CredentialOfferState() {
-        }
-
-        @Transient
-        public Optional<String> getPreAuthorizedCode() {
-            return Optional.ofNullable(credentialsOffer)
-                    .map(CredentialsOffer::getGrants)
-                    .map(PreAuthorizedGrant::getPreAuthorizedCode)
-                    .map(PreAuthorizedCode::getPreAuthorizedCode);
         }
 
         @Transient
@@ -140,8 +129,6 @@ public interface CredentialOfferStorage extends Provider {
     void putOfferState(KeycloakSession session, CredentialOfferState entry);
 
     CredentialOfferState findOfferStateByNonce(KeycloakSession session, String nonce);
-
-    CredentialOfferState findOfferStateByCode(KeycloakSession session, String code);
 
     CredentialOfferState findOfferStateByCredentialId(KeycloakSession session, String credId);
 

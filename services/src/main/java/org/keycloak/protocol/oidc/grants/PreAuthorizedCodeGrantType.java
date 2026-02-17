@@ -33,6 +33,7 @@ import org.keycloak.models.ClientModel;
 import org.keycloak.models.ClientSessionContext;
 import org.keycloak.models.Constants;
 import org.keycloak.models.KeycloakSession;
+import org.keycloak.models.KeycloakUriInfo;
 import org.keycloak.models.UserSessionModel;
 import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerEndpoint;
 import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerWellKnownProvider;
@@ -87,17 +88,6 @@ public class PreAuthorizedCodeGrantType extends OAuth2GrantTypeBase {
         // Verify the pre-auth code and retrieve the associated credential offer state.
         // The verification logic is delegated to the configured PreAuthCodeHandler provider.
         CredentialOfferState offerState = verifyPreAuthCode(code);
-        String nonce = offerState.getNonce();
-
-        var offerStorage = session.getProvider(CredentialOfferStorage.class);
-        var storedOfferState = offerStorage.findOfferStateByNonce(session, nonce);
-        if (storedOfferState == null) {
-            var errorMessage = "No credential offer state for nonce: " + nonce;
-            event.detail(Details.REASON, errorMessage).error(Errors.INVALID_CODE);
-            throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_REQUEST,
-                    errorMessage, Response.Status.BAD_REQUEST);
-        }
-
         if (offerState.isExpired()) {
             event.error(Errors.EXPIRED_CODE);
             throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_GRANT,
@@ -179,6 +169,7 @@ public class PreAuthorizedCodeGrantType extends OAuth2GrantTypeBase {
         }
 
         // Add authorization_details to the OfferState and otherClaims
+        var offerStorage = session.getProvider(CredentialOfferStorage.class);
         var authDetails = (OID4VCAuthorizationDetail) authorizationDetailsResponses.get(0);
         offerState.setAuthorizationDetails(authDetails);
         offerStorage.replaceOfferState(session, offerState);
@@ -233,7 +224,7 @@ public class PreAuthorizedCodeGrantType extends OAuth2GrantTypeBase {
     public boolean isTokenAllowed(KeycloakSession session, AccessToken token) {
         // Check if the request path ends with the credential endpoint path
         boolean isCredentialEndpoint = Optional.ofNullable(session.getContext().getUri())
-                .map(uri -> uri.getPath())
+                .map(KeycloakUriInfo::getPath)
                 .map(path -> path.endsWith("/" + OID4VCIssuerEndpoint.CREDENTIAL_PATH))
                 .orElse(false);
 

@@ -17,7 +17,6 @@ import org.keycloak.jose.jws.JWSInputException;
 import org.keycloak.models.RealmModel;
 import org.keycloak.models.UserModel;
 import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerWellKnownProvider;
-import org.keycloak.protocol.oid4vc.issuance.credentialoffer.CredentialOfferStorage;
 import org.keycloak.protocol.oid4vc.issuance.credentialoffer.preauth.JwtPreAuthCodeHandler;
 import org.keycloak.protocol.oid4vc.model.CredentialsOffer;
 import org.keycloak.protocol.oid4vc.model.JwtPreAuthCode;
@@ -144,16 +143,9 @@ public class JwtPreAuthCodeHandlerTest extends OID4VCIssuerEndpointTest {
 
             RealmModel realm = session.getContext().getRealm();
             UserModel user = session.users().getUserByUsername(realm, "john");
-            CredentialOfferState offerState = new CredentialOfferState(
+
+            return new CredentialOfferState(
                     credOffer, "test-app", user.getId(), Time.currentTime() + 60);
-
-            CredentialOfferState offerStateInStore = new CredentialOfferState()
-                    .setNonce(offerState.getNonce())
-                    .setExpiration(offerState.getExpiration());
-
-            CredentialOfferStorage offerStorage = session.getProvider(CredentialOfferStorage.class);
-            offerStorage.putOfferState(session, offerStateInStore);
-            return offerState;
         });
     }
 

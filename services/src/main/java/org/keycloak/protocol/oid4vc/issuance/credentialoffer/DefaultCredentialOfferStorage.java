@@ -18,7 +18,6 @@ package org.keycloak.protocol.oid4vc.issuance.credentialoffer;
 
 import java.util.Map;
 import java.util.Optional;
-import java.util.function.Function;
 
 import org.keycloak.common.util.Time;
 import org.keycloak.models.KeycloakSession;
@@ -68,12 +67,6 @@ class DefaultCredentialOfferStorage implements CredentialOfferStorage {
         String entryJson = JsonSerialization.valueAsString(entry);
         session.singleUseObjects().put(entry.getNonce(), lifespanSeconds, Map.of(ENTRY_KEY, entryJson));
 
-        Optional.ofNullable(entry.getPreAuthorizedCode())
-                .flatMap(Function.identity())
-                .ifPresent(it -> {
-                    session.singleUseObjects().put(it, lifespanSeconds, Map.of(ENTRY_KEY, entryJson));
-                });
-
         Optional.ofNullable(entry.getAuthorizationDetails()).ifPresent(it -> {
             it.getCredentialIdentifiers().forEach( cid -> {
                 session.singleUseObjects().put(cid, lifespanSeconds, Map.of(ENTRY_KEY, entryJson));
@@ -91,15 +84,6 @@ class DefaultCredentialOfferStorage implements CredentialOfferStorage {
     }
 
     @Override
-    public CredentialOfferState findOfferStateByCode(KeycloakSession session, String code) {
-        if (session.singleUseObjects().contains(code)) {
-            String entryJson = session.singleUseObjects().get(code).get(ENTRY_KEY);
-            return JsonSerialization.valueFromString(entryJson, CredentialOfferState.class);
-        }
-        return null;
-    }
-
-    @Override
     public CredentialOfferState findOfferStateByCredentialId(KeycloakSession session, String credId) {
         if (session.singleUseObjects().contains(credId)) {
             String entryJson = session.singleUseObjects().get(credId).get(ENTRY_KEY);
@@ -111,9 +95,7 @@ class DefaultCredentialOfferStorage implements CredentialOfferStorage {
     public void replaceOfferState(KeycloakSession session, CredentialOfferState entry) {
         String entryJson = JsonSerialization.valueAsString(entry);
         session.singleUseObjects().replace(entry.getNonce(), Map.of(ENTRY_KEY, entryJson));
-        entry.getPreAuthorizedCode().ifPresent(it -> {
-            session.singleUseObjects().replace(it, Map.of(ENTRY_KEY, entryJson));
-        });
+
         Optional.ofNullable(entry.getAuthorizationDetails()).ifPresent(it -> {
             long lifespanSeconds = calculateLifespanSeconds(entry.getExpiration());
             it.getCredentialIdentifiers().forEach( cid -> {
@@ -130,9 +112,7 @@ class DefaultCredentialOfferStorage implements CredentialOfferStorage {
     @Override
     public void removeOfferState(KeycloakSession session, CredentialOfferState entry) {
         session.singleUseObjects().remove(entry.getNonce());
-        entry.getPreAuthorizedCode().ifPresent(it -> {
-            session.singleUseObjects().remove(it);
-        });
+
         Optional.ofNullable(entry.getAuthorizationDetails()).ifPresent(it -> {
             it.getCredentialIdentifiers().forEach( cid -> {
                 session.singleUseObjects().remove(cid);

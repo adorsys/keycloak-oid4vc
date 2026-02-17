@@ -51,7 +51,6 @@ import org.keycloak.OAuth2Constants;
 import org.keycloak.OID4VCConstants;
 import org.keycloak.VCFormat;
 import org.keycloak.common.VerificationException;
-import org.keycloak.common.util.SecretGenerator;
 import org.keycloak.crypto.KeyUse;
 import org.keycloak.crypto.KeyWrapper;
 import org.keycloak.events.Details;
@@ -498,9 +497,9 @@ public class OID4VCIssuerEndpoint {
         CredentialOfferState offerState = new CredentialOfferState(credOffer, appClientId, userId, expiration);
 
         if (preAuthorized) {
-            // Attach empty pre-authorized grant to the offer; the actual pre-authorized code will be generated
-            // later during the authorization step upon credential offer retrieval by reference
-            credOffer.setGrants(new PreAuthorizedGrant().setPreAuthorizedCode(new PreAuthorizedCode()));
+            String code = createPreAuthorizedCode(offerState);
+            credOffer.setGrants(new PreAuthorizedGrant().setPreAuthorizedCode(
+                    new PreAuthorizedCode().setPreAuthorizedCode(code)));
         }
 
         CredentialOfferStorage offerStorage = session.getProvider(CredentialOfferStorage.class);
@@ -625,7 +624,7 @@ public class OID4VCIssuerEndpoint {
 
         // Remove the nonce entry atomically for replay protection
         // This prevents the same offer URL from being accessed multiple times
-        // while keeping pre-authorized code and credential identifier entries available
+        // while keeping credential identifier entries available
         Map<String, String> removed = session.singleUseObjects().remove(nonce);
         if (removed == null) {
             var errorMessage = "Credential offer not found or already consumed";
@@ -635,13 +634,6 @@ public class OID4VCIssuerEndpoint {
         }
         LOGGER.debugf("Removed credential offer nonce %s for replay protection", nonce);
 
-        // Compute and attach pre-authorized code if offer is pre-authorized
-        if (credOffer.getGrants() != null && credOffer.getGrants().getPreAuthorizedCode() != null) {
-            String code = createPreAuthorizedCode(offerState);
-            credOffer.setGrants(new PreAuthorizedGrant().setPreAuthorizedCode(
-                    new PreAuthorizedCode().setPreAuthorizedCode(code)));
-        }
-
         // Add event details
         if (offerState.getClientId() != null) {
             eventBuilder.client(offerState.getClientId());
@@ -650,7 +642,9 @@ public class OID4VCIssuerEndpoint {
             eventBuilder.user(offerState.getUserId());
         }
 
-        if (credOffer.getCredentialConfigurationIds() != null && !credOffer.getCredentialConfigurationIds().isEmpty()) {
+        if (credOffer != null
+                && credOffer.getCredentialConfigurationIds() != null
+                && !credOffer.getCredentialConfigurationIds().isEmpty()) {
             eventBuilder.detail(Details.CREDENTIAL_TYPE, String.join(",", credOffer.getCredentialConfigurationIds()));
         }
 
