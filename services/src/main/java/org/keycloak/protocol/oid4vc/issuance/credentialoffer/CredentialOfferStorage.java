@@ -17,15 +17,13 @@
 package org.keycloak.protocol.oid4vc.issuance.credentialoffer;
 
 import java.beans.Transient;
-import java.util.Optional;
+import java.util.Objects;
 
 import org.keycloak.common.util.Base64Url;
 import org.keycloak.common.util.Time;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.protocol.oid4vc.model.CredentialsOffer;
 import org.keycloak.protocol.oid4vc.model.OID4VCAuthorizationDetail;
-import org.keycloak.protocol.oid4vc.model.PreAuthorizedCode;
-import org.keycloak.protocol.oid4vc.model.PreAuthorizedGrant;
 import org.keycloak.provider.Provider;
 import org.keycloak.saml.RandomSecret;
 
@@ -52,14 +50,7 @@ public interface CredentialOfferStorage extends Provider {
         }
 
         // For json serialization
-        CredentialOfferState() {
-        }
-
-        @Transient
-        public Optional<String> getPreAuthorizedCode() {
-            return Optional.ofNullable(credentialsOffer.getGrants())
-                    .map(PreAuthorizedGrant::getPreAuthorizedCode)
-                    .map(PreAuthorizedCode::getPreAuthorizedCode);
+        public CredentialOfferState() {
         }
 
         @Transient
@@ -92,36 +83,52 @@ public interface CredentialOfferStorage extends Provider {
             return authorizationDetails;
         }
 
-        public void setAuthorizationDetails(OID4VCAuthorizationDetail authorizationDetails) {
+        public CredentialOfferState setAuthorizationDetails(OID4VCAuthorizationDetail authorizationDetails) {
             this.authorizationDetails = authorizationDetails;
+            return this;
         }
 
-        void setCredentialsOffer(CredentialsOffer credentialsOffer) {
+        public CredentialOfferState setCredentialsOffer(CredentialsOffer credentialsOffer) {
             this.credentialsOffer = credentialsOffer;
+            return this;
         }
 
-        void setClientId(String clientId) {
+        public CredentialOfferState setClientId(String clientId) {
             this.clientId = clientId;
+            return this;
         }
 
-        void setUserId(String userId) {
+        public CredentialOfferState setUserId(String userId) {
             this.userId = userId;
+            return this;
         }
 
-        void setNonce(String nonce) {
+        public CredentialOfferState setNonce(String nonce) {
             this.nonce = nonce;
+            return this;
         }
 
-        void setExpiration(int expiration) {
+        public CredentialOfferState setExpiration(int expiration) {
             this.expiration = expiration;
+            return this;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (o == null || getClass() != o.getClass()) return false;
+            CredentialOfferState that = (CredentialOfferState) o;
+            return getExpiration() == that.getExpiration() && Objects.equals(getCredentialsOffer(), that.getCredentialsOffer()) && Objects.equals(getClientId(), that.getClientId()) && Objects.equals(getUserId(), that.getUserId()) && Objects.equals(getNonce(), that.getNonce()) && Objects.equals(getAuthorizationDetails(), that.getAuthorizationDetails());
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(getCredentialsOffer(), getClientId(), getUserId(), getNonce(), getExpiration(), getAuthorizationDetails());
         }
     }
 
     void putOfferState(KeycloakSession session, CredentialOfferState entry);
 
     CredentialOfferState findOfferStateByNonce(KeycloakSession session, String nonce);
-
-    CredentialOfferState findOfferStateByCode(KeycloakSession session, String code);
 
     CredentialOfferState findOfferStateByCredentialId(KeycloakSession session, String credId);
 
