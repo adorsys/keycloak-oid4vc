@@ -424,7 +424,7 @@ export const ScopeForm = ({ clientScope, save }: ScopeFormProps) => {
                   defaultValue:
                     clientScope?.attributes?.[
                       "vc.credential_build_config.hash_algorithm"
-                    ] ?? "SHA-256",
+                    ] ?? "sha-256",
                 }}
                 options={hashAlgorithms.map((alg) => ({
                   key: alg,
