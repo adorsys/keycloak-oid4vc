@@ -17,7 +17,9 @@
 
 package org.keycloak.protocol.oidc.grants;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import jakarta.ws.rs.core.Response;
@@ -25,15 +27,18 @@ import jakarta.ws.rs.core.Response;
 import org.keycloak.OAuth2Constants;
 import org.keycloak.OAuthErrorException;
 import org.keycloak.common.VerificationException;
+import org.keycloak.common.util.Time;
 import org.keycloak.events.Details;
 import org.keycloak.events.Errors;
 import org.keycloak.events.EventType;
+import org.keycloak.jose.jws.crypto.HashUtils;
 import org.keycloak.models.AuthenticatedClientSessionModel;
 import org.keycloak.models.ClientModel;
 import org.keycloak.models.ClientSessionContext;
 import org.keycloak.models.Constants;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.KeycloakUriInfo;
+import org.keycloak.models.SingleUseObjectProvider;
 import org.keycloak.models.UserSessionModel;
 import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerEndpoint;
 import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerWellKnownProvider;
@@ -51,8 +56,8 @@ import org.keycloak.utils.MediaType;
 
 import org.jboss.logging.Logger;
 
-import static org.keycloak.services.util.DefaultClientSessionContext.fromClientSessionAndScopeParameter;
 import static org.keycloak.protocol.oid4vc.issuance.credentialoffer.CredentialOfferStorage.CredentialOfferState;
+import static org.keycloak.services.util.DefaultClientSessionContext.fromClientSessionAndScopeParameter;
 
 public class PreAuthorizedCodeGrantType extends OAuth2GrantTypeBase {
 
@@ -238,19 +243,20 @@ public class PreAuthorizedCodeGrantType extends OAuth2GrantTypeBase {
         String[] audiences = token.getAudience();
         return audiences != null && audiences.length == 1 && expectedAudience.equals(audiences[0]);
     }
-    
+
     /**
      * Runs the pre-auth code verification logic using the configured PreAuthCodeHandler provider.
      * A public, partial view of the CredentialOfferState is returned upon successful verification.
      */
-    private CredentialOfferStorage.CredentialOfferState verifyPreAuthCode(String code) {
+    private CredentialOfferState verifyPreAuthCode(String code) {
         PreAuthCodeHandler preAuthCodeHandler = session.getProvider(PreAuthCodeHandler.class);
         if (preAuthCodeHandler == null) {
             throw new IllegalStateException("No PreAuthCodeHandler provider available");
         }
 
+        CredentialOfferState offerState;
         try {
-            return preAuthCodeHandler.verifyPreAuthCode(code);
+            offerState = preAuthCodeHandler.verifyPreAuthCode(code);
         } catch (VerificationException e) {
             String errorMessage = "Pre-authorized code failed handler verification";
             LOGGER.error(errorMessage, e);
@@ -258,5 +264,27 @@ public class PreAuthorizedCodeGrantType extends OAuth2GrantTypeBase {
             throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_REQUEST,
                     errorMessage, Response.Status.BAD_REQUEST);
         }
+
+        // Pre-auth code is valid, but let's prevent replay attacks
+        SingleUseObjectProvider singleUseStore = session.singleUseObjects();
+        String key = getPreAuthCodeSingleObjectKey(code);
+        if (singleUseStore.get(key) != null) {
+            String errorMessage = "Pre-authorized code has already been used";
+            event.detail(Details.REASON, errorMessage).error(Errors.INVALID_CODE);
+            throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_GRANT,
+                    errorMessage, Response.Status.BAD_REQUEST);
+        }
+
+        // Prevent code replay for the remaining validity period
+        long expiresIn = offerState.getExpiration() - Time.currentTime();
+        singleUseStore.put(key, expiresIn, Map.of());
+
+        return offerState;
+    }
+
+    private static String getPreAuthCodeSingleObjectKey(String code) {
+        String hash = HashUtils.sha256UrlEncodedHash(code.trim(), StandardCharsets.UTF_8);
+        String fqcn = PreAuthorizedCodeGrantType.class.getName().toLowerCase();
+        return fqcn + "." + hash;
     }
 }

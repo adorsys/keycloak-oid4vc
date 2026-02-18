@@ -123,6 +123,34 @@ public class JwtPreAuthCodeHandlerTest extends OID4VCIssuerEndpointTest {
         });
     }
 
+    @Test
+    public void mustRejectReplayedPreAuthCodeJwts() {
+        // Initiate the flow by creating a credential offer state
+        String offerStateJson = createPreAuthOffer();
+
+        // Create a pre-auth code for the offer state
+        String preAuthorizedCode = testingClient.server(TEST_REALM_NAME).fetch((session) -> {
+            JwtPreAuthCodeHandler handler = new JwtPreAuthCodeHandler(session);
+            CredentialOfferState offerState = JsonSerialization.valueFromString(
+                    offerStateJson, CredentialOfferState.class);
+
+            // Create pre-auth code and quickly check that it is a well-structured JWT
+            String preAuthCode = handler.createPreAuthCode(offerState);
+            assertValidPreAuthCodeJwt(preAuthCode);
+            return preAuthCode;
+        }, String.class);
+
+        // First use: the pre-auth code can be exchanged for an access token
+        AccessTokenResponse accessTokenResponse = exchangePreAuthCodeForAccessToken(preAuthorizedCode);
+        assertEquals(HttpStatus.SC_OK, accessTokenResponse.getStatusCode());
+
+        // Second use: the same pre-auth code must be rejected as replayed
+        AccessTokenResponse replayResponse = exchangePreAuthCodeForAccessToken(preAuthorizedCode);
+        assertEquals(HttpStatus.SC_BAD_REQUEST, replayResponse.getStatusCode());
+        assertEquals("Pre-authorized code has already been used",
+                replayResponse.getErrorDescription());
+    }
+
     private String createPreAuthOffer() {
         return testingClient.server(TEST_REALM_NAME).fetchString((session) -> {
             CredentialsOffer credOffer = new CredentialsOffer()
