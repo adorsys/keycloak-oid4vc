@@ -258,10 +258,14 @@ public class PreAuthorizedCodeGrantType extends OAuth2GrantTypeBase {
         try {
             offerState = preAuthCodeHandler.verifyPreAuthCode(code);
         } catch (VerificationException e) {
-            String errorMessage = "Pre-authorized code failed handler verification";
+            String errorType = Optional.ofNullable(e.getErrorType()).orElse(Errors.INVALID_CODE);
+            String errorMessage = String.format("Pre-authorized code failed handler verification (%s)", errorType);
             LOGGER.error(errorMessage, e);
             event.detail(Details.REASON, errorMessage).error(Errors.INVALID_CODE);
-            throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_REQUEST,
+            throw new CorsErrorResponseException(cors,
+                    errorType.equals(Errors.INVALID_CODE)
+                            ? OAuthErrorException.INVALID_REQUEST
+                            : OAuthErrorException.EXPIRED_TOKEN,
                     errorMessage, Response.Status.BAD_REQUEST);
         }
 

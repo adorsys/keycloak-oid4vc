@@ -1,6 +1,5 @@
 package org.keycloak.protocol.oid4vc.issuance.credentialoffer.preauth;
 
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
@@ -17,6 +16,7 @@ import org.keycloak.crypto.KeyWrapper;
 import org.keycloak.crypto.SignatureProvider;
 import org.keycloak.crypto.SignatureSignerContext;
 import org.keycloak.crypto.SignatureVerifierContext;
+import org.keycloak.events.Errors;
 import org.keycloak.jose.jws.JWSBuilder;
 import org.keycloak.jose.jws.JWSHeader;
 import org.keycloak.jose.jws.JWSInput;
@@ -140,32 +140,33 @@ public class JwtPreAuthCodeHandler implements PreAuthCodeHandler {
     private SignatureSignerContext getSignerContext(CredentialOfferState offerState) {
         List<String> preferredAlgs = getPreferredSigningAlgs(offerState);
         logger.debug("Preferred signing algorithms for JWT pre-auth code: {}", preferredAlgs);
-
-        // Default to Algorithm.ES256 if no preferred algorithm is found or signing key available
-        List<String> algs = new ArrayList<>(preferredAlgs);
-        if (!algs.contains(Algorithm.ES256)) {
-            algs.add(Algorithm.ES256);
-        }
-
-        for (String alg : algs) {
+        for (String alg : preferredAlgs) {
             try {
-                KeyWrapper signingKey = session.keys().getActiveKey(realm, KeyUse.SIG, alg);
-                if (signingKey == null) {
-                    logger.debug("No active signing key found for algorithm {}, skipping", alg);
-                    continue;
-                }
-
-                SignatureProvider signatureProvider = session.getProvider(
-                        SignatureProvider.class,
-                        signingKey.getAlgorithm());
-
-                return signatureProvider.signer(signingKey);
+                return getSignerContext(alg);
             } catch (RuntimeException ignored) {
                 logger.debug("No active signing key/context found for algorithm {}, skipping", alg);
             }
         }
 
-        throw new RuntimeException("No signing key/context available for JWT pre-auth code signing");
+        // Default to Algorithm.ES256 if no preferred algorithm is found or signing key available
+        logger.debug("Falling back to default algorithm {} for signing JWT pre-auth codes", Algorithm.ES256);
+        return getSignerContext(Algorithm.ES256);
+    }
+
+    /**
+     * Retrieves the SignatureSignerContext associated with the given algorithm.
+     */
+    private SignatureSignerContext getSignerContext(String alg) {
+        KeyWrapper signingKey = session.keys().getActiveKey(realm, KeyUse.SIG, alg);
+        if (signingKey == null) {
+            throw new IllegalArgumentException(String.format("No active signing key found for algorithm %s", alg));
+        }
+
+        SignatureProvider signatureProvider = session.getProvider(
+                SignatureProvider.class,
+                signingKey.getAlgorithm());
+
+        return signatureProvider.signer(signingKey);
     }
 
     /**
@@ -251,7 +252,7 @@ public class JwtPreAuthCodeHandler implements PreAuthCodeHandler {
             long now = Time.currentTime();
             if (exp < now) {
                 String message = String.format("Jwt pre-auth code not valid: %s (exp) < %s (now)", exp, now);
-                throw new VerificationException(message);
+                throw new VerificationException(message, Errors.EXPIRED_CODE);
             }
 
             return true;

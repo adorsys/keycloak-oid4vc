@@ -76,6 +76,8 @@ public class PreAuthorizedGrantTest extends AbstractTestRealmKeycloakTest {
         String preAuthorizedCode = testingResource.getPreAuthorizedCode(TEST_REALM_NAME, userSessionId, "test-app", Time.currentTime() - 30);
         AccessTokenResponse accessTokenResponse = postCode(preAuthorizedCode);
         assertEquals("An expired code should not get an access token.", HttpStatus.SC_BAD_REQUEST, accessTokenResponse.getStatusCode());
+        assertEquals("Pre-authorized code failed handler verification (expired_token)",
+                accessTokenResponse.getErrorDescription());
     }
 
     @Test

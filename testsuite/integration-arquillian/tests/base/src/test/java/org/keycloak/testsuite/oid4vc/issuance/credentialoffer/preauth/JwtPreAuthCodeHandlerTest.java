@@ -13,12 +13,14 @@ import org.keycloak.jose.jws.JWSInput;
 import org.keycloak.jose.jws.JWSInputException;
 import org.keycloak.models.RealmModel;
 import org.keycloak.models.UserModel;
+import org.keycloak.models.oid4vci.CredentialScopeModel;
 import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerWellKnownProvider;
 import org.keycloak.protocol.oid4vc.issuance.credentialoffer.preauth.JwtPreAuthCodeHandler;
 import org.keycloak.protocol.oid4vc.model.CredentialsOffer;
 import org.keycloak.protocol.oid4vc.model.JwtPreAuthCode;
 import org.keycloak.protocol.oidc.representations.OIDCConfigurationRepresentation;
 import org.keycloak.representations.JsonWebToken;
+import org.keycloak.representations.idm.ClientScopeRepresentation;
 import org.keycloak.testsuite.oid4vc.issuance.signing.OID4VCIssuerEndpointTest;
 import org.keycloak.testsuite.util.oauth.AccessTokenResponse;
 import org.keycloak.util.JsonSerialization;
@@ -39,7 +41,7 @@ public class JwtPreAuthCodeHandlerTest extends OID4VCIssuerEndpointTest {
     @Test
     public void shouldGenerateValidPreAuthCode() {
         // Initiate the flow by creating a credential offer state
-        String offerStateJson = createPreAuthOffer();
+        String offerStateJson = createPreAuthOffer(null);
 
         // Create a pre-auth code for the offer state
         String preAuthorizedCode = testingClient.server(TEST_REALM_NAME).fetch((session) -> {
@@ -49,7 +51,7 @@ public class JwtPreAuthCodeHandlerTest extends OID4VCIssuerEndpointTest {
 
             // Create pre-auth code and quickly check that it is a well-structured JWT
             String preAuthCode = handler.createPreAuthCode(offerState);
-            assertValidPreAuthCodeJwt(preAuthCode);
+            assertValidPreAuthCodeJwt(preAuthCode, Algorithm.ES256);
 
             // Verify pre-auth code and recover offer state
             try {
@@ -65,6 +67,24 @@ public class JwtPreAuthCodeHandlerTest extends OID4VCIssuerEndpointTest {
         AccessTokenResponse accessTokenResponse = exchangePreAuthCodeForAccessToken(preAuthorizedCode);
         assertEquals(HttpStatus.SC_OK, accessTokenResponse.getStatusCode());
         assertNotNull("Access token must not be null", accessTokenResponse.getAccessToken());
+    }
+
+    @Test
+    public void shouldGenerateValidPreAuthCode_SignedWithPreferredAlg() {
+        // Initiate the flow by creating a credential offer state
+        String offerStateJson = createPreAuthOffer(Algorithm.RS256);
+
+        // Create a pre-auth code for the offer state and assert that it is signed with
+        // the preferred algorithm RS256 instead of the default ES256
+        testingClient.server(TEST_REALM_NAME).run((session) -> {
+            JwtPreAuthCodeHandler handler = new JwtPreAuthCodeHandler(session);
+            CredentialOfferState offerState = JsonSerialization.valueFromString(
+                    offerStateJson, CredentialOfferState.class);
+
+            // Create pre-auth code and quickly check that it is a well-structured JWT
+            String preAuthCode = handler.createPreAuthCode(offerState);
+            assertValidPreAuthCodeJwt(preAuthCode, Algorithm.RS256);
+        });
     }
 
     @Test
@@ -99,14 +119,14 @@ public class JwtPreAuthCodeHandlerTest extends OID4VCIssuerEndpointTest {
         // Ensure that it cannot be exchanged for an access token
         AccessTokenResponse accessTokenResponse = exchangePreAuthCodeForAccessToken(imposterPreAuthCode);
         assertEquals(HttpStatus.SC_BAD_REQUEST, accessTokenResponse.getStatusCode());
-        assertEquals("Pre-authorized code failed handler verification",
+        assertEquals("Pre-authorized code failed handler verification (invalid_code)",
                 accessTokenResponse.getErrorDescription());
     }
 
     @Test
     public void mustRejectExpiredPreAuthCodeJwts() {
         // Initiate the flow by creating a credential offer state
-        String offerStateJson = createPreAuthOffer();
+        String offerStateJson = createPreAuthOffer(null);
 
         // Assert that an expired pre-auth code fails verification
         testingClient.server(TEST_REALM_NAME).run((session) -> {
@@ -126,7 +146,7 @@ public class JwtPreAuthCodeHandlerTest extends OID4VCIssuerEndpointTest {
     @Test
     public void mustRejectReplayedPreAuthCodeJwts() {
         // Initiate the flow by creating a credential offer state
-        String offerStateJson = createPreAuthOffer();
+        String offerStateJson = createPreAuthOffer(null);
 
         // Create a pre-auth code for the offer state
         String preAuthorizedCode = testingClient.server(TEST_REALM_NAME).fetch((session) -> {
@@ -136,7 +156,7 @@ public class JwtPreAuthCodeHandlerTest extends OID4VCIssuerEndpointTest {
 
             // Create pre-auth code and quickly check that it is a well-structured JWT
             String preAuthCode = handler.createPreAuthCode(offerState);
-            assertValidPreAuthCodeJwt(preAuthCode);
+            assertValidPreAuthCodeJwt(preAuthCode, Algorithm.ES256);
             return preAuthCode;
         }, String.class);
 
@@ -151,7 +171,10 @@ public class JwtPreAuthCodeHandlerTest extends OID4VCIssuerEndpointTest {
                 replayResponse.getErrorDescription());
     }
 
-    private String createPreAuthOffer() {
+    private String createPreAuthOffer(String signingAlg) {
+        // Configure signing algorithm in credential client scope
+        configureCredentialSigningAlgorithm(sdJwtTypeCredentialClientScope, signingAlg);
+
         return testingClient.server(TEST_REALM_NAME).fetchString((session) -> {
             CredentialsOffer credOffer = new CredentialsOffer()
                     .setCredentialIssuer(OID4VCIssuerWellKnownProvider.getIssuer(session.getContext()))
@@ -165,6 +188,16 @@ public class JwtPreAuthCodeHandlerTest extends OID4VCIssuerEndpointTest {
         });
     }
 
+    private void configureCredentialSigningAlgorithm(ClientScopeRepresentation clientScope, String alg) {
+        if (alg == null) {
+            clientScope.getAttributes().remove(CredentialScopeModel.SIGNING_ALG);
+        } else {
+            clientScope.getAttributes().put(CredentialScopeModel.SIGNING_ALG, alg);
+        }
+
+        testRealm().clientScopes().get(clientScope.getId()).update(clientScope);
+    }
+
     private AccessTokenResponse exchangePreAuthCodeForAccessToken(String preAuthCode) {
         final String endpoint = getRealmPath(TEST_REALM_NAME);
         OIDCConfigurationRepresentation oidcConfig = getAuthorizationMetadata(endpoint);
@@ -175,7 +208,7 @@ public class JwtPreAuthCodeHandlerTest extends OID4VCIssuerEndpointTest {
                 .send();
     }
 
-    private static void assertValidPreAuthCodeJwt(String jwt) {
+    private static void assertValidPreAuthCodeJwt(String jwt, String expectedAlg) {
         JWSInput jws;
         JwtPreAuthCode payload;
 
@@ -187,6 +220,9 @@ public class JwtPreAuthCodeHandlerTest extends OID4VCIssuerEndpointTest {
         }
 
         assertEquals("Must be of type PreAuthCode", PRE_AUTH_CODE_TYP, jws.getHeader().getType());
+        assertEquals("Must use expected signing algorithm",
+                expectedAlg, jws.getHeader().getAlgorithm().toString());
+
         assertNotNull("Must embed a credential offer state", payload.getCredentialOfferState());
         assertNotNull("Must be salted", payload.getSalt());
     }
