@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Stream;
 
+import org.keycloak.OAuth2Constants;
 import org.keycloak.TokenVerifier;
 import org.keycloak.common.VerificationException;
 import org.keycloak.common.util.Base64Url;
@@ -44,7 +45,6 @@ import static org.keycloak.constants.OID4VCIConstants.OID4VC_PROTOCOL;
 public class JwtPreAuthCodeHandler implements PreAuthCodeHandler {
 
     private static final Logger logger = LoggerFactory.getLogger(JwtPreAuthCodeHandler.class);
-    public static final String PRE_AUTH_CODE_TYP = "oid4vci-pre-auth-code+jwt";
 
     private final KeycloakSession session;
     private final RealmModel realm;
@@ -69,7 +69,7 @@ public class JwtPreAuthCodeHandler implements PreAuthCodeHandler {
         // Signing
         SignatureSignerContext signer = getSignerContext(offerState);
         return new JWSBuilder()
-                .type(PRE_AUTH_CODE_TYP)
+                .type(OAuth2Constants.JWT)
                 .jsonContent(jwtBody)
                 .sign(signer);
     }
@@ -192,21 +192,6 @@ public class JwtPreAuthCodeHandler implements PreAuthCodeHandler {
      * Property verifiers.
      */
     private List<TokenVerifier.Predicate<JwtPreAuthCode>> getPropertyVerifiers(TokenVerifier<JwtPreAuthCode> verifier) {
-        TokenVerifier.Predicate<JwtPreAuthCode> typCheck = jwt -> {
-            JWSHeader header = verifier.getHeader();
-            String typ = Optional.ofNullable(header)
-                    .map(JWSHeader::getType)
-                    .orElse(null);
-
-            if (!PRE_AUTH_CODE_TYP.equals(typ)) {
-                throw new VerificationException(String.format(
-                        "Invalid or missing JWT typ header for pre-auth code: expected '%s' got '%s'",
-                        PRE_AUTH_CODE_TYP, typ));
-            }
-
-            return true;
-        };
-
         TokenVerifier.Predicate<JwtPreAuthCode> offerStateCheck = jwt -> {
             if (jwt.getCredentialOfferState() == null
                     || jwt.getCredentialOfferState().getCredentialsOffer() == null) {
@@ -258,7 +243,7 @@ public class JwtPreAuthCodeHandler implements PreAuthCodeHandler {
             return true;
         };
 
-        return List.of(typCheck, offerStateCheck, issuerCheck, audienceCheck, expirationCheck);
+        return List.of(offerStateCheck, issuerCheck, audienceCheck, expirationCheck);
     }
 
     @Override
