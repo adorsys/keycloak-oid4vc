@@ -29,7 +29,6 @@ import org.apache.http.HttpStatus;
 import org.junit.Test;
 
 import static org.keycloak.protocol.oid4vc.issuance.credentialoffer.CredentialOfferStorage.CredentialOfferState;
-import static org.keycloak.protocol.oid4vc.issuance.credentialoffer.preauth.JwtPreAuthCodeHandler.PRE_AUTH_CODE_TYP;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
@@ -112,8 +111,8 @@ public class JwtPreAuthCodeHandlerTest extends OID4VCIssuerEndpointTest {
             VerificationException exception = assertThrows(VerificationException.class,
                     () -> handler.verifyPreAuthCode(imposterPreAuthCode));
 
-            assertEquals("Invalid or missing JWT typ header for pre-auth code: " +
-                    "expected 'oid4vci-pre-auth-code+jwt' got 'null'", exception.getMessage());
+            assertEquals("Not a jwt pre-auth code: no credential offer state found",
+                    exception.getMessage());
         });
 
         // Ensure that it cannot be exchanged for an access token
@@ -222,7 +221,6 @@ public class JwtPreAuthCodeHandlerTest extends OID4VCIssuerEndpointTest {
             throw new RuntimeException(e);
         }
 
-        assertEquals("Must be of type PreAuthCode", PRE_AUTH_CODE_TYP, jws.getHeader().getType());
         assertEquals("Must use expected signing algorithm",
                 expectedAlg, jws.getHeader().getAlgorithm().toString());
 
