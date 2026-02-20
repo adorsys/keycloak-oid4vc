@@ -80,7 +80,9 @@ export const ScopeForm = ({ clientScope, save }: ScopeFormProps) => {
 
   // Get available hash algorithms from server info
   const hashAlgorithms = serverInfo?.providers?.hash?.providers
-    ? Object.keys(serverInfo.providers.hash.providers).map(alg => alg.toLowerCase())
+    ? Object.keys(serverInfo.providers.hash.providers).map((alg) =>
+        alg.toLowerCase(),
+      )
     : [];
 
   // Get available asymmetric signature algorithms from server info
