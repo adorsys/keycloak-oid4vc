@@ -42,7 +42,7 @@ class DefaultCredentialOfferStorage implements CredentialOfferStorage {
      * @param expirationTimestamp Absolute expiration timestamp in seconds
      * @return Lifespan in seconds, or 0 if the entry is already expired
      */
-    private long calculateLifespanSeconds(int expirationTimestamp) {
+    private long calculateLifespanSeconds(long expirationTimestamp) {
         int currentTime = Time.currentTime();
         long lifespan = expirationTimestamp - currentTime;
         
