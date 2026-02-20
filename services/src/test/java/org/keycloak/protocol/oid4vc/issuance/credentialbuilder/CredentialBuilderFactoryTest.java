@@ -8,10 +8,9 @@ import org.keycloak.common.crypto.CryptoIntegration;
 import org.keycloak.common.crypto.CryptoProvider;
 import org.keycloak.common.profile.CommaSeparatedListProfileConfigResolver;
 import org.keycloak.models.KeycloakSession;
+import org.keycloak.protocol.oid4vc.issuance.signing.CredentialSigner;
 import org.keycloak.services.resteasy.ResteasyKeycloakSession;
 import org.keycloak.services.resteasy.ResteasyKeycloakSessionFactory;
-
-import org.keycloak.protocol.oid4vc.issuance.signing.CredentialSigner;
 
 import org.junit.BeforeClass;
 import org.junit.Test;
