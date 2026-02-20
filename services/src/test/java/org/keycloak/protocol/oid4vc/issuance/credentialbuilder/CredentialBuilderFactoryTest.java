@@ -11,11 +11,14 @@ import org.keycloak.models.KeycloakSession;
 import org.keycloak.services.resteasy.ResteasyKeycloakSession;
 import org.keycloak.services.resteasy.ResteasyKeycloakSessionFactory;
 
+import org.keycloak.protocol.oid4vc.issuance.signing.CredentialSigner;
+
 import org.junit.BeforeClass;
 import org.junit.Test;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.empty;
+import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.notNullValue;
@@ -47,5 +50,23 @@ public class CredentialBuilderFactoryTest {
         for (CredentialBuilderFactory credentialBuilderFactory : credentialBuilderFactories) {
             assertThat(credentialBuilderFactory.getConfigProperties(), notNullValue());
         }
+    }
+
+    @Test
+    public void testLdpFactoriesDisabled() {
+        // LDP providers are intentionally disabled to keep scope limited to supported formats.
+        List<String> builderIds = session.getKeycloakSessionFactory()
+                .getProviderFactoriesStream(CredentialBuilder.class)
+                .map(f -> f.getId())
+                .toList();
+
+        assertThat(builderIds, not(hasItem("ldp_vc")));
+
+        List<String> signerIds = session.getKeycloakSessionFactory()
+                .getProviderFactoriesStream(CredentialSigner.class)
+                .map(f -> f.getId())
+                .toList();
+
+        assertThat(signerIds, not(hasItem("ldp_vc")));
     }
 }
