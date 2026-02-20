@@ -34,8 +34,7 @@ import org.keycloak.protocol.oidc.representations.OIDCConfigurationRepresentatio
 import org.keycloak.utils.StringUtil;
 import org.keycloak.wellknown.WellKnownProvider;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.jboss.logging.Logger;
 
 import static org.keycloak.constants.OID4VCIConstants.OID4VC_PROTOCOL;
 
@@ -44,7 +43,7 @@ import static org.keycloak.constants.OID4VCIConstants.OID4VC_PROTOCOL;
  */
 public class JwtPreAuthCodeHandler implements PreAuthCodeHandler {
 
-    private static final Logger logger = LoggerFactory.getLogger(JwtPreAuthCodeHandler.class);
+    private static final Logger logger = Logger.getLogger(JwtPreAuthCodeHandler.class);
 
     private final KeycloakSession session;
     private final RealmModel realm;
@@ -64,7 +63,7 @@ public class JwtPreAuthCodeHandler implements PreAuthCodeHandler {
                 .issuer(getCredentialIssuer())
                 .addAudience(getTokenEndpoint())
                 .issuedNow()
-                .exp((long) offerState.getExpiration());
+                .exp(offerState.getExpiration());
 
         // Signing
         SignatureSignerContext signer = getSignerContext(offerState);
@@ -87,7 +86,7 @@ public class JwtPreAuthCodeHandler implements PreAuthCodeHandler {
         // Verify JWT (Signature + claim conformance)
         TokenVerifier<JwtPreAuthCode> verifier = TokenVerifier.create(preAuthCode, JwtPreAuthCode.class);
         verifier.verifierContext(getVerifierContext(jwsInput.getHeader()));
-        getPropertyVerifiers(verifier).forEach(verifier::withChecks);
+        getPropertyVerifiers().forEach(verifier::withChecks);
         verifier.verify();
 
         // Parse payload as JwtPreAuthCode and extract CredentialOfferState
@@ -139,18 +138,23 @@ public class JwtPreAuthCodeHandler implements PreAuthCodeHandler {
      */
     private SignatureSignerContext getSignerContext(CredentialOfferState offerState) {
         List<String> preferredAlgs = getPreferredSigningAlgs(offerState);
-        logger.debug("Preferred signing algorithms for JWT pre-auth code: {}", preferredAlgs);
+        logger.debugf("Preferred signing algorithms for JWT pre-auth code: %s", preferredAlgs);
         for (String alg : preferredAlgs) {
             try {
                 return getSignerContext(alg);
             } catch (RuntimeException ignored) {
-                logger.debug("No active signing key/context found for algorithm {}, skipping", alg);
+                logger.debugf("No active signing key/context found for algorithm %s, skipping", alg);
             }
         }
 
-        // Default to Algorithm.ES256 if no preferred algorithm is found or signing key available
-        logger.debug("Falling back to default algorithm {} for signing JWT pre-auth codes", Algorithm.ES256);
-        return getSignerContext(Algorithm.ES256);
+        try {
+            // Default to Algorithm.ES256 if no preferred algorithm is found or signing key available.
+            // Under normal circumstances, an ES256 key should be generated on the fly.
+            logger.debugf("Falling back to default algorithm %s for signing JWT pre-auth codes", Algorithm.ES256);
+            return getSignerContext(Algorithm.ES256);
+        } catch (RuntimeException e) {
+            throw new IllegalStateException("No active signing key/context found for JWT pre-auth code signing", e);
+        }
     }
 
     /**
@@ -191,7 +195,7 @@ public class JwtPreAuthCodeHandler implements PreAuthCodeHandler {
     /**
      * Property verifiers.
      */
-    private List<TokenVerifier.Predicate<JwtPreAuthCode>> getPropertyVerifiers(TokenVerifier<JwtPreAuthCode> verifier) {
+    private List<TokenVerifier.Predicate<JwtPreAuthCode>> getPropertyVerifiers() {
         TokenVerifier.Predicate<JwtPreAuthCode> offerStateCheck = jwt -> {
             if (jwt.getCredentialOfferState() == null
                     || jwt.getCredentialOfferState().getCredentialsOffer() == null) {

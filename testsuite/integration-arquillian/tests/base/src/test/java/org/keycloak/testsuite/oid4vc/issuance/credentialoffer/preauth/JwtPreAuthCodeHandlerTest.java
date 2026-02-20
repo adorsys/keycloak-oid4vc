@@ -191,12 +191,7 @@ public class JwtPreAuthCodeHandlerTest extends OID4VCIssuerEndpointTest {
     }
 
     private void configureCredentialSigningAlgorithm(ClientScopeRepresentation clientScope, String alg) {
-        if (alg == null) {
-            clientScope.getAttributes().remove(CredentialScopeModel.SIGNING_ALG);
-        } else {
-            clientScope.getAttributes().put(CredentialScopeModel.SIGNING_ALG, alg);
-        }
-
+        clientScope.getAttributes().put(CredentialScopeModel.SIGNING_ALG, alg);
         testRealm().clientScopes().get(clientScope.getId()).update(clientScope);
     }
 
@@ -210,7 +205,7 @@ public class JwtPreAuthCodeHandlerTest extends OID4VCIssuerEndpointTest {
                 .send();
     }
 
-    private static void assertValidPreAuthCodeJwt(String jwt, String expectedAlg) {
+    public static void assertValidPreAuthCodeJwt(String jwt, String expectedAlg) {
         JWSInput jws;
         JwtPreAuthCode payload;
 

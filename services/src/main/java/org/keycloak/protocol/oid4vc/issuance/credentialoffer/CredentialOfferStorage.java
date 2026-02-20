@@ -38,10 +38,10 @@ public interface CredentialOfferStorage extends Provider {
         private String clientId;
         private String userId;
         private String nonce;
-        private int expiration;
+        private long expiration;
         private OID4VCAuthorizationDetail authorizationDetails;
 
-        public CredentialOfferState(CredentialsOffer credOffer, String clientId, String userId, int expiration) {
+        public CredentialOfferState(CredentialsOffer credOffer, String clientId, String userId, long expiration) {
             this.credentialsOffer = credOffer;
             this.clientId = clientId;
             this.userId = userId;
@@ -75,7 +75,7 @@ public interface CredentialOfferStorage extends Provider {
             return nonce;
         }
 
-        public int getExpiration() {
+        public long getExpiration() {
             return expiration;
         }
 
@@ -108,7 +108,7 @@ public interface CredentialOfferStorage extends Provider {
             return this;
         }
 
-        public CredentialOfferState setExpiration(int expiration) {
+        public CredentialOfferState setExpiration(long expiration) {
             this.expiration = expiration;
             return this;
         }

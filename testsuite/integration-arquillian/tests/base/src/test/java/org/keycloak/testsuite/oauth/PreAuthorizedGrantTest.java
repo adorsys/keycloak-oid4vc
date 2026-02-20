@@ -26,6 +26,7 @@ import jakarta.ws.rs.core.UriBuilder;
 import org.keycloak.OAuth2Constants;
 import org.keycloak.common.Profile;
 import org.keycloak.common.util.Time;
+import org.keycloak.crypto.Algorithm;
 import org.keycloak.protocol.oidc.OIDCLoginProtocolService;
 import org.keycloak.protocol.oidc.grants.PreAuthorizedCodeGrantTypeFactory;
 import org.keycloak.representations.idm.RealmRepresentation;
@@ -33,6 +34,7 @@ import org.keycloak.representations.idm.UserRepresentation;
 import org.keycloak.testsuite.AbstractTestRealmKeycloakTest;
 import org.keycloak.testsuite.arquillian.annotation.EnableFeature;
 import org.keycloak.testsuite.client.resources.TestingResource;
+import org.keycloak.testsuite.oid4vc.issuance.credentialoffer.preauth.JwtPreAuthCodeHandlerTest;
 import org.keycloak.testsuite.util.UserBuilder;
 import org.keycloak.testsuite.util.oauth.AccessTokenResponse;
 import org.keycloak.testsuite.util.oauth.AuthorizationEndpointResponse;
@@ -64,9 +66,12 @@ public class PreAuthorizedGrantTest extends AbstractTestRealmKeycloakTest {
     @Test
     public void testPreAuthorizedGrant() {
         String userSessionId = getUserSession();
-        String preAuthorizedCode = testingResource.getPreAuthorizedCode(TEST_REALM_NAME, userSessionId, "test-app", Time.currentTime() + 30);
-        AccessTokenResponse accessTokenResponse = postCode(preAuthorizedCode);
 
+        String preAuthorizedCode = testingResource.getPreAuthorizedCode(TEST_REALM_NAME, userSessionId, "test-app", Time.currentTime() + 30);
+        // The generated pre-auth code should have been signed with an ES256 key generated on the fly
+        JwtPreAuthCodeHandlerTest.assertValidPreAuthCodeJwt(preAuthorizedCode, Algorithm.ES256);
+
+        AccessTokenResponse accessTokenResponse = postCode(preAuthorizedCode);
         assertEquals("An access token should have successfully been returned.", HttpStatus.SC_OK, accessTokenResponse.getStatusCode());
     }
 
