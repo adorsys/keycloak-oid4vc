@@ -20,17 +20,20 @@ package org.keycloak.protocol.oid4vc.issuance;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
 import org.keycloak.common.util.Time;
+import org.keycloak.constants.OID4VCIConstants;
 import org.keycloak.models.AuthenticatedClientSessionModel;
 import org.keycloak.models.ClientModel;
 import org.keycloak.models.ClientSessionContext;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.UserModel;
 import org.keycloak.models.UserSessionModel;
+import org.keycloak.models.oid4vci.CredentialScopeModel;
 import org.keycloak.protocol.oid4vc.issuance.credentialoffer.CredentialOfferStorage;
 import org.keycloak.protocol.oid4vc.model.Claim;
 import org.keycloak.protocol.oid4vc.model.ClaimsDescription;
@@ -302,18 +305,28 @@ public class OID4VCAuthorizationDetailsProcessor implements AuthorizationDetails
     private List<OID4VCAuthorizationDetail> generateAuthorizationDetailsFromCredentialOffer(AuthenticatedClientSessionModel clientSession) {
         logger.debug("Processing authorization_details from credential offer");
 
-        // Get supported credentials
-        Map<String, SupportedCredentialConfiguration> supportedCredentials = OID4VCIssuerWellKnownProvider.getSupportedCredentials(session);
-        if (supportedCredentials == null || supportedCredentials.isEmpty()) {
-            logger.debug("No supported credentials found, cannot generate authorization_details from credential offer");
-            return null;
-        }
-
         // Extract credential_configuration_ids from the credential offer
         List<String> credentialConfigurationIds = extractCredentialConfigurationIds(clientSession);
 
         if (credentialConfigurationIds == null || credentialConfigurationIds.isEmpty()) {
             logger.debug("No credential_configuration_ids found in credential offer, cannot generate authorization_details");
+            return null;
+        }
+
+        return generateAuthorizationDetails(credentialConfigurationIds);
+    }
+
+    /**
+     * Generate authorization_details for each credential configuration id.
+     *
+     * @param credentialConfigurationIds the list of credential configuration ids
+     * @return the authorization details response if generation was successful, null otherwise
+     */
+    private List<OID4VCAuthorizationDetail> generateAuthorizationDetails(List<String> credentialConfigurationIds) {
+        // Get supported credentials
+        Map<String, SupportedCredentialConfiguration> supportedCredentials = OID4VCIssuerWellKnownProvider.getSupportedCredentials(session);
+        if (supportedCredentials == null || supportedCredentials.isEmpty()) {
+            logger.debug("No supported credentials found, cannot generate authorization_details");
             return null;
         }
 
@@ -371,16 +384,46 @@ public class OID4VCAuthorizationDetailsProcessor implements AuthorizationDetails
 
     @Override
     public List<OID4VCAuthorizationDetail> handleMissingAuthorizationDetails(UserSessionModel userSession, ClientSessionContext clientSessionCtx) {
-        // Only generate authorization_details from credential offer if:
-        // 1. No authorization_details were processed yet, AND
-        // 2. There's a credential offer note in the client session (indicating this is a credential offer flow)
-        // This prevents generating authorization_details for regular SSO logins that don't request OID4VCI - Not 100% sure the check for CREDENTIAL_CONFIGURATION_IDS_NOTE is needed and sufficient
-        if (clientSessionCtx.getClientSession().getNote(OID4VCIssuerEndpoint.CREDENTIAL_CONFIGURATION_IDS_NOTE) != null) {
-            AuthenticatedClientSessionModel clientSession = clientSessionCtx.getClientSession();
-            return generateAuthorizationDetailsFromCredentialOffer(clientSession);
-        } else {
+        // Generate authorization_details from credential offer OR from requested scopes if RAR is missing.
+        // This ensures the token response always contains the necessary authorization_details for OID4VCI.
+
+        AuthenticatedClientSessionModel clientSession = clientSessionCtx.getClientSession();
+        List<String> credentialConfigurationIds = null;
+
+        // 1. Try to get IDs from the session note (Credential Offer flow)
+        if (clientSession.getNote(OID4VCIssuerEndpoint.CREDENTIAL_CONFIGURATION_IDS_NOTE) != null) {
+            credentialConfigurationIds = extractCredentialConfigurationIds(clientSession);
+            logger.debugf("Generating authorization_details from session note: %s", credentialConfigurationIds);
+        }
+
+        // 2. If no note, try to get IDs from requested OID4VCI scopes (Scope-based fallback)
+        if (credentialConfigurationIds == null || credentialConfigurationIds.isEmpty()) {
+            credentialConfigurationIds = clientSessionCtx.getClientScopesStream()
+                    .filter(scope -> OID4VCIConstants.OID4VC_PROTOCOL.equals(scope.getProtocol()))
+                    .map(scope -> scope.getAttribute(CredentialScopeModel.CONFIGURATION_ID))
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toList());
+            if (credentialConfigurationIds != null && !credentialConfigurationIds.isEmpty()) {
+                logger.debugf("Generating authorization_details from requested oid4vc scopes: %s", credentialConfigurationIds);
+            }
+        }
+
+        if (credentialConfigurationIds == null || credentialConfigurationIds.isEmpty()) {
             return null;
         }
+
+        // Generate the OID4VCAuthorizationDetail objects
+        List<OID4VCAuthorizationDetail> authorizationDetailsList = generateAuthorizationDetails(credentialConfigurationIds);
+
+        if (authorizationDetailsList != null && !authorizationDetailsList.isEmpty()) {
+            // For authorization code flow, we must create OfferState for each generated identifier
+            // so that the credential endpoint can resolve them later.
+            for (OID4VCAuthorizationDetail detail : authorizationDetailsList) {
+                createOfferStateForAuthorizationCodeFlow(userSession, clientSessionCtx, detail);
+            }
+        }
+
+        return authorizationDetailsList;
     }
 
     @Override
