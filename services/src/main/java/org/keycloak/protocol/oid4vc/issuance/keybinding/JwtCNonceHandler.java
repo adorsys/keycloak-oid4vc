@@ -27,6 +27,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Random;
+import java.util.Set;
 
 import jakarta.annotation.Nullable;
 
@@ -104,9 +105,43 @@ public class JwtCNonceHandler implements CNonceHandler {
     @Override
     public void verifyCNonce(String cNonce, List<String> audiences, @Nullable Map<String, Object> additionalDetails)
             throws VerificationException {
+        verifyCNonce(cNonce, audiences, additionalDetails, true);
+    }
+
+    /**
+     * Verifies a c_nonce with optional consumption.
+     *
+     * @param cNonce            the nonce to verify
+     * @param audiences         expected audiences
+     * @param additionalDetails additional validation details
+     * @param consume           whether to consume the nonce (mark as used)
+     * @throws VerificationException if verification fails
+     */
+    public void verifyCNonce(String cNonce, List<String> audiences, @Nullable Map<String, Object> additionalDetails, boolean consume)
+            throws VerificationException {
         if (cNonce == null) {
             throw new VerificationException("c_nonce is required");
         }
+
+        // Check if this nonce was already validated in the current request (for multiple proofs)
+        Set<String> validatedNonces = (Set<String>) keycloakSession.getAttribute("VALIDATED_NONCES");
+        if (validatedNonces != null && validatedNonces.contains(cNonce)) {
+            // Nonce already validated in this request, skip replay check
+            logger.debug("Nonce already validated in current request, skipping replay check");
+        } else {
+            // Check if nonce has already been used (replay protection)
+            if (consume) {
+                if (!keycloakSession.singleUseObjects().putIfAbsent(cNonce, 60)) {
+                    throw new VerificationException("c_nonce has already been used");
+                }
+            } else {
+                // Just check if nonce exists (already consumed)
+                if (keycloakSession.singleUseObjects().contains(cNonce)) {
+                    throw new VerificationException("c_nonce has already been used");
+                }
+            }
+        }
+
         TokenVerifier<JsonWebToken> verifier = TokenVerifier.create(cNonce, JsonWebToken.class);
         KeycloakContext keycloakContext = keycloakSession.getContext();
         List<TokenVerifier.Predicate<JsonWebToken>> verifiers = //

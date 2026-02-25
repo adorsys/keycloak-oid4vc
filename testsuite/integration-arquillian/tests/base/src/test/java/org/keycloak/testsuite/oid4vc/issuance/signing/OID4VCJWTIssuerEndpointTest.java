@@ -17,18 +17,19 @@
 package org.keycloak.testsuite.oid4vc.issuance.signing;
 
 import java.io.IOException;
+import java.net.URI;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-import java.util.function.BiFunction;
-import java.util.function.Consumer;
 
 import jakarta.ws.rs.BadRequestException;
+import jakarta.ws.rs.client.Client;
 import jakarta.ws.rs.client.Entity;
 import jakarta.ws.rs.client.WebTarget;
 import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
+import jakarta.ws.rs.core.UriBuilder;
 
 import org.keycloak.TokenVerifier;
 import org.keycloak.VCFormat;
@@ -66,6 +67,7 @@ import org.keycloak.representations.idm.ClientScopeRepresentation;
 import org.keycloak.representations.idm.OAuth2ErrorRepresentation;
 import org.keycloak.services.CorsErrorResponseException;
 import org.keycloak.services.managers.AppAuthManager.BearerTokenAuthenticator;
+import org.keycloak.testsuite.util.AdminClientUtil;
 import org.keycloak.testsuite.util.oauth.AccessTokenResponse;
 import org.keycloak.testsuite.util.oauth.oid4vc.CredentialOfferResponse;
 import org.keycloak.util.JsonSerialization;
@@ -595,32 +597,45 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
     }
 
     /**
-     * The accessToken references the scope "test-credential" but we ask for the credential "VerifiableCredential"
-     * in the CredentialRequest
+     * The accessToken references the scope "test-credential" (JWT) but we try to request a credential
+     * from a different scope/credential_identifier (SD-JWT) that doesn't match the authorization_details.
      */
     @Test
     public void testCredentialIssuanceWithScopeUnmatched() {
-        BiFunction<String, String, String> getAccessToken = (testClientId, testScope) -> {
-            return getBearerToken(oauth, client, jwtTypeCredentialClientScope.getName());
-        };
+        String jwtCredConfigId = jwtTypeCredentialClientScope.getAttributes().get(CredentialScopeModel.CONFIGURATION_ID);
+        CredentialIssuer credentialIssuer = getCredentialIssuerMetadata();
 
-        Consumer<Map<String, Object>> sendCredentialRequest = m -> {
-            String accessToken = (String) m.get("accessToken");
-            WebTarget credentialTarget = (WebTarget) m.get("credentialTarget");
-            CredentialRequest credentialRequest = (CredentialRequest) m.get("credentialRequest");
+        // Get JWT token with authorization_details for JWT credential
+        OID4VCAuthorizationDetail jwtAuthDetail = new OID4VCAuthorizationDetail();
+        jwtAuthDetail.setType(OPENID_CREDENTIAL);
+        jwtAuthDetail.setCredentialConfigurationId(jwtCredConfigId);
+        jwtAuthDetail.setLocations(List.of(credentialIssuer.getCredentialIssuer()));
+        String jwtAuthCode = getAuthorizationCode(oauth, client, "john", jwtTypeCredentialClientScope.getName());
+        AccessTokenResponse jwtTokenResponse = getBearerToken(oauth, jwtAuthCode, jwtAuthDetail);
+        String jwtToken = jwtTokenResponse.getAccessToken();
+
+        // Create a fake credential_identifier that doesn't exist in the token's authorization_details
+        // This simulates trying to request a different credential than what's authorized
+        String fakeCredentialIdentifier = "fake-credential-id-not-in-token-12345";
+
+        // Try to use JWT token to request a non-existent/unauthorized credential_identifier
+        try (Client client = AdminClientUtil.createResteasyClient()) {
+            URI credentialUri = UriBuilder.fromUri(credentialIssuer.getCredentialEndpoint()).build();
+            WebTarget credentialTarget = client.target(credentialUri);
+
+            CredentialRequest request = new CredentialRequest()
+                    .setCredentialIdentifier(fakeCredentialIdentifier); // Fake credential_identifier
 
             try (Response response = credentialTarget.request()
-                    .header(HttpHeaders.AUTHORIZATION, "bearer " + accessToken)
-                    .post(Entity.json(credentialRequest))) {
-                assertEquals(400, response.getStatus());
+                    .header(HttpHeaders.AUTHORIZATION, "bearer " + jwtToken) // JWT token
+                    .post(Entity.json(request))) {
+                assertEquals("Should reject request with unknown credential_identifier", 400, response.getStatus());
                 String errorJson = response.readEntity(String.class);
                 assertNotNull("Error response should not be null", errorJson);
-                assertTrue("Error response should mention INVALID_CREDENTIAL_REQUEST or scope",
-                        errorJson.contains("INVALID_CREDENTIAL_REQUEST") || errorJson.contains("scope"));
+                assertTrue("Error response should contain UNKNOWN_CREDENTIAL_IDENTIFIER",
+                        errorJson.contains("UNKNOWN_CREDENTIAL_IDENTIFIER"));
             }
-        };
-
-        testCredentialIssuanceWithAuthZCodeFlow(sdJwtTypeCredentialClientScope, getAccessToken, sendCredentialRequest);
+        }
     }
 
     /**
@@ -1374,5 +1389,62 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
                 accessTokenResponse.getStatusCode());
         assertNotNull("Access token should be present", accessTokenResponse.getAccessToken());
         assertFalse("Access token should not be empty", accessTokenResponse.getAccessToken().isEmpty());
+    }
+
+    /**
+     * Test that replaying a nonce in a credential request is rejected (replay protection).
+     * This verifies that c_nonce can only be used once.
+     */
+    @Test
+    public void testCredentialRequestNonceReplay() throws Exception {
+        final String scopeName = jwtTypeCredentialClientScope.getName();
+        String credConfigId = jwtTypeCredentialClientScope.getAttributes().get(CredentialScopeModel.CONFIGURATION_ID);
+
+        CredentialIssuer credentialIssuer = getCredentialIssuerMetadata();
+        OID4VCAuthorizationDetail authDetail = new OID4VCAuthorizationDetail();
+        authDetail.setType(OPENID_CREDENTIAL);
+        authDetail.setCredentialConfigurationId(credConfigId);
+        authDetail.setLocations(List.of(credentialIssuer.getCredentialIssuer()));
+
+        String authCode = getAuthorizationCode(oauth, client, "john", scopeName);
+        org.keycloak.testsuite.util.oauth.AccessTokenResponse tokenResponse = getBearerToken(oauth, authCode, authDetail);
+        String token = tokenResponse.getAccessToken();
+        List<OID4VCAuthorizationDetail> authDetailsResponse = tokenResponse.getOid4vcAuthorizationDetails();
+        String credentialIdentifier = authDetailsResponse.get(0).getCredentialIdentifiers().get(0);
+
+        String cNonce = getCNonce();
+
+        testingClient.server(TEST_REALM_NAME).run(session -> {
+            try {
+                BearerTokenAuthenticator authenticator = new BearerTokenAuthenticator(session);
+                authenticator.setTokenString(token);
+                String issuer = OID4VCIssuerWellKnownProvider.getIssuer(session.getContext());
+
+                String jwtProof = generateJwtProof(issuer, cNonce);
+                Proofs proofs = new Proofs().setJwt(List.of(jwtProof));
+
+                CredentialRequest request = new CredentialRequest()
+                        .setCredentialIdentifier(credentialIdentifier)
+                        .setProofs(proofs);
+
+                OID4VCIssuerEndpoint endpoint = prepareIssuerEndpoint(session, authenticator);
+                String requestPayload = JsonSerialization.writeValueAsString(request);
+
+                // 1. First request - should succeed
+                Response response1 = endpoint.requestCredential(requestPayload);
+                assertEquals("First request should be successful", Response.Status.OK.getStatusCode(), response1.getStatus());
+
+                // 2. Second request with same nonce - should fail with invalid_nonce
+                try {
+                    endpoint.requestCredential(requestPayload);
+                    Assert.fail("Second request with same nonce should have failed");
+                } catch (BadRequestException e) {
+                    ErrorResponse error = (ErrorResponse) e.getResponse().getEntity();
+                    assertEquals("Error type should be INVALID_NONCE", ErrorType.INVALID_NONCE, error.getError());
+                }
+            } catch (Exception e) {
+                throw new RuntimeException("Test failed due to: " + e.getMessage(), e);
+            }
+        });
     }
 }

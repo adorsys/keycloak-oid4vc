@@ -64,6 +64,7 @@ import org.keycloak.jose.jwe.JWEException;
 import org.keycloak.jose.jwe.JWEHeader;
 import org.keycloak.jose.jwk.JWK;
 import org.keycloak.jose.jwk.JWKParser;
+import org.keycloak.jose.jws.JWSInput;
 import org.keycloak.models.AuthenticatedClientSessionModel;
 import org.keycloak.models.ClientModel;
 import org.keycloak.models.ClientScopeModel;
@@ -100,6 +101,7 @@ import org.keycloak.protocol.oid4vc.model.CredentialsOffer;
 import org.keycloak.protocol.oid4vc.model.ErrorResponse;
 import org.keycloak.protocol.oid4vc.model.ErrorType;
 import org.keycloak.protocol.oid4vc.model.JwtProof;
+import org.keycloak.protocol.oid4vc.model.KeyAttestationJwtBody;
 import org.keycloak.protocol.oid4vc.model.NonceResponse;
 import org.keycloak.protocol.oid4vc.model.OID4VCAuthorizationDetail;
 import org.keycloak.protocol.oid4vc.model.OfferUriType;
@@ -684,6 +686,14 @@ public class OID4VCIssuerEndpoint {
     @Path(CREDENTIAL_PATH)
     public Response requestCredential(String requestPayload) {
         checkIsOid4vciEnabled();
+        try {
+            return requestCredentialInternal(requestPayload);
+        } finally {
+            session.removeAttribute("VALIDATED_NONCES");
+        }
+    }
+
+    private Response requestCredentialInternal(String requestPayload) {
         LOGGER.debugf("Received credentials request with payload: %s", requestPayload);
 
         RealmModel realm = session.getContext().getRealm();
@@ -803,8 +813,15 @@ public class OID4VCIssuerEndpoint {
 
         AccessToken accessToken = authResult.token();
 
-        // First check if the credential identifier exists
-        // This allows proper error reporting for unknown identifiers
+        // Pre-validate the proof nonce BEFORE looking up the credential offer state.
+        // This is required for correct nonce replay protection:
+        // After a successful issuance, the offer state is removed. On a replay attempt using the same
+        // (now-expired or already-used) nonce, findOfferStateByCredentialId() would return null because
+        // the state is gone, causing UNKNOWN_CREDENTIAL_IDENTIFIER to be returned instead of invalid_nonce.
+        // By validating the nonce first, we return the correct invalid_nonce error for replay attempts.
+        preValidateProofNonce(credentialRequestVO, eventBuilder);
+
+        // Check if the credential identifier exists in the offer state
         offerStorage = session.getProvider(CredentialOfferStorage.class);
         offerState = offerStorage.findOfferStateByCredentialId(session, credentialIdentifier);
         if (offerState == null) {
@@ -1496,6 +1513,109 @@ public class OID4VCIssuerEndpoint {
                 errorMessage,
                 getErrorResponse(errorType, errorMessage)
         );
+    }
+
+    /**
+     * Pre-validates the c_nonce in the provided proofs before looking up the credential offer state.
+     * <p>
+     * This must be called before {@code findOfferStateByCredentialId} because after a successful
+     * credential issuance the offer state is removed. A replay attempt uses a nonce that is already
+     * consumed (or expired), so we must detect the invalid nonce first and return
+     * {@code invalid_nonce} rather than the misleading {@code UNKNOWN_CREDENTIAL_IDENTIFIER}.
+     * </p>
+     * <p>
+     * If no proofs are present in the request, this method does nothing (nonce is optional when
+     * the credential configuration does not require proof).
+     * </p>
+     *
+     * @param credentialRequestVO the credential request containing the proofs
+     * @param eventBuilder        event builder for audit logging
+     */
+    private void preValidateProofNonce(CredentialRequest credentialRequestVO, EventBuilder eventBuilder) {
+        Proofs proofs = credentialRequestVO.getProofs();
+        if (proofs == null) {
+            return;
+        }
+
+        CNonceHandler cNonceHandler = session.getProvider(CNonceHandler.class);
+        if (cNonceHandler == null) {
+            return;
+        }
+
+        String expectedAudience = OID4VCIssuerWellKnownProvider.getCredentialsEndpoint(session.getContext());
+        String expectedSource = OID4VCIssuerWellKnownProvider.getNonceEndpoint(session.getContext());
+
+        // Track nonces in this request to allow multiple proofs with the same nonce
+        // We validate and consume each unique nonce only once
+        java.util.Set<String> validatedNonces = new java.util.HashSet<>();
+
+        // Extract and validate nonce from JWT proofs
+        List<String> jwtProofs = proofs.getJwt();
+        if (jwtProofs != null && !jwtProofs.isEmpty()) {
+            for (String jwtProof : jwtProofs) {
+                try {
+                    JWSInput jwsInput = new JWSInput(jwtProof);
+                    AccessToken proofPayload = JsonSerialization.readValue(jwsInput.getContent(), AccessToken.class);
+                    String nonce = proofPayload.getNonce();
+
+                    // Only validate and consume each unique nonce once per request
+                    if (nonce != null && !validatedNonces.contains(nonce)) {
+                        // Validate and consume the nonce
+                        cNonceHandler.verifyCNonce(
+                                nonce,
+                                List.of(expectedAudience),
+                                Map.of(JwtCNonceHandler.SOURCE_ENDPOINT, expectedSource)
+                        );
+                        validatedNonces.add(nonce);
+                    }
+                } catch (VerificationException e) {
+                    LOGGER.debugf("Pre-validation of JWT proof nonce failed: %s", e.getMessage());
+                    String errorMessage = e.getMessage();
+                    eventBuilder.detail(Details.REASON, errorMessage).error(ErrorType.INVALID_NONCE.getValue());
+                    throw new BadRequestException("Could not validate provided proof",
+                            getErrorResponse(ErrorType.INVALID_NONCE, errorMessage), new VerificationException(errorMessage));
+                } catch (Exception e) {
+                    LOGGER.debugf("Could not parse JWT proof for nonce pre-validation: %s", e.getMessage());
+                }
+            }
+        }
+
+        // Extract and validate nonce from attestation proofs
+        List<String> attestationProofs = proofs.getAttestation();
+        if (attestationProofs != null && !attestationProofs.isEmpty()) {
+            for (String attestationProof : attestationProofs) {
+                try {
+                    JWSInput jwsInput = new JWSInput(attestationProof);
+                    KeyAttestationJwtBody attestationBody =
+                            JsonSerialization.readValue(jwsInput.getContent(), KeyAttestationJwtBody.class);
+                    String nonce = attestationBody.getNonce();
+
+                    // Only validate and consume each unique nonce once per request
+                    if (nonce != null && !validatedNonces.contains(nonce)) {
+                        // Validate and consume the nonce
+                        cNonceHandler.verifyCNonce(
+                                nonce,
+                                List.of(expectedAudience),
+                                Map.of(JwtCNonceHandler.SOURCE_ENDPOINT, expectedSource)
+                        );
+                        validatedNonces.add(nonce);
+                    }
+                } catch (VerificationException e) {
+                    LOGGER.debugf("Pre-validation of attestation proof nonce failed: %s", e.getMessage());
+                    // Preserve the detailed validation error message for debugging
+                    String errorMessage = e.getMessage();
+                    eventBuilder.detail(Details.REASON, errorMessage).error(ErrorType.INVALID_NONCE.getValue());
+                    // Wrap the exception to preserve the message for test assertions
+                    throw new BadRequestException("Could not validate provided proof",
+                            getErrorResponse(ErrorType.INVALID_NONCE, errorMessage), new VerificationException(errorMessage));
+                } catch (Exception e) {
+                    LOGGER.debugf("Could not parse attestation proof for nonce pre-validation: %s", e.getMessage());
+                }
+            }
+        }
+
+        // Store validated nonces in session attribute so proof validators can skip re-validation
+        session.setAttribute("VALIDATED_NONCES", validatedNonces);
     }
 
     private CredentialScopeModel getClientScopeModel(SupportedCredentialConfiguration credentialConfig) {

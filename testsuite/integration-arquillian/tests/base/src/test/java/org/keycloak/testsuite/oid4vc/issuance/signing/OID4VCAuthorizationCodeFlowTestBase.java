@@ -41,6 +41,7 @@ import org.keycloak.protocol.oid4vc.model.CredentialRequest;
 import org.keycloak.protocol.oid4vc.model.CredentialResponse;
 import org.keycloak.protocol.oid4vc.model.OID4VCAuthorizationDetail;
 import org.keycloak.protocol.oidc.representations.OIDCConfigurationRepresentation;
+import org.keycloak.representations.AuthorizationDetailsJSONRepresentation;
 import org.keycloak.representations.idm.ClientScopeRepresentation;
 import org.keycloak.representations.idm.ProtocolMapperRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
@@ -566,8 +567,16 @@ public abstract class OID4VCAuthorizationCodeFlowTestBase extends OID4VCIssuerEn
         assertEquals("Token exchange should succeed without authorization_details (it's optional)",
                 HttpStatus.SC_OK, tokenResponse.getStatusCode());
         assertNotNull("Access token should be present", tokenResponse.getAccessToken());
-        assertNull("Response should not contain authorization_details when not provided in request",
+        assertNotNull("Response should contain auto-generated authorization_details from session/scopes",
                 tokenResponse.getAuthorizationDetails());
+        assertTrue("Authorization details should not be empty",
+                !tokenResponse.getAuthorizationDetails().isEmpty());
+        assertEquals("Should contain one authorization detail", 1, tokenResponse.getAuthorizationDetails().size());
+
+        AuthorizationDetailsJSONRepresentation authDetail = tokenResponse.getAuthorizationDetails().get(0);
+        assertNotNull("Authorization detail custom data should be present", authDetail.getCustomData());
+        assertNotNull("Authorization detail should have credential_configuration_id",
+                authDetail.getCustomData().get("credential_configuration_id"));
     }
 
     /**
