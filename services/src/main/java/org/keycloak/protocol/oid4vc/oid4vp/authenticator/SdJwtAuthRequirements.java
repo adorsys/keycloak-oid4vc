@@ -23,7 +23,7 @@ import org.keycloak.models.AuthenticatorConfigModel;
 import org.keycloak.models.KeycloakContext;
 import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerWellKnownProvider;
 import org.keycloak.protocol.oid4vc.issuance.credentialbuilder.SdJwtCredentialBuilder;
-import org.keycloak.protocol.oid4vc.oid4vp.model.prex.PresentationDefinition;
+
 import org.keycloak.sdjwt.IssuerSignedJwtVerificationOpts;
 import org.keycloak.sdjwt.consumer.PresentationRequirements;
 import org.keycloak.sdjwt.consumer.SimplePresentationDefinition;
@@ -44,7 +44,6 @@ public class SdJwtAuthRequirements {
 
     private static final Logger logger = Logger.getLogger(SdJwtAuthRequirements.class);
 
-    private final SdJwtCredentialConstrainer sdJwtCredentialConstrainer;
     private final String keycloakIssuerURI;
     private final Pattern expectedKbJwtAud;
 
@@ -58,7 +57,6 @@ public class SdJwtAuthRequirements {
 
     public SdJwtAuthRequirements(KeycloakContext context, AuthenticatorConfigModel authConfig) {
         logger.debugf("Collecting authentication requirements");
-        this.sdJwtCredentialConstrainer = new SdJwtCredentialConstrainer();
 
         // We'll need to enforce that only credentials produced by and for this audience pass through.
         // The audience is the client ID of the verifier, but some wallets prepend a scheme.
@@ -136,11 +134,8 @@ public class SdJwtAuthRequirements {
                 .build();
     }
 
-    /**
-     * Constructs presentation definition in the DIF presentation exchange format.
-     */
-    public PresentationDefinition getDIFPresentationDefinition() {
-        return sdJwtCredentialConstrainer.generatePresentationDefinition(
+    public SdJwtCredentialConstrainer.QueryMap getSdJwtQueryMap() {
+        return new SdJwtCredentialConstrainer.QueryMap(
                 getExpectedVcts(),
                 getRequiredClaims()
         );

@@ -29,6 +29,7 @@ import org.keycloak.models.utils.SessionExpiration;
 import org.keycloak.protocol.oid4vc.oid4vp.OID4VPUserAuthEndpoint;
 import org.keycloak.protocol.oid4vc.oid4vp.OID4VPUserAuthEndpointBase;
 import org.keycloak.protocol.oid4vc.oid4vp.authenticator.SdJwtAuthRequirements;
+import org.keycloak.protocol.oid4vc.oid4vp.authenticator.SdJwtCredentialConstrainer;
 import org.keycloak.protocol.oid4vc.oid4vp.model.ClientIdScheme;
 import org.keycloak.protocol.oid4vc.oid4vp.model.ClientMetadata;
 import org.keycloak.protocol.oid4vc.oid4vp.model.RequestObject;
@@ -113,13 +114,16 @@ public class AuthorizationRequestService {
         String requestId = generateRequestOrTransactionId(authSession);
         String transactionId = generateRequestOrTransactionId(authSession);
 
-        // Load presentation definition for SD-JWT authentication
-        var presentationDefinition = authReqs.getDIFPresentationDefinition();
+        // Load query map for SD-JWT authentication
+        var queryMap = authReqs.getSdJwtQueryMap();
 
         // Build request object
+        var constrainer = new SdJwtCredentialConstrainer();
         RequestObject requestObject = bootstrapRequestObject()
                 .setState(requestId)
-                .setPresentationDefinition(presentationDefinition);
+                .setDcqlQuery(constrainer.generateDcqlQuery(queryMap))
+                // Kept for backward compatibility with Draft 20 wallets
+                .setPresentationDefinition(constrainer.generatePresentationDefinition(queryMap));
 
         // Sign request object
         String requestObjectJwt = signRequestObject(requestObject);
