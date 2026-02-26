@@ -52,6 +52,8 @@ import org.keycloak.protocol.oid4vc.oid4vp.OID4VPUserAuthEndpointFactory;
 import org.keycloak.protocol.oid4vc.oid4vp.authenticator.SdJwtAuthenticatorFactory;
 import org.keycloak.protocol.oid4vc.oid4vp.model.RequestObject;
 import org.keycloak.protocol.oid4vc.oid4vp.model.ResponseObject;
+import org.keycloak.protocol.oid4vc.oid4vp.model.dcql.Credential;
+import org.keycloak.protocol.oid4vc.oid4vp.model.dcql.DcqlQuery;
 import org.keycloak.protocol.oid4vc.oid4vp.model.dto.AuthorizationContext;
 import org.keycloak.protocol.oid4vc.oid4vp.model.dto.AuthorizationContextStatus;
 import org.keycloak.protocol.oid4vc.oid4vp.model.dto.ProcessingError;
@@ -168,6 +170,10 @@ public class OID4VPUserAuthEndpointTest extends OID4VCIssuerEndpointTest {
         String expectedSessionId = pruneAuthSessionId(authContext.getTransactionId());
         String actualSessionId = pruneAuthSessionId(requestObject.getState());
         assertEquals(expectedSessionId, actualSessionId);
+
+        // Assert: Ensure the request object contains a DCQL query and a legacy presentation definition
+        assertNotNull(requestObject.getDcqlQuery());
+        assertNotNull(requestObject.getPresentationDefinition());
     }
 
     @Test
@@ -293,6 +299,16 @@ public class OID4VPUserAuthEndpointTest extends OID4VCIssuerEndpointTest {
 
         // Proceed to authentication (Use 'dc-sd+jwt' in presentation submission descriptor)
         TestOpts opts = TestOpts.getDefault().setOverrideDescriptorFormat(Descriptor.Format.DC_SD_JWT);
+        testSuccessfulAuthentication(sdJwt, opts);
+    }
+
+    @Test
+    public void shouldAuthenticateSuccessfully_VpTokenMapToDCQL() throws Exception {
+        // Request a valid SD-JWT credential from Keycloak to use for authentication
+        String sdJwt = sdJwtVPTestUtils.requestSdJwtCredential(VCT_CONFIG_DEFAULT, TEST_USER);
+
+        // Proceed to authentication
+        TestOpts opts = TestOpts.getDefault().setShouldPrepareLegacyResponse(false);
         testSuccessfulAuthentication(sdJwt, opts);
     }
 
@@ -799,11 +815,19 @@ public class OID4VPUserAuthEndpointTest extends OID4VCIssuerEndpointTest {
             TestOpts opts
     ) throws Exception {
         // Wrap the SD-JWT VP in an OpenID4VP response
-        List<BasicNameValuePair> oid4vpResponse = prepareOpenID4VPResponse(
-                sdJwtVpToken,
-                requestObject,
-                opts
-        );
+        List<BasicNameValuePair> oid4vpResponse;
+        if (opts.shouldPrepareLegacyResponse()) {
+            oid4vpResponse = prepareLegacyOpenID4VPResponse(
+                    sdJwtVpToken,
+                    requestObject,
+                    opts
+            );
+        } else {
+            oid4vpResponse = prepareOpenID4VPResponse(
+                    sdJwtVpToken,
+                    requestObject
+            );
+        }
 
         // Send the OpenID4VP response to Keycloak
         String url = getOid4vpEndpoint("/response");
@@ -819,6 +843,29 @@ public class OID4VPUserAuthEndpointTest extends OID4VCIssuerEndpointTest {
      * @param requestObject the request object containing the presentation definition
      */
     private List<BasicNameValuePair> prepareOpenID4VPResponse(
+            String sdJwtVpToken,
+            RequestObject requestObject
+    ) throws IOException {
+        // Build presentation submission
+        DcqlQuery dcqlQuery = requestObject.getDcqlQuery();
+        Credential credentialQuery = dcqlQuery.getCredentials().get(0);
+        var vpTokenMap = Map.of(credentialQuery.getId(), List.of(sdJwtVpToken));
+
+        // Compose the response object as form-urlencoded parameters
+        return new ArrayList<>(List.of(
+                new BasicNameValuePair(ResponseObject.VP_TOKEN_KEY,
+                        JsonSerialization.writeValueAsString(vpTokenMap)),
+                new BasicNameValuePair(ResponseObject.STATE_KEY, requestObject.getState())
+        ));
+    }
+
+    /**
+     * Prepare the OpenID4VP response object to be sent to Keycloak (Legacy).
+     *
+     * @param sdJwtVpToken  the SD-JWT verifiable presentation token
+     * @param requestObject the request object containing the presentation definition
+     */
+    private List<BasicNameValuePair> prepareLegacyOpenID4VPResponse(
             String sdJwtVpToken,
             RequestObject requestObject,
             TestOpts opts
@@ -950,6 +997,7 @@ public class OID4VPUserAuthEndpointTest extends OID4VCIssuerEndpointTest {
         private String testUser = TEST_USER;
         private boolean shouldBase64EncodeVpToken;
         private boolean shouldRetrieveAccessToken = true;
+        private boolean shouldPrepareLegacyResponse = true;
         private String overridePresentationDefinitionId;
         private String overridePresentationAud;
         private Descriptor.Format overrideDescriptorFormat;
@@ -983,6 +1031,15 @@ public class OID4VPUserAuthEndpointTest extends OID4VCIssuerEndpointTest {
 
         public TestOpts setShouldRetrieveAccessToken(boolean retrieveAccessToken) {
             this.shouldRetrieveAccessToken = retrieveAccessToken;
+            return this;
+        }
+
+        public boolean shouldPrepareLegacyResponse() {
+            return shouldPrepareLegacyResponse;
+        }
+
+        public TestOpts setShouldPrepareLegacyResponse(boolean shouldPrepareLegacyResponse) {
+            this.shouldPrepareLegacyResponse = shouldPrepareLegacyResponse;
             return this;
         }
 
