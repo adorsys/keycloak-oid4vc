@@ -24,6 +24,7 @@ import org.keycloak.jose.jwk.JWK;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.protocol.oid4vc.issuance.VCIssuanceContext;
 import org.keycloak.protocol.oid4vc.issuance.VCIssuerException;
+import org.keycloak.protocol.oid4vc.model.ErrorType;
 import org.keycloak.protocol.oid4vc.model.KeyAttestationJwtBody;
 import org.keycloak.protocol.oid4vc.model.ProofType;
 import org.keycloak.protocol.oid4vc.model.Proofs;
@@ -66,7 +67,7 @@ public class AttestationProofValidator extends AbstractProofValidator {
         } catch (VCIssuerException e) {
             throw e; // Re-throw specific exceptions
         } catch (Exception e) {
-            throw new VCIssuerException("Failed to validate attestation proof: " + e.getMessage(), e);
+            throw new VCIssuerException(ErrorType.INVALID_PROOF, "Failed to validate attestation proof: " + e.getMessage(), e);
         }
     }
 
@@ -77,12 +78,12 @@ public class AttestationProofValidator extends AbstractProofValidator {
                 .orElseThrow(() -> new VCIssuerException("Credential configuration is missing"));
 
         if (config.getProofTypesSupported() == null || config.getProofTypesSupported().getSupportedProofTypes().get("attestation") == null) {
-            throw new VCIssuerException("Attestation proof type not supported");
+            throw new VCIssuerException(ErrorType.INVALID_PROOF, "Attestation proof type not supported");
         }
 
         Proofs proofs = vcIssuanceContext.getCredentialRequest().getProofs();
         if (proofs == null || proofs.getAttestation() == null || proofs.getAttestation().isEmpty()) {
-            throw new VCIssuerException("Expected a proof of type attestation: " + ProofType.JWT);
+            throw new VCIssuerException(ErrorType.INVALID_PROOF, "Expected a proof of type attestation: " + ProofType.ATTESTATION);
         }
 
         if (proofs.getAttestation().size() > 1) {

@@ -1731,14 +1731,8 @@ public class OID4VCIssuerEndpoint {
                 vcIssuanceContext.getCredentialBody().addKeyBinding(jwks.get(0));
             }
         } catch (VCIssuerException e) {
-            if (e.getErrorType() == ErrorType.INVALID_NONCE) {
-                throw new ErrorResponseException(
-                        ErrorType.INVALID_NONCE.getValue(),
-                        "The proofs parameter in the Credential Request uses an invalid nonce",
-                        Response.Status.BAD_REQUEST
-                );
-            }
-            throw new BadRequestException("Could not validate provided proof", e);
+            ErrorType errorType = e.getErrorType() != null ? e.getErrorType() : ErrorType.INVALID_PROOF;
+            throw new BadRequestException("Could not validate provided proof", getErrorResponse(errorType, e.getMessage()), e);
         }
     }
 
