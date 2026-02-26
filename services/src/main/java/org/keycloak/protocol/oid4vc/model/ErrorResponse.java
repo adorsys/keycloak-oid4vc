@@ -28,17 +28,22 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class ErrorResponse {
 
-    private ErrorType error;
+    private String error;
 
     @JsonProperty("error_description")
     private String errorDescription;
 
-    public ErrorType getError() {
+    public String getError() {
         return error;
     }
 
-    public ErrorResponse setError(ErrorType error) {
+    public ErrorResponse setError(String error) {
         this.error = error;
+        return this;
+    }
+
+    public ErrorResponse setError(ErrorType errorType) {
+        this.error = errorType.getValue();
         return this;
     }
 

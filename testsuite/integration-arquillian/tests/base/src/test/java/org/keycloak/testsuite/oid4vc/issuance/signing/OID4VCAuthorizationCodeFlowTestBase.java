@@ -39,6 +39,7 @@ import org.keycloak.protocol.oid4vc.model.ClaimsDescription;
 import org.keycloak.protocol.oid4vc.model.CredentialIssuer;
 import org.keycloak.protocol.oid4vc.model.CredentialRequest;
 import org.keycloak.protocol.oid4vc.model.CredentialResponse;
+import org.keycloak.protocol.oid4vc.model.ErrorType;
 import org.keycloak.protocol.oid4vc.model.OID4VCAuthorizationDetail;
 import org.keycloak.protocol.oidc.representations.OIDCConfigurationRepresentation;
 import org.keycloak.representations.AuthorizationDetailsJSONRepresentation;
@@ -180,7 +181,7 @@ public abstract class OID4VCAuthorizationCodeFlowTestBase extends OID4VCIssuerEn
         String errorDescription = credentialResponse.getErrorDescription();
 
         assertEquals("Credential request should fail with unknown credential configuration when OID4VCI scope is missing or authorization_details missing from the token",
-            "UNKNOWN_CREDENTIAL_CONFIGURATION", error);
+            ErrorType.UNKNOWN_CREDENTIAL_CONFIGURATION.getValue(), error);
         assertEquals("No authorization_details found in token", errorDescription);
     }
 
@@ -856,7 +857,7 @@ public abstract class OID4VCAuthorizationCodeFlowTestBase extends OID4VCIssuerEn
                 .send();
 
         assertEquals(HttpStatus.SC_BAD_REQUEST, credentialResponse.getStatusCode());
-        assertEquals("INVALID_CREDENTIAL_REQUEST", credentialResponse.getError());
+        assertEquals(ErrorType.INVALID_CREDENTIAL_REQUEST.getValue(), credentialResponse.getError());
 
         // Verify VERIFIABLE_CREDENTIAL_REQUEST_ERROR event was fired
         expectCredentialRequestError().assertEvent();
@@ -885,10 +886,10 @@ public abstract class OID4VCAuthorizationCodeFlowTestBase extends OID4VCIssuerEn
                 .send();
 
         assertEquals(HttpStatus.SC_BAD_REQUEST, credentialResponse.getStatusCode());
-        assertEquals("UNKNOWN_CREDENTIAL_IDENTIFIER", credentialResponse.getError());
+        assertEquals(ErrorType.UNKNOWN_CREDENTIAL_IDENTIFIER.getValue(), credentialResponse.getError());
 
         // Verify VERIFIABLE_CREDENTIAL_REQUEST_ERROR event was fired
-        expectCredentialRequestError().assertEvent();
+        expectCredentialRequestError(ErrorType.UNKNOWN_CREDENTIAL_IDENTIFIER.getValue()).assertEvent();
     }
 
     /**
@@ -914,7 +915,7 @@ public abstract class OID4VCAuthorizationCodeFlowTestBase extends OID4VCIssuerEn
                 .send();
 
         assertEquals(HttpStatus.SC_BAD_REQUEST, credentialResponse.getStatusCode());
-        assertEquals("INVALID_CREDENTIAL_REQUEST", credentialResponse.getError());
+        assertEquals(ErrorType.INVALID_CREDENTIAL_REQUEST.getValue(), credentialResponse.getError());
 
         // Verify VERIFIABLE_CREDENTIAL_REQUEST_ERROR event was fired
         expectCredentialRequestError().assertEvent();
@@ -1123,11 +1124,15 @@ public abstract class OID4VCAuthorizationCodeFlowTestBase extends OID4VCIssuerEn
      * @return the event expectation
      */
     protected AssertEvents.ExpectedEvent expectCredentialRequestError() {
+        return expectCredentialRequestError(ErrorType.INVALID_CREDENTIAL_REQUEST.getValue());
+    }
+
+    protected AssertEvents.ExpectedEvent expectCredentialRequestError(String error) {
         return events.expect(EventType.VERIFIABLE_CREDENTIAL_REQUEST_ERROR)
                 .client(clientId)
                 .user(AssertEvents.isUUID())
                 .session(AssertEvents.isSessionId())
-                .error(Errors.INVALID_REQUEST);
+                .error(error);
     }
 
     /**
@@ -1137,11 +1142,15 @@ public abstract class OID4VCAuthorizationCodeFlowTestBase extends OID4VCIssuerEn
      * @return the event expectation
      */
     protected AssertEvents.ExpectedEvent expectCredentialRequestErrorWithoutAuth() {
+        return expectCredentialRequestErrorWithoutAuth(ErrorType.INVALID_CREDENTIAL_REQUEST.getValue());
+    }
+
+    protected AssertEvents.ExpectedEvent expectCredentialRequestErrorWithoutAuth(String error) {
         return events.expect(EventType.VERIFIABLE_CREDENTIAL_REQUEST_ERROR)
                 .client((String) null)
                 .user((String) null)
                 .session((String) null)
-                .error(Errors.INVALID_REQUEST);
+                .error(error);
     }
 
     /**

@@ -187,9 +187,9 @@ public class OID4VCICredentialOfferMatrixTest extends OID4VCIssuerEndpointTest {
     public void testCredentialOffer_PreAuth_noClientId_noUserId() throws Exception {
         try {
             runCredentialOfferTest(new TestContext(true, null, null));
-            fail("Expected " + INVALID_CREDENTIAL_OFFER_REQUEST.name());
+            fail("Expected " + INVALID_CREDENTIAL_OFFER_REQUEST.getValue());
         } catch (RuntimeException ex) {
-            List.of(INVALID_CREDENTIAL_OFFER_REQUEST.name(), "Pre-Authorized credential offer requires a target user")
+            List.of(INVALID_CREDENTIAL_OFFER_REQUEST.getValue(), "Pre-Authorized credential offer requires a target user")
                     .forEach(it -> assertTrue(ex.getMessage() + " does not contain " + it, ex.getMessage().contains(it)));
         }
     }
@@ -203,9 +203,9 @@ public class OID4VCICredentialOfferMatrixTest extends OID4VCIssuerEndpointTest {
     public void testCredentialOffer_PreAuth_ClientId_noUserId() throws Exception {
         try {
             runCredentialOfferTest(new TestContext(true, namedClientId, null));
-            fail("Expected " + INVALID_CREDENTIAL_OFFER_REQUEST.name());
+            fail("Expected " + INVALID_CREDENTIAL_OFFER_REQUEST.getValue());
         } catch (RuntimeException ex) {
-            List.of(INVALID_CREDENTIAL_OFFER_REQUEST.name(), "Pre-Authorized credential offer requires a target user")
+            List.of(INVALID_CREDENTIAL_OFFER_REQUEST.getValue(), "Pre-Authorized credential offer requires a target user")
                     .forEach(it -> assertTrue(ex.getMessage() + " does not contain " + it, ex.getMessage().contains(it)));
         }
     }
@@ -225,9 +225,9 @@ public class OID4VCICredentialOfferMatrixTest extends OID4VCIssuerEndpointTest {
 
         try {
             runCredentialOfferTest(new TestContext(true, namedClientId, appUsername));
-            fail("Expected " + INVALID_CREDENTIAL_OFFER_REQUEST.name());
+            fail("Expected " + INVALID_CREDENTIAL_OFFER_REQUEST.getValue());
         } catch (RuntimeException ex) {
-            List.of(INVALID_CREDENTIAL_OFFER_REQUEST.name(), "User '" + appUsername + "' disabled")
+            List.of(INVALID_CREDENTIAL_OFFER_REQUEST.getValue(), "User '" + appUsername + "' disabled")
                     .forEach(it -> assertTrue(ex.getMessage() + " does not contain " + it, ex.getMessage().contains(it)));
         } finally {
             // Re-enable user
