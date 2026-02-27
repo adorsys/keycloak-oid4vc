@@ -284,7 +284,7 @@ public class OID4VCIssuerEndpoint {
         if (!oid4vciEnabled) {
             LOGGER.debugf("Client '%s' is not enabled for OID4VCI features.", client.getClientId());
             if (eventBuilder != null) {
-                eventBuilder.client(client).error(Errors.INVALID_CLIENT);
+                eventBuilder.client(client).error(ErrorType.INVALID_CLIENT.getValue());
             }
             if (cors == null) {
                 configureCors(false);
@@ -479,7 +479,7 @@ public class OID4VCIssuerEndpoint {
                 .orElse(null);
         if (credentialClientScope == null) {
             var errorMessage = "Invalid credential configuration id: " + credConfigId;
-            eventBuilder.detail(Details.REASON, errorMessage).error(Errors.INVALID_REQUEST);
+            eventBuilder.detail(Details.REASON, errorMessage).error(ErrorType.INVALID_REQUEST.getValue());
             throw new CorsErrorResponseException(cors,
                     ErrorType.INVALID_CREDENTIAL_OFFER_REQUEST.toString(), errorMessage, Response.Status.BAD_REQUEST);
         }
@@ -693,7 +693,7 @@ public class OID4VCIssuerEndpoint {
         if (removed == null) {
             var errorMessage = "Credential offer not found or already consumed";
             LOGGER.debugf("Credential offer with nonce %s not found or already consumed", nonce);
-            eventBuilder.detail(Details.REASON, errorMessage).error(Errors.INVALID_REQUEST);
+            eventBuilder.detail(Details.REASON, errorMessage).error(ErrorType.INVALID_REQUEST.getValue());
             throw new BadRequestException(getErrorResponse(ErrorType.INVALID_CREDENTIAL_OFFER_REQUEST, errorMessage));
         }
         LOGGER.debugf("Removed credential offer nonce %s for replay protection", nonce);
