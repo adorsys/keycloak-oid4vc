@@ -22,6 +22,7 @@ import java.time.format.DateTimeFormatter;
 
 import jakarta.ws.rs.core.UriInfo;
 
+import org.apache.http.HttpHeaders;
 import org.keycloak.http.HttpResponse;
 import org.keycloak.jose.jwk.JSONWebKeySet;
 import org.keycloak.models.KeycloakSession;
@@ -62,7 +63,7 @@ public class JWTVCIssuerWellKnownProvider implements WellKnownProvider {
 
         addDeprecationHeadersIfOldRoute();
 
-        session.getContext().getHttpResponse().setHeader("Date", DateTimeFormatter.RFC_1123_DATE_TIME.format(ZonedDateTime.now(ZoneOffset.UTC)));
+        session.getContext().getHttpResponse().setHeader(HttpHeaders.DATE, DateTimeFormatter.RFC_1123_DATE_TIME.format(ZonedDateTime.now(ZoneOffset.UTC)));
 
         JWTVCIssuerMetadata config = new JWTVCIssuerMetadata();
         config.setIssuer(Urls.realmIssuer(frontendUriInfo.getBaseUri(), realm.getName()));
