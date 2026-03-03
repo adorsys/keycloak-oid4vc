@@ -23,6 +23,9 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.PublicKey;
 import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -119,7 +122,6 @@ import org.keycloak.representations.AuthorizationDetailsJSONRepresentation;
 import org.keycloak.representations.dpop.DPoP;
 import org.keycloak.saml.processing.api.util.DeflateUtil;
 import org.keycloak.services.CorsErrorResponseException;
-import org.keycloak.services.ErrorResponseException;
 import org.keycloak.services.cors.Cors;
 import org.keycloak.services.managers.AppAuthManager;
 import org.keycloak.services.managers.AuthenticationManager;
@@ -329,6 +331,7 @@ public class OID4VCIssuerEndpoint {
 
         Response.ResponseBuilder responseBuilder = Response.ok()
                 .header(HttpHeaders.CACHE_CONTROL, "no-store")
+                .header(HttpHeaders.DATE, DateTimeFormatter.RFC_1123_DATE_TIME.format(ZonedDateTime.now(ZoneOffset.UTC)))
                 .entity(nonceResponse);
 
         if (headerDPoPNonce != null) {
@@ -538,6 +541,7 @@ public class OID4VCIssuerEndpoint {
                 .setNonce(nonce);
 
         return cors.add(Response.ok()
+                .header(HttpHeaders.DATE, DateTimeFormatter.RFC_1123_DATE_TIME.format(ZonedDateTime.now(ZoneOffset.UTC)))
                 .type(MediaType.APPLICATION_JSON)
                 .entity(credentialOfferURI));
     }
@@ -549,10 +553,10 @@ public class OID4VCIssuerEndpoint {
             BitMatrix bitMatrix = qrCodeWriter.encode("openid-credential-offer://?credential_offer_uri=" + encodedOfferUri, BarcodeFormat.QR_CODE, width, height);
             ByteArrayOutputStream bos = new ByteArrayOutputStream();
             MatrixToImageWriter.writeToStream(bitMatrix, "png", bos);
-            return cors.add(Response.ok().type(RESPONSE_TYPE_IMG_PNG).entity(bos.toByteArray()));
+            return cors.add(Response.ok().header(HttpHeaders.DATE, DateTimeFormatter.RFC_1123_DATE_TIME.format(ZonedDateTime.now(ZoneOffset.UTC))).type(RESPONSE_TYPE_IMG_PNG).entity(bos.toByteArray()));
         } catch (WriterException | IOException e) {
             LOGGER.warnf("Was not able to create a qr code of dimension %s:%s.", width, height, e);
-            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Was not able to generate qr.").build();
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).header(HttpHeaders.DATE, DateTimeFormatter.RFC_1123_DATE_TIME.format(ZonedDateTime.now(ZoneOffset.UTC))).entity("Was not able to generate qr.").build();
         }
     }
 
@@ -647,7 +651,7 @@ public class OID4VCIssuerEndpoint {
         LOGGER.debugf("Responding with offer: %s", JsonSerialization.valueAsString(credOffer));
 
         eventBuilder.success();
-        return cors.add(Response.ok().entity(credOffer));
+        return cors.add(Response.ok().header(HttpHeaders.DATE, DateTimeFormatter.RFC_1123_DATE_TIME.format(ZonedDateTime.now(ZoneOffset.UTC))).entity(credOffer));
     }
 
     private void checkScope(CredentialScopeModel requestedCredential) {
@@ -947,10 +951,11 @@ public class OID4VCIssuerEndpoint {
             String jwe = encryptCredentialResponse(responseVO, encryptionParams, encryptionMetadata);
             response = Response.ok()
                     .type(MediaType.APPLICATION_JWT)
+                    .header(HttpHeaders.DATE, DateTimeFormatter.RFC_1123_DATE_TIME.format(ZonedDateTime.now(ZoneOffset.UTC)))
                     .entity(jwe)
                     .build();
         } else {
-            response = Response.ok().entity(responseVO).build();
+            response = Response.ok().header(HttpHeaders.DATE, DateTimeFormatter.RFC_1123_DATE_TIME.format(ZonedDateTime.now(ZoneOffset.UTC))).entity(responseVO).build();
         }
 
         // Mark event as successful
@@ -1638,6 +1643,7 @@ public class OID4VCIssuerEndpoint {
         errorResponse.setError(errorType).setErrorDescription(errorDescription);
         return Response
                 .status(Response.Status.BAD_REQUEST)
+                .header(HttpHeaders.DATE, DateTimeFormatter.RFC_1123_DATE_TIME.format(ZonedDateTime.now(ZoneOffset.UTC)))
                 .entity(errorResponse)
                 .type(MediaType.APPLICATION_JSON);
     }

@@ -16,6 +16,10 @@
  */
 package org.keycloak.protocol.oid4vc.issuance;
 
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+
 import jakarta.ws.rs.core.UriInfo;
 
 import org.keycloak.http.HttpResponse;
@@ -57,6 +61,8 @@ public class JWTVCIssuerWellKnownProvider implements WellKnownProvider {
         RealmModel realm = session.getContext().getRealm();
 
         addDeprecationHeadersIfOldRoute();
+
+        session.getContext().getHttpResponse().setHeader("Date", DateTimeFormatter.RFC_1123_DATE_TIME.format(ZonedDateTime.now(ZoneOffset.UTC)));
 
         JWTVCIssuerMetadata config = new JWTVCIssuerMetadata();
         config.setIssuer(Urls.realmIssuer(frontendUriInfo.getBaseUri(), realm.getName()));
