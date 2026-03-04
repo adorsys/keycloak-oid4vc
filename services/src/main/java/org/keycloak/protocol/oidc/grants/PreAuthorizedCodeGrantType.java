@@ -44,9 +44,11 @@ import org.keycloak.models.SingleUseObjectProvider;
 import org.keycloak.models.UserSessionModel;
 import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerEndpoint;
 import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerWellKnownProvider;
+import org.keycloak.protocol.oid4vc.issuance.credentialoffer.CredentialOfferState;
 import org.keycloak.protocol.oid4vc.issuance.credentialoffer.CredentialOfferStorage;
 import org.keycloak.protocol.oid4vc.issuance.credentialoffer.preauth.PreAuthCodeHandler;
 import org.keycloak.protocol.oid4vc.model.OID4VCAuthorizationDetail;
+import org.keycloak.protocol.oid4vc.model.PreAuthCodeCtx;
 import org.keycloak.protocol.oid4vc.utils.OID4VCUtil;
 import org.keycloak.protocol.oidc.OIDCLoginProtocol;
 import org.keycloak.protocol.oidc.TokenManager.AccessTokenResponseBuilder;
@@ -97,7 +99,7 @@ public class PreAuthorizedCodeGrantType extends OAuth2GrantTypeBase {
                     errorMessage, Response.Status.BAD_REQUEST);
         }
 
-        // Verify the pre-auth code and retrieve the associated credential offer state.
+        // Verify the pre-auth code and recover the offer state associated with it.
         // The verification logic is delegated to the configured PreAuthCodeHandler provider.
         CredentialOfferState offerState = verifyPreAuthCode(code);
         if (offerState.isExpired()) {
@@ -294,7 +296,7 @@ public class PreAuthorizedCodeGrantType extends OAuth2GrantTypeBase {
 
         CredentialOfferState offerState;
         try {
-            offerState = preAuthCodeHandler.verifyPreAuthCode(code);
+            PreAuthCodeCtx ctx = preAuthCodeHandler.verifyPreAuthCode(code);
         } catch (VerificationException e) {
             String errorType = Optional.ofNullable(e.getErrorType()).orElse(Errors.INVALID_CODE);
             String errorMessage = String.format("Pre-authorized code failed handler verification (%s)", errorType);

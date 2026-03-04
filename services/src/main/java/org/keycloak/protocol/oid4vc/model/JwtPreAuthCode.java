@@ -5,8 +5,6 @@ import org.keycloak.representations.JsonWebToken;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
-import static org.keycloak.protocol.oid4vc.issuance.credentialoffer.CredentialOfferStorage.CredentialOfferState;
-
 /**
  * Payloads for JWT pre-authorized codes for OpenID4VCI.
  * They embed a partial, public view of the credential offer state.
@@ -14,18 +12,18 @@ import static org.keycloak.protocol.oid4vc.issuance.credentialoffer.CredentialOf
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class JwtPreAuthCode extends JsonWebToken {
 
-    @JsonProperty("credentialOfferState")
-    private CredentialOfferState credentialOfferState;
+    @JsonProperty("context")
+    private PreAuthCodeCtx context;
 
     @JsonProperty("salt")
     private String salt;
 
-    public CredentialOfferState getCredentialOfferState() {
-        return credentialOfferState;
+    public PreAuthCodeCtx getContext() {
+        return context;
     }
 
-    public JwtPreAuthCode credentialOfferState(CredentialOfferState credentialOfferState) {
-        this.credentialOfferState = credentialOfferState;
+    public JwtPreAuthCode context(PreAuthCodeCtx context) {
+        this.context = context;
         return this;
     }
 

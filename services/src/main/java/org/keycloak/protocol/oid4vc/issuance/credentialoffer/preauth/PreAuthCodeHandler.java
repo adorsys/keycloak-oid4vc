@@ -1,9 +1,8 @@
 package org.keycloak.protocol.oid4vc.issuance.credentialoffer.preauth;
 
 import org.keycloak.common.VerificationException;
+import org.keycloak.protocol.oid4vc.model.PreAuthCodeCtx;
 import org.keycloak.provider.Provider;
-
-import static org.keycloak.protocol.oid4vc.issuance.credentialoffer.CredentialOfferStorage.CredentialOfferState;
 
 /**
  * Handles the production and verification of pre-authorized codes.
@@ -11,13 +10,13 @@ import static org.keycloak.protocol.oid4vc.issuance.credentialoffer.CredentialOf
 public interface PreAuthCodeHandler extends Provider {
 
     /**
-     * Generates a pre-authorized code for the given credential offer state (only non-sensitive fields).
-     * The implementation is responsible for storing any necessary state to be recovered with verification.
+     * Generates a pre-authorized code for a given context of non-sensitive fields.
+     * The implementation is responsible for embedding this context so it is recovered with verification.
      */
-    String createPreAuthCode(CredentialOfferState offerState);
+    String createPreAuthCode(PreAuthCodeCtx ctx);
 
     /**
-     * Verifies the given pre-authorized code and returns the associated credential offer state if valid.
+     * Verifies the given pre-authorized code and returns its associated context if valid.
      */
-    CredentialOfferState verifyPreAuthCode(String preAuthCode) throws VerificationException;
+    PreAuthCodeCtx verifyPreAuthCode(String preAuthCode) throws VerificationException;
 }

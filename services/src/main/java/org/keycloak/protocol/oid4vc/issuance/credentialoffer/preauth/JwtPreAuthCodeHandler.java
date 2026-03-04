@@ -26,9 +26,8 @@ import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
 import org.keycloak.models.oid4vci.CredentialScopeModel;
 import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerWellKnownProvider;
-import org.keycloak.protocol.oid4vc.issuance.credentialoffer.CredentialOfferStorage.CredentialOfferState;
-import org.keycloak.protocol.oid4vc.model.CredentialsOffer;
 import org.keycloak.protocol.oid4vc.model.JwtPreAuthCode;
+import org.keycloak.protocol.oid4vc.model.PreAuthCodeCtx;
 import org.keycloak.protocol.oidc.OIDCWellKnownProviderFactory;
 import org.keycloak.protocol.oidc.representations.OIDCConfigurationRepresentation;
 import org.keycloak.utils.StringUtil;
@@ -54,19 +53,19 @@ public class JwtPreAuthCodeHandler implements PreAuthCodeHandler {
     }
 
     @Override
-    public String createPreAuthCode(CredentialOfferState offerState) {
+    public String createPreAuthCode(PreAuthCodeCtx preAuthCodeCtx) {
         // Building
         String salt = Base64Url.encode(SecretGenerator.getInstance().randomBytes());
         JwtPreAuthCode jwtBody = (JwtPreAuthCode) new JwtPreAuthCode()
                 .salt(salt)
-                .credentialOfferState(offerState)
+                .context(preAuthCodeCtx)
                 .issuer(getCredentialIssuer())
                 .addAudience(getTokenEndpoint())
                 .issuedNow()
-                .exp(offerState.getExpiration());
+                .exp(preAuthCodeCtx.getExpiresAt());
 
         // Signing
-        SignatureSignerContext signer = getSignerContext(offerState);
+        SignatureSignerContext signer = getSignerContext(preAuthCodeCtx);
         return new JWSBuilder()
                 .type(OAuth2Constants.JWT)
                 .jsonContent(jwtBody)
@@ -74,7 +73,7 @@ public class JwtPreAuthCodeHandler implements PreAuthCodeHandler {
     }
 
     @Override
-    public CredentialOfferState verifyPreAuthCode(String preAuthCode) throws VerificationException {
+    public PreAuthCodeCtx verifyPreAuthCode(String preAuthCode) throws VerificationException {
         // Parse the JWT
         JWSInput jwsInput;
         try {
@@ -89,10 +88,10 @@ public class JwtPreAuthCodeHandler implements PreAuthCodeHandler {
         getPropertyVerifiers().forEach(verifier::withChecks);
         verifier.verify();
 
-        // Parse payload as JwtPreAuthCode and extract CredentialOfferState
+        // Parse payload as JwtPreAuthCode and extract PreAuthCodeCtx
         try {
             JwtPreAuthCode jwtBody = jwsInput.readJsonContent(JwtPreAuthCode.class);
-            return jwtBody.getCredentialOfferState();
+            return jwtBody.getContext();
         } catch (JWSInputException e) {
             throw new VerificationException("Failed to recover credential offer state", e);
         }
@@ -113,10 +112,9 @@ public class JwtPreAuthCodeHandler implements PreAuthCodeHandler {
      * Retrieves the preferred signing algorithms for JWT pre-auth codes,
      * based on the configuration of credentials under consideration.
      */
-    private List<String> getPreferredSigningAlgs(CredentialOfferState offerState) {
-        List<String> configIds = Optional.ofNullable(offerState)
-                .map(CredentialOfferState::getCredentialsOffer)
-                .map(CredentialsOffer::getCredentialConfigurationIds)
+    private List<String> getPreferredSigningAlgs(PreAuthCodeCtx preAuthCodeCtx) {
+        List<String> configIds = Optional.ofNullable(preAuthCodeCtx)
+                .map(PreAuthCodeCtx::getCredentialConfigurationIds)
                 .orElse(List.of());
 
         Stream<CredentialScopeModel> credentialScopes = session.clientScopes()
@@ -134,10 +132,10 @@ public class JwtPreAuthCodeHandler implements PreAuthCodeHandler {
 
     /**
      * Retrieves a SignatureSignerContext for signing JWT pre-auth codes, based on the preferred
-     * signing algorithms derived from the credential offer state.
+     * signing algorithms derived from the pre-auth code context.
      */
-    private SignatureSignerContext getSignerContext(CredentialOfferState offerState) {
-        List<String> preferredAlgs = getPreferredSigningAlgs(offerState);
+    private SignatureSignerContext getSignerContext(PreAuthCodeCtx preAuthCodeCtx) {
+        List<String> preferredAlgs = getPreferredSigningAlgs(preAuthCodeCtx);
         logger.debugf("Preferred signing algorithms for JWT pre-auth code: %s", preferredAlgs);
         for (String alg : preferredAlgs) {
             try {
@@ -197,9 +195,8 @@ public class JwtPreAuthCodeHandler implements PreAuthCodeHandler {
      */
     private List<TokenVerifier.Predicate<JwtPreAuthCode>> getPropertyVerifiers() {
         TokenVerifier.Predicate<JwtPreAuthCode> offerStateCheck = jwt -> {
-            if (jwt.getCredentialOfferState() == null
-                    || jwt.getCredentialOfferState().getCredentialsOffer() == null) {
-                throw new VerificationException("Not a jwt pre-auth code: no credential offer state found");
+            if (jwt.getContext() == null) {
+                throw new VerificationException("Not a jwt pre-auth code: no pre-auth code context found");
             }
 
             return true;
