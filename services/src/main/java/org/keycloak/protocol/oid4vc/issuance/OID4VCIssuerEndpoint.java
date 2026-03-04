@@ -964,10 +964,8 @@ public class OID4VCIssuerEndpoint {
                 .detail(Details.VERIFIABLE_CREDENTIALS_ISSUED, String.valueOf(responseVO.getCredentials().size()));
         eventBuilder.success();
 
-        // Clean up offer state after successful credential issuance
-        // This prevents memory leaks while ensuring the state remains available during the request
-        offerStorage.removeOfferState(session, offerState);
-        LOGGER.debugf("Removed credential offer state after successful issuance for credential identifier: %s", credentialIdentifier);
+        // Persistence of this state is required per OID4VCI Section 14.3 to allow multiple accesses to the credential endpoint.
+        // Expiration is handled automatically by the underlying storage (Infinispan).
 
         return response;
     }
