@@ -570,6 +570,49 @@ public class OID4VCIssuerEndpointEncryptionTest extends OID4VCIssuerEndpointTest
     }
 
     @Test
+    public void testRequestCredentialWithUnsupportedEncryptionAlgorithm() {
+        String token = getBearerToken(oauth, client, jwtTypeCredentialClientScope.getName());
+        String cNonce = getCNonce();
+        String issuer = getRealmPath(TEST_REALM_NAME);
+        String jwtProof = OID4VCTest.generateJwtProof(issuer, cNonce);
+
+        testingClient.server(TEST_REALM_NAME).run(session -> {
+            AppAuthManager.BearerTokenAuthenticator authenticator = new AppAuthManager.BearerTokenAuthenticator(session);
+            authenticator.setTokenString(token);
+            OID4VCIssuerEndpoint issuerEndpoint = prepareIssuerEndpoint(session, authenticator);
+
+            JWK jwk;
+            try {
+                jwk = generateRsaJwk();
+                // Set an unsupported algorithm in the JWK
+                jwk.setAlgorithm("UNSUPPORTED_ALG");
+            } catch (NoSuchAlgorithmException e) {
+                throw new RuntimeException("Failed to generate JWK", e);
+            }
+
+            CredentialRequest credentialRequest = new CredentialRequest()
+                    .setCredentialIdentifier("test-credential")
+                    .setProofs(new Proofs().setJwt(List.of(jwtProof)))
+                    .setCredentialResponseEncryption(
+                            new CredentialResponseEncryption()
+                                    .setEnc("A256GCM")
+                                    .setJwk(jwk));
+
+            String requestPayload = JsonSerialization.writeValueAsString(credentialRequest);
+
+            try {
+                issuerEndpoint.requestCredential(requestPayload);
+                fail("Expected BadRequestException due to unsupported encryption algorithm");
+            } catch (BadRequestException e) {
+                ErrorResponse error = (ErrorResponse) e.getResponse().getEntity();
+                assertEquals(ErrorType.INVALID_ENCRYPTION_PARAMETERS.getValue(), error.getError());
+                assertTrue("Error should mention unsupported key management algorithm. Actual: " + error.getErrorDescription(),
+                        error.getErrorDescription().contains("Unsupported key management algorithm"));
+            }
+        });
+    }
+
+    @Test
     public void testRequestCredentialWithInvalidJWK() throws Throwable {
         final String scopeName = jwtTypeCredentialClientScope.getName();
         String credConfigId = jwtTypeCredentialClientScope.getAttributes().get(CredentialScopeModel.CONFIGURATION_ID);

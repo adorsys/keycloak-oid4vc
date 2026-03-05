@@ -829,7 +829,18 @@ public class OID4VCIssuerEndpoint {
             validateEncryptionParameters(encryptionParams);
 
             // Select and validate alg
-            String selectedAlg = selectKeyManagementAlg(encryptionMetadata, encryptionParams.getJwk());
+            String selectedAlg;
+            try {
+                selectedAlg = selectKeyManagementAlg(encryptionMetadata, encryptionParams.getJwk());
+            } catch (IllegalArgumentException e) {
+                // selectKeyManagementAlg throws IllegalArgumentException when alg is unsupported
+                String errorMessage = String.format("Unsupported key management algorithm (alg) in JWK: %s",
+                        e.getMessage());
+                LOGGER.debug(errorMessage);
+                eventBuilder.detail(Details.REASON, errorMessage)
+                        .error(ErrorType.INVALID_ENCRYPTION_PARAMETERS.getValue());
+                throw new BadRequestException(getErrorResponse(ErrorType.INVALID_ENCRYPTION_PARAMETERS, errorMessage));
+            }
             if (selectedAlg == null) {
                 String errorMessage = String.format("No supported key management algorithm (alg) for provided JWK (kty=%s)",
                         encryptionParams.getJwk().getKeyType());
@@ -1383,7 +1394,21 @@ public class OID4VCIssuerEndpoint {
         }
 
         // Select alg
-        String selectedAlg = selectKeyManagementAlg(metadata, jwk);
+        String selectedAlg;
+        try {
+            selectedAlg = selectKeyManagementAlg(metadata, jwk);
+        } catch (IllegalArgumentException e) {
+            // This should not happen if validation passed, but handle defensively
+            LOGGER.debugf("Unsupported key management algorithm in encryptCredentialResponse: %s", e.getMessage());
+            throw new BadRequestException(getErrorResponse(ErrorType.INVALID_ENCRYPTION_PARAMETERS,
+                    "Unsupported key management algorithm (alg) in JWK: " + e.getMessage()));
+        }
+        if (selectedAlg == null) {
+            // This should not happen if validation passed, but handle defensively
+            String errorMessage = "No supported key management algorithm (alg) for provided JWK";
+            LOGGER.debug(errorMessage);
+            throw new BadRequestException(getErrorResponse(ErrorType.INVALID_ENCRYPTION_PARAMETERS, errorMessage));
+        }
 
         // Perform encryption
         try {
