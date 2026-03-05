@@ -37,6 +37,7 @@ import org.keycloak.protocol.oid4vc.model.CredentialsOffer;
 import org.keycloak.protocol.oid4vc.model.ErrorType;
 import org.keycloak.protocol.oid4vc.model.OID4VCAuthorizationDetail;
 import org.keycloak.protocol.oid4vc.model.PreAuthorizedCode;
+import org.keycloak.protocol.oid4vc.model.Proofs;
 import org.keycloak.protocol.oidc.representations.OIDCConfigurationRepresentation;
 import org.keycloak.representations.AccessToken;
 import org.keycloak.representations.idm.ClientRepresentation;
@@ -230,8 +231,12 @@ public abstract class OID4VCAuthorizationDetailsFlowTestBase extends OID4VCIssue
         credentialConfigurationId = authDetailResponse.getCredentialConfigurationId();
         assertNotNull("Credential configuration id should not be null", credentialConfigurationId);
 
+        String cNonce = getCNonce();
+        String issuer = getRealmPath(TEST_REALM_NAME);
+        String jwtProof = generateJwtProof(issuer, cNonce);
         Oid4vcCredentialResponse credentialResponse = oauth.oid4vc().credentialRequest()
                 .credentialIdentifier(credentialIdentifier)
+                .proofs(new Proofs().setJwt(List.of(jwtProof)))
                 .bearerToken(accessToken)
                 .send();
 
@@ -658,11 +663,13 @@ public abstract class OID4VCAuthorizationDetailsFlowTestBase extends OID4VCIssue
         //      * It does not assume the caller already has an authenticated session.
         //      * It must guarantee isolation of state tied to the VC issuance flow.
         {
-            // Clear events before credential request
+            String cNonce = getCNonce();
             events.clear();
-
+            String issuer = getRealmPath(TEST_REALM_NAME);
+            String jwtProof = generateJwtProof(issuer, cNonce);
             Oid4vcCredentialResponse credentialResponse = oauth.oid4vc().credentialRequest()
                     .credentialIdentifier(credentialIdentifier)
+                    .proofs(new Proofs().setJwt(List.of(jwtProof)))
                     .bearerToken(tokenResponse.getAccessToken())
                     .send();
 
@@ -719,9 +726,13 @@ public abstract class OID4VCAuthorizationDetailsFlowTestBase extends OID4VCIssue
         String credentialIdentifier = authDetailsResponse.get(0).getCredentialIdentifiers().get(0);
         assertNotNull("Credential identifier should be present", credentialIdentifier);
 
+        String cNonce = getCNonce();
+        String issuer = getRealmPath(TEST_REALM_NAME);
+        String jwtProof = generateJwtProof(issuer, cNonce);
         // Step 2: Verify token works at credential endpoint (should succeed)
         Oid4vcCredentialResponse credentialResponse = oauth.oid4vc().credentialRequest()
                 .credentialIdentifier(credentialIdentifier)
+                .proofs(new Proofs().setJwt(List.of(jwtProof)))
                 .bearerToken(preAuthorizedToken)
                 .send();
 
@@ -900,11 +911,14 @@ public abstract class OID4VCAuthorizationDetailsFlowTestBase extends OID4VCIssue
         assertNotNull("Credential configuration id should not be null", credentialConfigurationId);
 
         // Step 2: Request the actual credential using the identifier and config id
-        // Clear events before credential request
+        String cNonce = getCNonce();
         events.clear();
 
+        String issuer = getRealmPath(TEST_REALM_NAME);
+        String jwtProof = generateJwtProof(issuer, cNonce);
         Oid4vcCredentialResponse credentialResponse = oauth.oid4vc().credentialRequest()
                 .credentialIdentifier(credentialIdentifier)
+                .proofs(new Proofs().setJwt(List.of(jwtProof)))
                 .bearerToken(tokenResponse.getAccessToken())
                 .send();
 

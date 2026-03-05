@@ -110,8 +110,21 @@ public class SupportedCredentialConfiguration {
         String format = Optional.ofNullable(credentialScope.getFormat()).orElse(VCFormat.SD_JWT_VC);
         credentialConfiguration.setFormat(format);
 
+        // Resolve key attestation requirements from configuration (may be null if not required)
         KeyAttestationsRequired keyAttestationsRequired = KeyAttestationsRequired.parse(credentialScope);
-        ProofTypesSupported proofTypesSupported = ProofTypesSupported.parse(keycloakSession, keyAttestationsRequired,
+
+        // Resolve cryptographic binding methods from configuration. If none are configured,
+        // default to the global cryptographic binding method (currently "jwk").
+        List<String> bindingMethodsSupported = credentialScope.getCryptographicBindingMethods();
+        if (bindingMethodsSupported == null || bindingMethodsSupported.isEmpty()) {
+            bindingMethodsSupported = List.of(CredentialScopeModel.CRYPTOGRAPHIC_BINDING_METHODS_DEFAULT);
+        }
+        credentialConfiguration.setCryptographicBindingMethodsSupported(bindingMethodsSupported);
+
+        // Always expose proof_types_supported so that validators know which proof types (jwt, attestation, ...)
+        // are available for this credential configuration.
+        ProofTypesSupported proofTypesSupported = ProofTypesSupported.parse(keycloakSession,
+                keyAttestationsRequired,
                 globalSupportedSigningAlgorithms);
         credentialConfiguration.setProofTypesSupported(proofTypesSupported);
 
@@ -120,10 +133,6 @@ public class SupportedCredentialConfiguration {
         List<String> signingAlgsSupported = StringUtil.isBlank(signingAlgSupported) ? globalSupportedSigningAlgorithms :
                 Collections.singletonList(signingAlgSupported);
         credentialConfiguration.setCredentialSigningAlgValuesSupported(signingAlgsSupported);
-
-        // TODO resolve value dynamically from provider implementations?
-        String bindingMethodsSupported = CredentialScopeModel.CRYPTOGRAPHIC_BINDING_METHODS_DEFAULT;
-        credentialConfiguration.setCryptographicBindingMethodsSupported(List.of(bindingMethodsSupported));
 
         // Parse credential metadata (includes display and claims)
         CredentialMetadata credentialMetadata = CredentialMetadata.parse(keycloakSession, credentialScope);
@@ -248,6 +257,21 @@ public class SupportedCredentialConfiguration {
     public SupportedCredentialConfiguration setCredentialBuildConfig(CredentialBuildConfig credentialBuildConfig) {
         this.credentialBuildConfig = credentialBuildConfig;
         return this;
+    }
+
+    @JsonIgnore
+    public boolean isProofRequired() {
+        boolean bindingMethodsPresent = cryptographicBindingMethodsSupported != null
+                && !cryptographicBindingMethodsSupported.isEmpty();
+
+        boolean proofTypesPresent = proofTypesSupported != null
+                && proofTypesSupported.getSupportedProofTypes() != null
+                && !proofTypesSupported.getSupportedProofTypes().isEmpty();
+
+        // Proofs are required only when cryptographic key binding is configured for this
+        // credential configuration and at least one proof type is advertised, in line with
+        // the OID4VCI metadata rules.
+        return bindingMethodsPresent && proofTypesPresent;
     }
 
     @Override

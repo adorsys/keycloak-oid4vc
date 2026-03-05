@@ -47,6 +47,7 @@ import org.keycloak.protocol.oid4vc.model.CredentialResponseEncryption;
 import org.keycloak.protocol.oid4vc.model.ErrorResponse;
 import org.keycloak.protocol.oid4vc.model.ErrorType;
 import org.keycloak.protocol.oid4vc.model.OID4VCAuthorizationDetail;
+import org.keycloak.protocol.oid4vc.model.Proofs;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
 import org.keycloak.representations.JsonWebToken;
 import org.keycloak.services.managers.AppAuthManager;
@@ -97,30 +98,35 @@ public class OID4VCIssuerEndpointEncryptionTest extends OID4VCIssuerEndpointTest
         String credentialIdentifier = authDetailsResponse.get(0).getCredentialIdentifiers().get(0);
         assertNotNull("credential_identifier should be present", credentialIdentifier);
 
-        testingClient
-                .server(TEST_REALM_NAME)
-                .run((session -> {
-                    AppAuthManager.BearerTokenAuthenticator authenticator = new AppAuthManager.BearerTokenAuthenticator(session);
-                    authenticator.setTokenString(token);
-                    OID4VCIssuerEndpoint issuerEndpoint = prepareIssuerEndpoint(session, authenticator);
+                    String cNonce = getCNonce();
+                    String issuer = getRealmPath(TEST_REALM_NAME);
+                    String jwtProof = OID4VCTest.generateJwtProof(issuer, cNonce);
 
-                    Map<String, Object> jwkPair;
-                    try {
-                        jwkPair = generateRsaJwkWithPrivateKey();
-                    } catch (NoSuchAlgorithmException e) {
-                        throw new RuntimeException("Failed to generate JWK", e);
-                    }
-                    JWK jwk = (JWK) jwkPair.get("jwk");
-                    PrivateKey privateKey = (PrivateKey) jwkPair.get("privateKey");
+                    testingClient
+                            .server(TEST_REALM_NAME)
+                            .run((session -> {
+                                AppAuthManager.BearerTokenAuthenticator authenticator = new AppAuthManager.BearerTokenAuthenticator(session);
+                                authenticator.setTokenString(token);
+                                OID4VCIssuerEndpoint issuerEndpoint = prepareIssuerEndpoint(session, authenticator);
 
-                    CredentialRequest credentialRequest = new CredentialRequest()
-                            .setCredentialIdentifier(credentialIdentifier)
-                            .setCredentialResponseEncryption(
-                                    new CredentialResponseEncryption()
-                                            .setEnc(A256GCM)
-                                            .setJwk(jwk));
+                                Map<String, Object> jwkPair;
+                                try {
+                                    jwkPair = generateRsaJwkWithPrivateKey();
+                                } catch (NoSuchAlgorithmException e) {
+                                    throw new RuntimeException("Failed to generate JWK", e);
+                                }
+                                JWK jwk = (JWK) jwkPair.get("jwk");
+                                PrivateKey privateKey = (PrivateKey) jwkPair.get("privateKey");
 
-                    String credentialRequestPayload = JsonSerialization.writeValueAsString(credentialRequest);
+                                CredentialRequest credentialRequest = new CredentialRequest()
+                                        .setCredentialIdentifier(credentialIdentifier)
+                                        .setProofs(new Proofs().setJwt(List.of(jwtProof)))
+                                        .setCredentialResponseEncryption(
+                                                new CredentialResponseEncryption()
+                                                        .setEnc(A256GCM)
+                                                        .setJwk(jwk));
+
+                                String credentialRequestPayload = JsonSerialization.writeValueAsString(credentialRequest);
 
                     Response credentialResponse = issuerEndpoint.requestCredential(credentialRequestPayload);
 
@@ -157,6 +163,10 @@ public class OID4VCIssuerEndpointEncryptionTest extends OID4VCIssuerEndpointTest
     @Test
     public void testUnencryptedRequestWhenEncryptionRequired() {
         String token = getBearerToken(oauth, client);
+        String cNonce = getCNonce();
+        String issuer = getRealmPath(TEST_REALM_NAME);
+        String jwtProof = OID4VCTest.generateJwtProof(issuer, cNonce);
+
         testingClient.server(TEST_REALM_NAME).run(session -> {
             RealmModel realm = session.getContext().getRealm();
             realm.setAttribute("oid4vci.encryption.required", "true");
@@ -168,7 +178,8 @@ public class OID4VCIssuerEndpointEncryptionTest extends OID4VCIssuerEndpointTest
                 OID4VCIssuerEndpoint issuerEndpoint = prepareIssuerEndpoint(session, authenticator);
 
                 CredentialRequest credentialRequest = new CredentialRequest()
-                        .setCredentialIdentifier("test-credential");
+                        .setCredentialIdentifier("test-credential")
+                        .setProofs(new Proofs().setJwt(List.of(jwtProof)));
 
                 String requestPayload = JsonSerialization.writeValueAsString(credentialRequest);
 
@@ -206,6 +217,10 @@ public class OID4VCIssuerEndpointEncryptionTest extends OID4VCIssuerEndpointTest
         String credentialIdentifier = authDetailsResponse.get(0).getCredentialIdentifiers().get(0);
         assertNotNull("credential_identifier should be present", credentialIdentifier);
 
+        String cNonce = getCNonce();
+        String issuer = getRealmPath(TEST_REALM_NAME);
+        String jwtProof = OID4VCTest.generateJwtProof(issuer, cNonce);
+
         testingClient.server(TEST_REALM_NAME).run(session -> {
             try {
                 // Enable request encryption requirement
@@ -231,6 +246,7 @@ public class OID4VCIssuerEndpointEncryptionTest extends OID4VCIssuerEndpointTest
 
                 CredentialRequest credentialRequest = new CredentialRequest()
                         .setCredentialIdentifier(credentialIdentifier)
+                        .setProofs(new Proofs().setJwt(List.of(jwtProof)))
                         .setCredentialResponseEncryption(
                                 new CredentialResponseEncryption()
                                         .setEnc(A256GCM)
@@ -286,6 +302,10 @@ public class OID4VCIssuerEndpointEncryptionTest extends OID4VCIssuerEndpointTest
         String credentialIdentifier = authDetailsResponse.get(0).getCredentialIdentifiers().get(0);
         assertNotNull("credential_identifier should be present", credentialIdentifier);
 
+        String cNonce = getCNonce();
+        String issuer = getRealmPath(TEST_REALM_NAME);
+        String jwtProof = OID4VCTest.generateJwtProof(issuer, cNonce);
+
         testingClient.server(TEST_REALM_NAME).run(session -> {
             try {
                 // Enable request encryption and compression
@@ -314,6 +334,7 @@ public class OID4VCIssuerEndpointEncryptionTest extends OID4VCIssuerEndpointTest
                 // Create credential request with response encryption parameters
                 CredentialRequest credentialRequest = new CredentialRequest()
                         .setCredentialIdentifier(credentialIdentifier)
+                        .setProofs(new Proofs().setJwt(List.of(jwtProof)))
                         .setCredentialResponseEncryption(
                                 new CredentialResponseEncryption()
                                         .setEnc(A256GCM)
@@ -358,6 +379,10 @@ public class OID4VCIssuerEndpointEncryptionTest extends OID4VCIssuerEndpointTest
     @Test
     public void testRequestCredentialWithIncompleteEncryptionParams() throws Throwable {
         String token = getBearerToken(oauth, client, jwtTypeCredentialClientScope.getName());
+        String cNonce = getCNonce();
+        String issuer = getRealmPath(TEST_REALM_NAME);
+        String jwtProof = OID4VCTest.generateJwtProof(issuer, cNonce);
+
         testingClient.server(TEST_REALM_NAME).run(session -> {
             AppAuthManager.BearerTokenAuthenticator authenticator = new AppAuthManager.BearerTokenAuthenticator(session);
             authenticator.setTokenString(token);
@@ -367,6 +392,7 @@ public class OID4VCIssuerEndpointEncryptionTest extends OID4VCIssuerEndpointTest
             JWK jwk = JWKParser.create().parse("{\"kty\":\"RSA\",\"n\":\"test-n\",\"e\":\"AQAB\"}").getJwk();
             CredentialRequest credentialRequest = new CredentialRequest()
                     .setCredentialIdentifier("test-credential")
+                    .setProofs(new Proofs().setJwt(List.of(jwtProof)))
                     .setCredentialResponseEncryption(
                             new CredentialResponseEncryption()
                                     .setJwk(jwk));
@@ -466,6 +492,10 @@ public class OID4VCIssuerEndpointEncryptionTest extends OID4VCIssuerEndpointTest
     @Test
     public void testRequestCredentialWithUnsupportedResponseEncryption() {
         String token = getBearerToken(oauth, client, jwtTypeCredentialClientScope.getName());
+        String cNonce = getCNonce();
+        String issuer = getRealmPath(TEST_REALM_NAME);
+        String jwtProof = OID4VCTest.generateJwtProof(issuer, cNonce);
+
         testingClient.server(TEST_REALM_NAME).run(session -> {
             AppAuthManager.BearerTokenAuthenticator authenticator = new AppAuthManager.BearerTokenAuthenticator(session);
             authenticator.setTokenString(token);
@@ -480,6 +510,7 @@ public class OID4VCIssuerEndpointEncryptionTest extends OID4VCIssuerEndpointTest
 
             CredentialRequest credentialRequest = new CredentialRequest()
                     .setCredentialIdentifier("test-credential")
+                    .setProofs(new Proofs().setJwt(List.of(jwtProof)))
                     .setCredentialResponseEncryption(
                             new CredentialResponseEncryption()
                                     .setEnc("A128GCM")
@@ -501,6 +532,10 @@ public class OID4VCIssuerEndpointEncryptionTest extends OID4VCIssuerEndpointTest
     @Test
     public void testRequestCredentialWithUnsupportedResponseCompression() {
         String token = getBearerToken(oauth, client, jwtTypeCredentialClientScope.getName());
+        String cNonce = getCNonce();
+        String issuer = getRealmPath(TEST_REALM_NAME);
+        String jwtProof = OID4VCTest.generateJwtProof(issuer, cNonce);
+
         testingClient.server(TEST_REALM_NAME).run(session -> {
             AppAuthManager.BearerTokenAuthenticator authenticator = new AppAuthManager.BearerTokenAuthenticator(session);
             authenticator.setTokenString(token);
@@ -515,6 +550,7 @@ public class OID4VCIssuerEndpointEncryptionTest extends OID4VCIssuerEndpointTest
 
             CredentialRequest credentialRequest = new CredentialRequest()
                     .setCredentialIdentifier("test-credential")
+                    .setProofs(new Proofs().setJwt(List.of(jwtProof)))
                     .setCredentialResponseEncryption(
                             new CredentialResponseEncryption()
                                     .setEnc("A256GCM")
@@ -552,6 +588,10 @@ public class OID4VCIssuerEndpointEncryptionTest extends OID4VCIssuerEndpointTest
         String credentialIdentifier = authDetailsResponse.get(0).getCredentialIdentifiers().get(0);
         assertNotNull("credential_identifier should be present", credentialIdentifier);
 
+        String cNonce = getCNonce();
+        String issuer = getRealmPath(TEST_REALM_NAME);
+        String jwtProof = OID4VCTest.generateJwtProof(issuer, cNonce);
+
         testingClient.server(TEST_REALM_NAME).run(session -> {
             AppAuthManager.BearerTokenAuthenticator authenticator = new AppAuthManager.BearerTokenAuthenticator(session);
             authenticator.setTokenString(token);
@@ -561,6 +601,7 @@ public class OID4VCIssuerEndpointEncryptionTest extends OID4VCIssuerEndpointTest
             JWK jwk = JWKParser.create().parse("{\"kty\":\"RSA\",\"alg\":\"RSA-OAEP-256\",\"e\":\"AQAB\"}").getJwk();
             CredentialRequest credentialRequest = new CredentialRequest()
                     .setCredentialIdentifier(credentialIdentifier)
+                    .setProofs(new Proofs().setJwt(List.of(jwtProof)))
                     .setCredentialResponseEncryption(
                             new CredentialResponseEncryption()
                                     .setEnc("A256GCM")
@@ -584,6 +625,10 @@ public class OID4VCIssuerEndpointEncryptionTest extends OID4VCIssuerEndpointTest
     public void testRequestCredentialWithMissingResponseEncryptionWhenRequired() {
         String scopeName = jwtTypeCredentialClientScope.getName();
         String token = getBearerToken(oauth, client, scopeName);
+        String cNonce = getCNonce();
+        String issuer = getRealmPath(TEST_REALM_NAME);
+        String jwtProof = OID4VCTest.generateJwtProof(issuer, cNonce);
+
         testingClient.server(TEST_REALM_NAME).run(session -> {
             RealmModel realm = session.getContext().getRealm();
             realm.setAttribute("oid4vci.encryption.required", "true");
@@ -594,7 +639,8 @@ public class OID4VCIssuerEndpointEncryptionTest extends OID4VCIssuerEndpointTest
                 OID4VCIssuerEndpoint issuerEndpoint = prepareIssuerEndpoint(session, authenticator);
 
                 CredentialRequest credentialRequest = new CredentialRequest()
-                        .setCredentialIdentifier(scopeName);
+                        .setCredentialIdentifier(scopeName)
+                        .setProofs(new Proofs().setJwt(List.of(jwtProof)));
 
                 String requestPayload = JsonSerialization.writeValueAsString(credentialRequest);
 

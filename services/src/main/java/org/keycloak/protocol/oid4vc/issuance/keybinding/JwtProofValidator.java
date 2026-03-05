@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 import org.keycloak.common.VerificationException;
 import org.keycloak.crypto.SignatureVerifierContext;
@@ -278,6 +279,16 @@ public class JwtProofValidator extends AbstractProofValidator {
         if (proofPayload.getNonce() == null) {
             throw new VCIssuerException(ErrorType.INVALID_PROOF, "Missing 'nonce' in proof");
         }
+
+        // If the nonce was already validated during pre-validation in the issuer endpoint,
+        // skip re-validating it here to avoid treating a single use as a replay.
+        Set<String> validatedNonces = (Set<String>) keycloakSession.getAttribute("VALIDATED_NONCES");
+        if (validatedNonces != null && validatedNonces.contains(proofPayload.getNonce())) {
+            LOGGER.debugf("Nonce %s already validated earlier in this request; skipping re-validation in JwtProofValidator.",
+                    proofPayload.getNonce());
+            return;
+        }
+
         if (cNonceHandler == null) {
             LOGGER.warn("CNonceHandler not found. Cannot verify nonce in proof.");
             return;

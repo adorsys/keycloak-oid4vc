@@ -172,30 +172,33 @@ public class AttestationValidatorUtil {
         KeycloakContext keycloakContext = keycloakSession.getContext();
         CNonceHandler cNonceHandler = keycloakSession.getProvider(CNonceHandler.class);
 
-        // If CNonceHandler is available, nonce endpoint exists and nonce is required
-        boolean nonceRequired = cNonceHandler != null;
-
         if (attestationBody.getNonce() == null) {
             throw new VCIssuerException(ErrorType.INVALID_PROOF, "Missing 'nonce' in attestation");
         }
 
-        // Validate nonce if present. If provided, it must correspond to a nonce value provided by Keycloak.
-        if (attestationBody.getNonce() != null) {
-            if (cNonceHandler == null) {
-                throw new VCIssuerException(ErrorType.INVALID_PROOF, "No CNonceHandler available");
-            }
+        // If the nonce was already validated during pre-validation in the issuer endpoint,
+        // skip re-validating it here to avoid treating a single use as a replay.
+        Set<String> validatedNonces = (Set<String>) keycloakSession.getAttribute("VALIDATED_NONCES");
+        if (validatedNonces != null && validatedNonces.contains(attestationBody.getNonce())) {
+            LOGGER.debugf("Nonce %s already validated earlier in this request; skipping re-validation in AttestationValidatorUtil.",
+                    attestationBody.getNonce());
+            return;
+        }
 
-            try {
-                cNonceHandler.verifyCNonce(
-                        attestationBody.getNonce(),
-                        List.of(OID4VCIssuerWellKnownProvider.getCredentialsEndpoint(keycloakContext)),
-                        Map.of(JwtCNonceHandler.SOURCE_ENDPOINT,
-                                OID4VCIssuerWellKnownProvider.getNonceEndpoint(keycloakContext))
-                );
-            } catch (VerificationException e) {
-                throw new VCIssuerException(ErrorType.INVALID_NONCE,
-                        "The key attestation uses an invalid nonce", e);
-            }
+        if (cNonceHandler == null) {
+            throw new VCIssuerException(ErrorType.INVALID_PROOF, "No CNonceHandler available");
+        }
+
+        try {
+            cNonceHandler.verifyCNonce(
+                    attestationBody.getNonce(),
+                    List.of(OID4VCIssuerWellKnownProvider.getCredentialsEndpoint(keycloakContext)),
+                    Map.of(JwtCNonceHandler.SOURCE_ENDPOINT,
+                            OID4VCIssuerWellKnownProvider.getNonceEndpoint(keycloakContext))
+            );
+        } catch (VerificationException e) {
+            throw new VCIssuerException(ErrorType.INVALID_NONCE,
+                    "The key attestation uses an invalid nonce", e);
         }
 
         // Store attested keys in context for later use

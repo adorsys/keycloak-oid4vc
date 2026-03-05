@@ -41,6 +41,7 @@ import org.keycloak.protocol.oid4vc.model.CredentialRequest;
 import org.keycloak.protocol.oid4vc.model.CredentialResponse;
 import org.keycloak.protocol.oid4vc.model.ErrorType;
 import org.keycloak.protocol.oid4vc.model.OID4VCAuthorizationDetail;
+import org.keycloak.protocol.oid4vc.model.Proofs;
 import org.keycloak.protocol.oidc.representations.OIDCConfigurationRepresentation;
 import org.keycloak.representations.AuthorizationDetailsJSONRepresentation;
 import org.keycloak.representations.idm.ClientScopeRepresentation;
@@ -207,6 +208,11 @@ public abstract class OID4VCAuthorizationCodeFlowTestBase extends OID4VCIssuerEn
         CredentialRequest credentialRequest = new CredentialRequest();
         credentialRequest.setCredentialConfigurationId(credentialConfigurationId);
 
+        String cNonce = getCNonce();
+        String issuer = getRealmPath(TEST_REALM_NAME);
+        String jwtProof = OID4VCTest.generateJwtProof(issuer, cNonce);
+        credentialRequest.setProofs(new Proofs().setJwt(List.of(jwtProof)));
+
         String requestBody = JsonSerialization.writeValueAsString(credentialRequest);
         postCredential.setEntity(new StringEntity(requestBody, StandardCharsets.UTF_8));
 
@@ -261,9 +267,14 @@ public abstract class OID4VCAuthorizationCodeFlowTestBase extends OID4VCIssuerEn
             }
         }
 
-        // Request the actual credential using the refreshed token
+        // Request the actual credential using the refreshed token, including a fresh proof
+        String cNonce = getCNonce();
+        String issuer = getRealmPath(TEST_REALM_NAME);
+        String jwtProof = OID4VCTest.generateJwtProof(issuer, cNonce);
+
         Oid4vcCredentialResponse credRequestResponse = oauth.oid4vc().credentialRequest()
                 .credentialIdentifier(credentialIdentifier)
+                .proofs(new Proofs().setJwt(List.of(jwtProof)))
                 .bearerToken(accessToken)
                 .send();
         assertSuccessfulCredentialResponse(credRequestResponse);
@@ -1010,6 +1021,13 @@ public abstract class OID4VCAuthorizationCodeFlowTestBase extends OID4VCIssuerEn
                                                          String credentialConfigurationId, String credentialIdentifier) throws Exception {
         // Request the actual credential using the identifier
         CredentialRequest credRequest = credentialRequestSupplier.apply(credentialConfigurationId, credentialIdentifier);
+
+        String cNonce = getCNonce();
+        events.clear();
+
+        String issuer = getRealmPath(TEST_REALM_NAME);
+        String jwtProof = OID4VCTest.generateJwtProof(issuer, cNonce);
+        credRequest.setProofs(new Proofs().setJwt(List.of(jwtProof)));
 
         Oid4vcCredentialRequest request = oauth.oid4vc()
                 .credentialRequest(credRequest)

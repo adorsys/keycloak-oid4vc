@@ -33,6 +33,7 @@ import org.keycloak.protocol.oid4vc.model.CredentialIssuer;
 import org.keycloak.protocol.oid4vc.model.CredentialRequest;
 import org.keycloak.protocol.oid4vc.model.CredentialResponse;
 import org.keycloak.protocol.oid4vc.model.OID4VCAuthorizationDetail;
+import org.keycloak.protocol.oid4vc.model.Proofs;
 import org.keycloak.representations.JsonWebToken;
 import org.keycloak.representations.idm.ClientScopeRepresentation;
 import org.keycloak.representations.idm.ProtocolMapperRepresentation;
@@ -80,6 +81,10 @@ public class OID4VCTimeNormalizationSdJwtTest extends OID4VCIssuerEndpointTest {
 
         final String clientScopeString = toJsonString(sdJwtTypeCredentialClientScope);
 
+        String cNonce = getCNonce();
+        String issuer = getRealmPath(TEST_REALM_NAME);
+        String jwtProof = OID4VCTest.generateJwtProof(issuer, cNonce);
+
         testingClient.server(TEST_REALM_NAME).run(session -> {
             try {
                 // Add a protocol mapper that maps iat from VC issuanceDate (VALUE_SOURCE=VC)
@@ -99,7 +104,8 @@ public class OID4VCTimeNormalizationSdJwtTest extends OID4VCIssuerEndpointTest {
                 OID4VCIssuerEndpoint issuerEndpoint = prepareIssuerEndpoint(session, authenticator);
 
                 CredentialRequest credentialRequest = new CredentialRequest()
-                        .setCredentialIdentifier(credentialIdentifier);
+                        .setCredentialIdentifier(credentialIdentifier)
+                        .setProofs(new Proofs().setJwt(List.of(jwtProof)));
 
                 String requestPayload = JsonSerialization.writeValueAsString(credentialRequest);
                 Response response = issuerEndpoint.requestCredential(requestPayload);

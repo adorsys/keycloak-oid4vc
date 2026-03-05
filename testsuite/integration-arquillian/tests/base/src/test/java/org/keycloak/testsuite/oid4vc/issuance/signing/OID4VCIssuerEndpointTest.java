@@ -82,6 +82,7 @@ import org.keycloak.protocol.oid4vc.model.CredentialRequest;
 import org.keycloak.protocol.oid4vc.model.CredentialResponse;
 import org.keycloak.protocol.oid4vc.model.DisplayObject;
 import org.keycloak.protocol.oid4vc.model.OID4VCAuthorizationDetail;
+import org.keycloak.protocol.oid4vc.model.Proofs;
 import org.keycloak.protocol.oid4vc.model.SupportedCredentialConfiguration;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
 import org.keycloak.protocol.oidc.representations.OIDCConfigurationRepresentation;
@@ -612,6 +613,11 @@ public abstract class OID4VCIssuerEndpointTest extends OID4VCTest {
                         request.setCredentialConfigurationId(testCredentialConfigurationId);
                     }
 
+                    String cNonce = getCNonce();
+                    String issuer = getRealmPath(TEST_REALM_NAME);
+                    String jwtProof = generateJwtProof(issuer, cNonce);
+                    request.setProofs(new Proofs().setJwt(List.of(jwtProof)));
+
                     assertEquals(testFormat,
                             oid4vciIssuerConfig.getCredentialsSupported()
                                     .get(testCredentialConfigurationId)
@@ -669,6 +675,12 @@ public abstract class OID4VCIssuerEndpointTest extends OID4VCTest {
                                                    ClientScopeRepresentation expectedClientScope) throws IOException, VerificationException {
         CredentialRequest request = new CredentialRequest();
         request.setCredentialIdentifier(credentialIdentifier);
+
+        String cNonce = getCNonce();
+        String issuer = getRealmPath(TEST_REALM_NAME);
+        String jwtProof = generateJwtProof(issuer, cNonce);
+        Proofs proofs = new Proofs().setJwt(List.of(jwtProof));
+        request.setProofs(proofs);
 
         StringEntity stringEntity = new StringEntity(JsonSerialization.writeValueAsString(request),
                 ContentType.APPLICATION_JSON);

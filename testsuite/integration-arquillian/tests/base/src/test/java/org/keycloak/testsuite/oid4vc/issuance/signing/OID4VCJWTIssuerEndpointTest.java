@@ -315,10 +315,16 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
         authDetail.setLocations(List.of(credentialIssuer.getCredentialIssuer()));
 
         String authCode = getAuthorizationCode(oauth, client, "john", scopeName);
-        org.keycloak.testsuite.util.oauth.AccessTokenResponse tokenResponse = getBearerToken(oauth, authCode, authDetail);
+        AccessTokenResponse tokenResponse = getBearerToken(oauth, authCode, authDetail);
         String token = tokenResponse.getAccessToken();
         List<OID4VCAuthorizationDetail> authDetailsResponse = tokenResponse.getOid4vcAuthorizationDetails();
         String credentialIdentifier = authDetailsResponse.get(0).getCredentialIdentifiers().get(0);
+
+        // These must be obtained BEFORE entering the server-side lambda to avoid
+        // capturing `this` (the test class) in the lambda, which causes a
+        // NotSerializableException since the test class is not serializable.
+        final String cNonce = getCNonce();
+        final String issuer = getRealmPath(TEST_REALM_NAME);
 
         try {
             withCausePropagation(() -> {
@@ -333,20 +339,30 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
                     CredentialRequest credentialRequest =
                             new CredentialRequest().setCredentialIdentifier(credentialIdentifier);
 
-                    String requestPayload = JsonSerialization.writeValueAsString(credentialRequest);
-                    issuerEndpoint.requestCredential(requestPayload);
+                    String jwtProof = OID4VCTest.generateJwtProof(issuer, cNonce);
+                    credentialRequest.setProofs(new Proofs().setJwt(List.of(jwtProof)));
+
+                    try {
+                        String requestPayload = JsonSerialization.writeValueAsString(credentialRequest);
+                        issuerEndpoint.requestCredential(requestPayload);
+                        Assert.fail("Expected BadRequestException due to no credential builder");
+                    } catch (BadRequestException e) {
+                        ErrorResponse error = (ErrorResponse) e.getResponse().getEntity();
+                        assertEquals(ErrorType.UNKNOWN_CREDENTIAL_CONFIGURATION.getValue(), error.getError());
+                    }
                 }));
             });
-            Assert.fail("Should have thrown an exception");
         } catch (Exception e) {
-            Assert.assertTrue(e instanceof BadRequestException);
-            Assert.assertEquals("No credential builder found for format jwt_vc_json", e.getMessage());
+            fail("Should not have thrown exception in outer block: " + e.getMessage());
         }
     }
 
     @Test(expected = BadRequestException.class)
     public void testRequestCredentialUnsupportedCredential() throws Throwable {
         String token = getBearerToken(oauth);
+        // Must be obtained BEFORE the server lambda to avoid capturing `this`
+        final String cNonce = getCNonce();
+        final String issuer = getRealmPath(TEST_REALM_NAME);
         withCausePropagation(() -> {
             testingClient.server(TEST_REALM_NAME).run(session -> {
                 BearerTokenAuthenticator authenticator = new BearerTokenAuthenticator(session);
@@ -354,6 +370,9 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
                 OID4VCIssuerEndpoint issuerEndpoint = prepareIssuerEndpoint(session, authenticator);
                 CredentialRequest credentialRequest = new CredentialRequest()
                         .setCredentialIdentifier("no-such-credential");
+
+                String jwtProof = OID4VCTest.generateJwtProof(issuer, cNonce);
+                credentialRequest.setProofs(new Proofs().setJwt(List.of(jwtProof)));
 
                 String requestPayload = JsonSerialization.writeValueAsString(credentialRequest);
 
@@ -373,7 +392,7 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
         authDetail.setLocations(List.of(credentialIssuer.getCredentialIssuer()));
 
         String authCode = getAuthorizationCode(oauth, client, "john", scopeName);
-        org.keycloak.testsuite.util.oauth.AccessTokenResponse tokenResponse = getBearerToken(oauth, authCode, authDetail);
+        AccessTokenResponse tokenResponse = getBearerToken(oauth, authCode, authDetail);
         String token = tokenResponse.getAccessToken();
         List<OID4VCAuthorizationDetail> authDetailsResponse = tokenResponse.getOid4vcAuthorizationDetails();
         assertNotNull("authorization_details should be present in the response", authDetailsResponse);
@@ -381,12 +400,17 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
         String credentialIdentifier = authDetailsResponse.get(0).getCredentialIdentifiers().get(0);
         assertNotNull("credential_identifier should be present", credentialIdentifier);
 
+        String cNonce = getCNonce();
+        String issuer = getRealmPath(TEST_REALM_NAME);
+        String jwtProof = OID4VCTest.generateJwtProof(issuer, cNonce);
+
         testingClient.server(TEST_REALM_NAME).run(session -> {
             BearerTokenAuthenticator authenticator = new BearerTokenAuthenticator(session);
             authenticator.setTokenString(token);
             OID4VCIssuerEndpoint issuerEndpoint = prepareIssuerEndpoint(session, authenticator);
             CredentialRequest credentialRequest = new CredentialRequest()
-                    .setCredentialIdentifier(credentialIdentifier);
+                    .setCredentialIdentifier(credentialIdentifier)
+                    .setProofs(new Proofs().setJwt(List.of(jwtProof)));
 
             String requestPayload = JsonSerialization.writeValueAsString(credentialRequest);
 
@@ -427,13 +451,52 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
             authenticator.setTokenString(token);
             OID4VCIssuerEndpoint issuerEndpoint = prepareIssuerEndpoint(session, authenticator);
             CredentialRequest credentialRequest = new CredentialRequest();
+            String cNonce = getCNonce();
+            String issuer = OID4VCIssuerWellKnownProvider.getIssuer(session.getContext());
+            String jwtProof = generateJwtProof(issuer, cNonce);
+            credentialRequest.setProofs(new Proofs().setJwt(List.of(jwtProof)));
             try {
                 String requestPayload = JsonSerialization.writeValueAsString(credentialRequest);
                 issuerEndpoint.requestCredential(requestPayload);
-                Assert.fail("Expected BadRequestException due to missing credential identifier or configuration id");
+                Assert.fail("Expected BadRequestException due to missing proof");
             } catch (BadRequestException e) {
                 ErrorResponse error = (ErrorResponse) e.getResponse().getEntity();
                 assertEquals(ErrorType.INVALID_CREDENTIAL_REQUEST.getValue(), error.getError());
+            }
+        });
+    }
+
+    @Test
+    public void testRequestCredentialMissingProof() {
+        String scopeName = jwtTypeCredentialClientScope.getName();
+        String credConfigId = jwtTypeCredentialClientScope.getAttributes().get(CredentialScopeModel.CONFIGURATION_ID);
+        CredentialIssuer credentialIssuer = getCredentialIssuerMetadata();
+        OID4VCAuthorizationDetail authDetail = new OID4VCAuthorizationDetail();
+        authDetail.setType(OPENID_CREDENTIAL);
+        authDetail.setCredentialConfigurationId(credConfigId);
+        authDetail.setLocations(List.of(credentialIssuer.getCredentialIssuer()));
+
+        String authCode = getAuthorizationCode(oauth, client, "john", scopeName);
+        AccessTokenResponse tokenResponse = getBearerToken(oauth, authCode, authDetail);
+        String token = tokenResponse.getAccessToken();
+        List<OID4VCAuthorizationDetail> authDetailsResponse = tokenResponse.getOid4vcAuthorizationDetails();
+        String credentialIdentifier = authDetailsResponse.get(0).getCredentialIdentifiers().get(0);
+
+        testingClient.server(TEST_REALM_NAME).run(session -> {
+            BearerTokenAuthenticator authenticator = new BearerTokenAuthenticator(session);
+            authenticator.setTokenString(token);
+            OID4VCIssuerEndpoint issuerEndpoint = prepareIssuerEndpoint(session, authenticator);
+            CredentialRequest credentialRequest = new CredentialRequest()
+                    .setCredentialIdentifier(credentialIdentifier);
+            // No proofs set intentionally
+
+            try {
+                String requestPayload = JsonSerialization.writeValueAsString(credentialRequest);
+                issuerEndpoint.requestCredential(requestPayload);
+                Assert.fail("Expected BadRequestException due to missing proof");
+            } catch (BadRequestException e) {
+                ErrorResponse error = (ErrorResponse) e.getResponse().getEntity();
+                assertEquals(ErrorType.INVALID_PROOF.getValue(), error.getError());
             }
         });
     }
@@ -653,24 +716,24 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
         authDetail.setLocations(List.of(credentialIssuer.getCredentialIssuer()));
 
         String authCode = getAuthorizationCode(oauth, client, "john", scopeName);
-        org.keycloak.testsuite.util.oauth.AccessTokenResponse tokenResponse = getBearerToken(oauth, authCode, authDetail);
+        AccessTokenResponse tokenResponse = getBearerToken(oauth, authCode, authDetail);
         String token = tokenResponse.getAccessToken();
         List<OID4VCAuthorizationDetail> authDetailsResponse = tokenResponse.getOid4vcAuthorizationDetails();
         String credentialIdentifier = authDetailsResponse.get(0).getCredentialIdentifiers().get(0);
 
         String cNonce = getCNonce();
 
+        final String issuer = getRealmPath(TEST_REALM_NAME);
+        final String jwtProof1 = OID4VCTest.generateJwtProof(issuer, cNonce);
+        final String jwtProof2 = OID4VCTest.generateJwtProof(issuer, cNonce);
+
         testingClient.server(TEST_REALM_NAME).run(session -> {
             try {
                 BearerTokenAuthenticator authenticator = new BearerTokenAuthenticator(session);
                 authenticator.setTokenString(token);
-                String issuer = OID4VCIssuerWellKnownProvider.getIssuer(session.getContext());
 
-                String jwtProof1 = generateJwtProof(issuer, cNonce);
-                String jwtProof2 = generateJwtProof(issuer, cNonce);
+
                 Proofs proofs = new Proofs().setJwt(Arrays.asList(jwtProof1, jwtProof2));
-
-
                 CredentialRequest request = new CredentialRequest()
                         .setCredentialIdentifier(credentialIdentifier)
                         .setProofs(proofs);
@@ -897,13 +960,18 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
     public void testRequestCredentialWithUnknownCredentialIdentifier() {
         String token = getBearerToken(oauth, client, jwtTypeCredentialClientScope.getName());
 
+        String cNonce = getCNonce();
+        String issuer = getRealmPath(TEST_REALM_NAME);
+        String jwtProof = OID4VCTest.generateJwtProof(issuer, cNonce);
+
         testingClient.server(TEST_REALM_NAME).run(session -> {
             BearerTokenAuthenticator authenticator = new BearerTokenAuthenticator(session);
             authenticator.setTokenString(token);
             OID4VCIssuerEndpoint issuerEndpoint = prepareIssuerEndpoint(session, authenticator);
 
             CredentialRequest credentialRequest = new CredentialRequest()
-                    .setCredentialIdentifier("unknown-credential-identifier");
+                    .setCredentialIdentifier("unknown-credential-identifier")
+                    .setProofs(new Proofs().setJwt(List.of(jwtProof)));
 
             String requestPayload = JsonSerialization.writeValueAsString(credentialRequest);
 
@@ -924,6 +992,10 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
     public void testRequestCredentialWithUnknownCredentialConfigurationId() {
         String token = getBearerToken(oauth, client, jwtTypeCredentialClientScope.getName());
 
+        String cNonce = getCNonce();
+        String issuer = getRealmPath(TEST_REALM_NAME);
+        String jwtProof = OID4VCTest.generateJwtProof(issuer, cNonce);
+
         testingClient.server(TEST_REALM_NAME).run(session -> {
             BearerTokenAuthenticator authenticator = new BearerTokenAuthenticator(session);
             authenticator.setTokenString(token);
@@ -932,7 +1004,8 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
             // Create a credential request with a non-existent configuration ID
             // This will test the invalid_credential_request error when no authorization_details present
             CredentialRequest credentialRequest = new CredentialRequest()
-                    .setCredentialConfigurationId("unknown-configuration-id");
+                    .setCredentialConfigurationId("unknown-configuration-id")
+                    .setProofs(new Proofs().setJwt(List.of(jwtProof)));
 
             String requestPayload = JsonSerialization.writeValueAsString(credentialRequest);
 
@@ -961,13 +1034,17 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
         authDetail.setLocations(List.of(credentialIssuer.getCredentialIssuer()));
 
         String authCode = getAuthorizationCode(oauth, client, "john", scopeName);
-        org.keycloak.testsuite.util.oauth.AccessTokenResponse tokenResponse = getBearerToken(oauth, authCode, authDetail);
+        AccessTokenResponse tokenResponse = getBearerToken(oauth, authCode, authDetail);
         String token = tokenResponse.getAccessToken();
         List<OID4VCAuthorizationDetail> authDetailsResponse = tokenResponse.getOid4vcAuthorizationDetails();
         assertNotNull("authorization_details should be present in the response", authDetailsResponse);
         assertFalse("authorization_details should not be empty", authDetailsResponse.isEmpty());
         String credentialIdentifier = authDetailsResponse.get(0).getCredentialIdentifiers().get(0);
         assertNotNull("credential_identifier should be present", credentialIdentifier);
+
+        String cNonce = getCNonce();
+        String issuer = getRealmPath(TEST_REALM_NAME);
+        String jwtProof = OID4VCTest.generateJwtProof(issuer, cNonce);
 
         testingClient.server(TEST_REALM_NAME).run(session -> {
             BearerTokenAuthenticator authenticator = new BearerTokenAuthenticator(session);
@@ -977,13 +1054,13 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
 
             // Use the credential identifier from the token
             CredentialRequest credentialRequest = new CredentialRequest()
-                    .setCredentialIdentifier(credentialIdentifier);
-
-            String requestPayload = JsonSerialization.writeValueAsString(credentialRequest);
+                    .setCredentialIdentifier(credentialIdentifier)
+                    .setProofs(new Proofs().setJwt(List.of(jwtProof)));
 
             try {
+                String requestPayload = JsonSerialization.writeValueAsString(credentialRequest);
                 issuerEndpoint.requestCredential(requestPayload);
-                Assert.fail("Expected BadRequestException due to missing credential builder for format");
+                Assert.fail("Expected BadRequestException due to missing proof");
             } catch (BadRequestException e) {
                 ErrorResponse error = (ErrorResponse) e.getResponse().getEntity();
                 assertEquals(ErrorType.UNKNOWN_CREDENTIAL_CONFIGURATION.getValue(), error.getError());
@@ -1094,10 +1171,14 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
         authDetail.setLocations(List.of(credentialIssuer.getCredentialIssuer()));
 
         String authCode = getAuthorizationCode(oauth, client, "john", scopeName);
-        org.keycloak.testsuite.util.oauth.AccessTokenResponse tokenResponse = getBearerToken(oauth, authCode, authDetail);
+        AccessTokenResponse tokenResponse = getBearerToken(oauth, authCode, authDetail);
         String token = tokenResponse.getAccessToken();
         List<OID4VCAuthorizationDetail> authDetailsResponse = tokenResponse.getOid4vcAuthorizationDetails();
         String credentialIdentifier = authDetailsResponse.get(0).getCredentialIdentifiers().get(0);
+
+        String cNonce = getCNonce();
+        String issuer = getRealmPath(TEST_REALM_NAME);
+        String jwtProof = OID4VCTest.generateJwtProof(issuer, cNonce);
 
         testingClient.server(TEST_REALM_NAME).run(session -> {
             BearerTokenAuthenticator authenticator = new BearerTokenAuthenticator(session);
@@ -1105,7 +1186,8 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
             OID4VCIssuerEndpoint issuerEndpoint = prepareIssuerEndpoint(session, authenticator);
 
             CredentialRequest credentialRequest = new CredentialRequest()
-                    .setCredentialIdentifier(credentialIdentifier);
+                    .setCredentialIdentifier(credentialIdentifier)
+                    .setProofs(new Proofs().setJwt(List.of(jwtProof)));
 
             String requestPayload = JsonSerialization.writeValueAsString(credentialRequest);
             Response credentialResponse = issuerEndpoint.requestCredential(requestPayload);
@@ -1407,7 +1489,7 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
         authDetail.setLocations(List.of(credentialIssuer.getCredentialIssuer()));
 
         String authCode = getAuthorizationCode(oauth, client, "john", scopeName);
-        org.keycloak.testsuite.util.oauth.AccessTokenResponse tokenResponse = getBearerToken(oauth, authCode, authDetail);
+        AccessTokenResponse tokenResponse = getBearerToken(oauth, authCode, authDetail);
         String token = tokenResponse.getAccessToken();
         List<OID4VCAuthorizationDetail> authDetailsResponse = tokenResponse.getOid4vcAuthorizationDetails();
         String credentialIdentifier = authDetailsResponse.get(0).getCredentialIdentifiers().get(0);

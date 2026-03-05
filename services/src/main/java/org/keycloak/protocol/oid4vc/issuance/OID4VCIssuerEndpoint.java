@@ -30,10 +30,12 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import jakarta.ws.rs.BadRequestException;
@@ -921,6 +923,13 @@ public class OID4VCIssuerEndpoint {
         // Get the list of all proofs (handles single proof, multiple proofs, or none)
         List<String> allProofs = getAllProofs(credentialRequestVO);
 
+        // Check if proofs are required and provided
+        if (supportedCredential.isProofRequired() && allProofs.isEmpty()) {
+            String errorMessage = "Proofs are required for this credential configuration but were missing.";
+            LOGGER.debug(errorMessage);
+            throw badRequestException(ErrorType.INVALID_PROOF, errorMessage, eventBuilder);
+        }
+
         // Generate credential response
         CredentialResponse responseVO = new CredentialResponse();
 
@@ -963,6 +972,30 @@ public class OID4VCIssuerEndpoint {
                 .detail(Details.VERIFIABLE_CREDENTIAL_FORMAT, supportedCredential.getFormat())
                 .detail(Details.VERIFIABLE_CREDENTIALS_ISSUED, String.valueOf(responseVO.getCredentials().size()));
         eventBuilder.success();
+
+        // After a successful issuance, consume all validated nonces so that replay attempts
+        // using the same c_nonce are rejected with invalid_nonce, while still allowing
+        // retries of previously failed requests with the same nonce.
+        CNonceHandler cNonceHandler = session.getProvider(CNonceHandler.class);
+        if (cNonceHandler instanceof JwtCNonceHandler jwtCNonceHandler) {
+            Set<String> validatedNonces = (Set<String>) session.getAttribute("VALIDATED_NONCES");
+            if (validatedNonces != null && !validatedNonces.isEmpty()) {
+                String expectedAudience = OID4VCIssuerWellKnownProvider.getCredentialsEndpoint(session.getContext());
+                String expectedSource = OID4VCIssuerWellKnownProvider.getNonceEndpoint(session.getContext());
+                for (String nonce : validatedNonces) {
+                    try {
+                        jwtCNonceHandler.verifyCNonce(
+                                nonce,
+                                List.of(expectedAudience),
+                                Map.of(JwtCNonceHandler.SOURCE_ENDPOINT, expectedSource),
+                                true
+                        );
+                    } catch (VerificationException e) {
+                        LOGGER.debugf("Failed to consume c_nonce '%s' after successful issuance: %s", nonce, e.getMessage());
+                    }
+                }
+            }
+        }
 
         // Persistence of this state is required per OID4VCI Section 14.3 to allow multiple accesses to the credential endpoint.
         // Expiration is handled automatically by the underlying storage (Infinispan).
@@ -1548,9 +1581,10 @@ public class OID4VCIssuerEndpoint {
         String expectedAudience = OID4VCIssuerWellKnownProvider.getCredentialsEndpoint(session.getContext());
         String expectedSource = OID4VCIssuerWellKnownProvider.getNonceEndpoint(session.getContext());
 
-        // Track nonces in this request to allow multiple proofs with the same nonce
-        // We validate and consume each unique nonce only once
-        java.util.Set<String> validatedNonces = new java.util.HashSet<>();
+        // Track nonces in this request to allow multiple proofs with the same nonce.
+        // This set is per-request; it is also used later to consume nonces after successful issuance.
+        Set<String> validatedNonces = new HashSet<>();
+        session.setAttribute("VALIDATED_NONCES", validatedNonces);
 
         // Extract and validate nonce from JWT proofs
         List<String> jwtProofs = proofs.getJwt();
@@ -1561,9 +1595,9 @@ public class OID4VCIssuerEndpoint {
                     AccessToken proofPayload = JsonSerialization.readValue(jwsInput.getContent(), AccessToken.class);
                     String nonce = proofPayload.getNonce();
 
-                    // Only validate and consume each unique nonce once per request
+                    // Only validate each unique nonce once per request
                     if (nonce != null && !validatedNonces.contains(nonce)) {
-                        // Validate and consume the nonce
+                        // Validate the nonce without consuming it yet; consumption happens after success
                         cNonceHandler.verifyCNonce(
                                 nonce,
                                 List.of(expectedAudience),
@@ -1593,9 +1627,9 @@ public class OID4VCIssuerEndpoint {
                             JsonSerialization.readValue(jwsInput.getContent(), KeyAttestationJwtBody.class);
                     String nonce = attestationBody.getNonce();
 
-                    // Only validate and consume each unique nonce once per request
+                    // Only validate each unique nonce once per request
                     if (nonce != null && !validatedNonces.contains(nonce)) {
-                        // Validate and consume the nonce
+                        // Validate the nonce without consuming it yet; consumption happens after success
                         cNonceHandler.verifyCNonce(
                                 nonce,
                                 List.of(expectedAudience),

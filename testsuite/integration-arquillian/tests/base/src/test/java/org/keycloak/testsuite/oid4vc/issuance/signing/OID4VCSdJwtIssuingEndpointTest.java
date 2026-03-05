@@ -48,6 +48,8 @@ import org.keycloak.protocol.oid4vc.model.CredentialOfferURI;
 import org.keycloak.protocol.oid4vc.model.CredentialRequest;
 import org.keycloak.protocol.oid4vc.model.CredentialResponse;
 import org.keycloak.protocol.oid4vc.model.CredentialsOffer;
+import org.keycloak.protocol.oid4vc.model.ErrorResponse;
+import org.keycloak.protocol.oid4vc.model.ErrorType;
 import org.keycloak.protocol.oid4vc.model.OID4VCAuthorizationDetail;
 import org.keycloak.protocol.oid4vc.model.Proofs;
 import org.keycloak.protocol.oid4vc.model.SupportedCredentialConfiguration;
@@ -59,6 +61,7 @@ import org.keycloak.representations.idm.ComponentExportRepresentation;
 import org.keycloak.representations.idm.ProtocolMapperRepresentation;
 import org.keycloak.sdjwt.vp.SdJwtVP;
 import org.keycloak.services.managers.AppAuthManager;
+import org.keycloak.services.managers.AppAuthManager.BearerTokenAuthenticator;
 import org.keycloak.testsuite.util.oauth.AccessTokenResponse;
 import org.keycloak.testsuite.util.oauth.oid4vc.CredentialOfferResponse;
 import org.keycloak.util.JsonSerialization;
@@ -107,12 +110,18 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
 
         final String clientScopeString = toJsonString(sdJwtTypeCredentialClientScope);
 
+        String cNonce = getCNonce();
+        String issuer = getRealmPath(TEST_REALM_NAME);
+        String jwtProof = OID4VCTest.generateJwtProof(issuer, cNonce);
+
         testingClient
                 .server(TEST_REALM_NAME)
                 .run(session -> {
                     ClientScopeRepresentation clientScope = fromJsonString(clientScopeString,
                             ClientScopeRepresentation.class);
-                    testRequestTestCredential(session, clientScope, token, null, credentialIdentifier);
+                    Proofs proof = new Proofs()
+                            .setJwt(List.of(jwtProof));
+                    testRequestTestCredential(session, clientScope, token, proof, credentialIdentifier);
                 });
     }
 
@@ -184,6 +193,45 @@ public class OID4VCSdJwtIssuingEndpointTest extends OID4VCIssuerEndpointTest {
         } catch (BadRequestException ex) {
             Assert.assertEquals("Could not validate provided proof", ex.getMessage());
         }
+    }
+
+    @Test
+    public void testRequestCredentialMissingProof() throws Throwable {
+        String scopeName = sdJwtTypeCredentialClientScope.getName();
+        String credConfigId = sdJwtTypeCredentialClientScope.getAttributes().get(CredentialScopeModel.CONFIGURATION_ID);
+        CredentialIssuer credentialIssuer = getCredentialIssuerMetadata();
+        OID4VCAuthorizationDetail authDetail = new OID4VCAuthorizationDetail();
+        authDetail.setType(OPENID_CREDENTIAL);
+        authDetail.setCredentialConfigurationId(credConfigId);
+        authDetail.setLocations(List.of(credentialIssuer.getCredentialIssuer()));
+
+        String authCode = getAuthorizationCode(oauth, client, "john", scopeName);
+        AccessTokenResponse tokenResponse = getBearerToken(oauth, authCode, authDetail);
+        String token = tokenResponse.getAccessToken();
+        List<OID4VCAuthorizationDetail> authDetailsResponse = tokenResponse.getOid4vcAuthorizationDetails();
+        String credentialIdentifier = authDetailsResponse.get(0).getCredentialIdentifiers().get(0);
+
+        withCausePropagation(() -> {
+            testingClient.server(TEST_REALM_NAME).run(session -> {
+                BearerTokenAuthenticator authenticator = new BearerTokenAuthenticator(session);
+                authenticator.setTokenString(token);
+                OID4VCIssuerEndpoint issuerEndpoint = prepareIssuerEndpoint(session, authenticator);
+                CredentialRequest credentialRequest = new CredentialRequest()
+                        .setCredentialIdentifier(credentialIdentifier);
+                // No proofs set intentionally
+
+                try {
+                    String requestPayload = JsonSerialization.writeValueAsString(credentialRequest);
+                    issuerEndpoint.requestCredential(requestPayload);
+                    Assert.fail("Expected BadRequestException due to missing proof");
+                } catch (BadRequestException e) {
+                    ErrorResponse error = (ErrorResponse) e.getResponse().getEntity();
+                    Assert.assertEquals(ErrorType.INVALID_PROOF.getValue(), error.getError());
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            });
+        });
     }
 
     @Test
