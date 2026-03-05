@@ -165,15 +165,24 @@ public class OID4VCIssuerWellKnownProvider implements WellKnownProvider {
         RealmModel realm = session.getContext().getRealm();
         String acceptHeader = session.getContext().getRequestHeaders().getHeaderString(HttpHeaders.ACCEPT);
         boolean preferJwt = acceptHeader != null && acceptHeader.contains(MediaType.APPLICATION_JWT);
-        boolean signedMetadataEnabled = Boolean.parseBoolean(realm.getAttribute(SIGNED_METADATA_ENABLED_ATTR));
+        String signedMetadataEnabledAttr = realm.getAttribute(SIGNED_METADATA_ENABLED_ATTR);
+        boolean signedMetadataEnabled = Boolean.parseBoolean(signedMetadataEnabledAttr);
+
+        LOGGER.debugf("Metadata request - Accept: %s, preferJwt: %s, signedMetadataEnabled attr: '%s', signedMetadataEnabled: %s",
+                acceptHeader, preferJwt, signedMetadataEnabledAttr, signedMetadataEnabled);
 
         if (preferJwt && signedMetadataEnabled) {
             Optional<String> signedJwt = generateSignedMetadata(issuer, session);
             if (signedJwt.isPresent()) {
+                // Set Content-Type header to application/jwt when returning signed metadata
+                session.getContext().getHttpResponse().setHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JWT);
+                LOGGER.debugf("Returning signed metadata as JWT for realm: %s", realm.getName());
                 return signedJwt.get();
             } else {
                 LOGGER.debugf("Falling back to JSON response due to signed metadata failure for realm: %s", realm.getName());
             }
+        } else if (preferJwt && !signedMetadataEnabled) {
+            LOGGER.debugf("Client requested JWT metadata (Accept: %s) but signed metadata is not enabled for realm: %s", acceptHeader, realm.getName());
         }
 
         return issuer;
