@@ -349,6 +349,35 @@ public class OID4VCIssuerWellKnownProviderTest extends OID4VCIssuerEndpointTest 
     }
 
     @Test
+    public void testSignedMetadataWhenDisabledReturnsJson() throws Exception {
+        String wellKnownUri = getRealmMetadataPath(TEST_REALM_NAME);
+
+        // Ensure signed metadata is disabled
+        testingClient.server(TEST_REALM_NAME).run(session -> {
+            RealmModel realm = session.getContext().getRealm();
+            realm.removeAttribute(OID4VCIssuerWellKnownProvider.SIGNED_METADATA_ENABLED_ATTR);
+        });
+
+        // Request with Accept: application/jwt header
+        CredentialIssuerMetadataResponse response = oauth.oid4vc()
+                .issuerMetadataRequest()
+                .endpoint(wellKnownUri)
+                .header(HttpHeaders.ACCEPT, org.keycloak.utils.MediaType.APPLICATION_JWT)
+                .send();
+
+        assertEquals(HttpStatus.SC_OK, response.getStatusCode());
+        // Should return JSON even when JWT is requested if signed metadata is disabled
+        assertEquals("Content-Type should be application/json when signed metadata is disabled",
+                org.keycloak.utils.MediaType.APPLICATION_JSON, response.getHeader(HttpHeaders.CONTENT_TYPE));
+
+        // Response should be valid JSON (not a JWT string)
+        String content = response.getContent();
+        assertNotNull("Response should not be null", content);
+        // Should start with { indicating JSON, not a JWT (which would start with eyJ)
+        assertTrue("Response should be JSON when signed metadata is disabled", content.trim().startsWith("{"));
+    }
+
+    @Test
     public void testSignedMetadataWithInvalidAlgorithm() throws IOException {
         String wellKnownUri = getRealmMetadataPath(TEST_REALM_NAME);
         String expectedIssuer = getRealmPath(TEST_REALM_NAME);

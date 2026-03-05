@@ -168,7 +168,7 @@ public class OID4VCIssuerWellKnownProvider implements WellKnownProvider {
         String signedMetadataEnabledAttr = realm.getAttribute(SIGNED_METADATA_ENABLED_ATTR);
         boolean signedMetadataEnabled = Boolean.parseBoolean(signedMetadataEnabledAttr);
 
-        LOGGER.debugf("Metadata request - Accept: %s, preferJwt: %s, signedMetadataEnabled attr: '%s', signedMetadataEnabled: %s",
+        LOGGER.infof("Metadata request - Accept: %s, preferJwt: %s, signedMetadataEnabled attr: '%s', signedMetadataEnabled: %s",
                 acceptHeader, preferJwt, signedMetadataEnabledAttr, signedMetadataEnabled);
 
         if (preferJwt && signedMetadataEnabled) {
@@ -176,13 +176,14 @@ public class OID4VCIssuerWellKnownProvider implements WellKnownProvider {
             if (signedJwt.isPresent()) {
                 // Set Content-Type header to application/jwt when returning signed metadata
                 session.getContext().getHttpResponse().setHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JWT);
-                LOGGER.debugf("Returning signed metadata as JWT for realm: %s", realm.getName());
+                LOGGER.infof("Returning signed metadata as JWT for realm: %s", realm.getName());
                 return signedJwt.get();
             } else {
-                LOGGER.debugf("Falling back to JSON response due to signed metadata failure for realm: %s", realm.getName());
+                LOGGER.warnf("Falling back to JSON response due to signed metadata failure for realm: %s. Check logs above for details.", realm.getName());
             }
         } else if (preferJwt && !signedMetadataEnabled) {
-            LOGGER.debugf("Client requested JWT metadata (Accept: %s) but signed metadata is not enabled for realm: %s", acceptHeader, realm.getName());
+            LOGGER.infof("Client requested JWT metadata (Accept: %s) but signed metadata is not enabled for realm: %s. Attribute '%s' value: '%s'", 
+                    acceptHeader, realm.getName(), SIGNED_METADATA_ENABLED_ATTR, signedMetadataEnabledAttr);
         }
 
         return issuer;
@@ -232,6 +233,7 @@ public class OID4VCIssuerWellKnownProvider implements WellKnownProvider {
         String alg;
         try {
             alg = getSigningAlgorithm(realm, session);
+            LOGGER.debugf("Selected signing algorithm '%s' for signed metadata in realm '%s'", alg, realm.getName());
         } catch (IllegalStateException e) {
             LOGGER.warnf("Failed to get signing algorithm: %s. Falling back to unsigned metadata.", e.getMessage());
             return Optional.empty(); // Return empty to indicate fallback to JSON
@@ -240,9 +242,11 @@ public class OID4VCIssuerWellKnownProvider implements WellKnownProvider {
         // Retrieve active key
         KeyWrapper keyWrapper = keyManager.getActiveKey(realm, KeyUse.SIG, alg);
         if (keyWrapper == null) {
-            LOGGER.warnf("No active key found for realm '%s' with algorithm '%s'. Falling back to unsigned metadata.", realm.getName(), alg);
+            LOGGER.warnf("No active key found for realm '%s' with algorithm '%s'. Falling back to unsigned metadata. Available algorithms: %s", 
+                    realm.getName(), alg, getSupportedAsymmetricSignatureAlgorithms(session));
             return Optional.empty();
         }
+        LOGGER.debugf("Found active signing key '%s' for algorithm '%s' in realm '%s'", keyWrapper.getKid(), alg, realm.getName());
 
         // Create JsonWebToken with metadata as claims
         JsonWebToken jwt = createMetadataJwt(metadata, realm);
