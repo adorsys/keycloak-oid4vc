@@ -1,6 +1,17 @@
 // Release notes should contain only headline-worthy new features,
 // assuming that people who migrate will read the upgrading guide anyway.
 
+= Keycloak Test Framework Full Support
+
+The Keycloak Test Framework, based on JUnit6, is now fully supported.
+
+It replaces the previous solution built on top of Arquillian and JUnit4.
+Behind the scenes the framework handles the lifecycle of Keycloak, the database, and any injected resources such as realms and clients.
+
+Tests simply declare what they want, including specific configuration, and the framework takes care of the rest.
+
+For more information, see https://github.com/keycloak/keycloak/tree/main/test-framework#readme[Keycloak Test Framework]
+
 = Sensitive Keycloak information is not displayed in the HTTP Access log
 
 If you are using the HTTP Access logging capability, sensitive information is omitted.
@@ -54,7 +65,47 @@ When using the {project_name} Operator, set the update strategy to `Auto` to ben
 
 For more details on the Operator configuration, see the https://www.keycloak.org/operator/rolling-updates[Avoiding downtime with rolling updates] guide.
 
+= Step-up authentication for SAML (preview)
+
+The feature `step-up-authentication-saml` extends the step-up authentication to include the SAML protocol and clients. This feature is in preview mode. Additional information is available in the link:{adminguide_link}#_step-up-authentication-saml[{adminguide_name}].
+
+= Automatic truststore initialization on Kubernetes and OpenShift
+
+{project_name} now automatically discovers and trusts cluster certificate authorities when running on Kubernetes or OpenShift, without requiring the Operator to preconfigure the truststore.
+
+If present in the container filesystem, the following certificates are added to the system truststore at startup:
+
+* `/var/run/secrets/kubernetes.io/serviceaccount/ca.crt` (Kubernetes service account CA)
+* `/var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt` (OpenShift service CA)
+
+This behavior is enabled by default and can be controlled with the server option `--truststore-kubernetes-enabled=true|false` (default: `true`).
+
+Most deployments do not require any action. If you relied on the Operator to manage these truststore entries previously, the server now performs the same function directly.
 
 = Java 25 support
 
 {project_name} now supports running with JRE 25. OpenJDK 25 is also now used in the official container images.
+
+= Configurable Kubernetes Service name and port in the Keycloak Operator
+
+The {project_name} Operator now supports overriding the name and port of the Kubernetes Service it creates for a Keycloak deployment.
+
+Previously, the Service name was always derived as `<cr-name>-service` and the Service port always matched the container port.
+You can now use the `spec.http.serviceName`, `spec.http.serviceHttpsPort`, and `spec.http.serviceHttpPort` fields to
+configure these independently.
+
+For more details, see the https://www.keycloak.org/operator/advanced-configuration[Advanced configuration] guide.
+
+= Configurable log file rotation
+
+It is now possible to configure log file rotation when using {project_name}'s built-in file logging handler.
+This includes a simple option to fully disable log rotation, which is useful when using an external log rotation solution such as `logrotate`.
+
+To disable log file rotation:
+
+[source,bash]
+----
+bin/kc.sh start --log="console,file" --log-file-rotation-enabled=false
+----
+
+For more information, see the https://www.keycloak.org/server/logging/file[File logging] guide.

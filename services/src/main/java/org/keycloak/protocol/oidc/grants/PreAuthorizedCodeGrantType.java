@@ -17,8 +17,12 @@
 
 package org.keycloak.protocol.oidc.grants;
 
+import java.security.MessageDigest;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import jakarta.ws.rs.core.Response;
 
@@ -40,19 +44,20 @@ import org.keycloak.protocol.oid4vc.issuance.credentialoffer.CredentialOfferStor
 import org.keycloak.protocol.oid4vc.model.OID4VCAuthorizationDetail;
 import org.keycloak.protocol.oid4vc.utils.OID4VCUtil;
 import org.keycloak.protocol.oidc.OIDCLoginProtocol;
+import org.keycloak.protocol.oidc.TokenManager;
 import org.keycloak.protocol.oidc.TokenManager.AccessTokenResponseBuilder;
 import org.keycloak.representations.AccessToken;
 import org.keycloak.representations.AccessTokenResponse;
 import org.keycloak.representations.AuthorizationDetailsJSONRepresentation;
 import org.keycloak.services.CorsErrorResponseException;
-import org.keycloak.util.JsonSerialization;
+import org.keycloak.util.Strings;
 import org.keycloak.utils.MediaType;
 
 import org.jboss.logging.Logger;
 
 import static org.keycloak.events.Details.REASON;
 import static org.keycloak.protocol.oid4vc.model.ErrorType.UNKNOWN_CREDENTIAL_CONFIGURATION;
-import static org.keycloak.services.util.DefaultClientSessionContext.fromClientSessionAndScopeParameter;
+import static org.keycloak.services.util.DefaultClientSessionContext.fromClientSessionAndClientScopes;
 
 public class PreAuthorizedCodeGrantType extends OAuth2GrantTypeBase {
 
@@ -75,9 +80,10 @@ public class PreAuthorizedCodeGrantType extends OAuth2GrantTypeBase {
         }
 
         // See: https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#name-token-request
-        String code = formParams.getFirst(PreAuthorizedCodeGrantTypeFactory.CODE_REQUEST_PARAM);
+        String preAuthCode = formParams.getFirst(PreAuthorizedCodeGrantTypeFactory.CODE_REQUEST_PARAM);
+        String txCode = formParams.getFirst(PreAuthorizedCodeGrantTypeFactory.TX_CODE_PARAM);
 
-        if (code == null) {
+        if (preAuthCode == null) {
             // See: https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#name-token-request
             String errorMessage = "Missing parameter: " + PreAuthorizedCodeGrantTypeFactory.CODE_REQUEST_PARAM;
             event.detail(REASON, errorMessage).error(Errors.INVALID_CODE);
@@ -86,9 +92,9 @@ public class PreAuthorizedCodeGrantType extends OAuth2GrantTypeBase {
         }
 
         var offerStorage = session.getProvider(CredentialOfferStorage.class);
-        var offerState = offerStorage.findOfferStateByCode(session, code);
+        var offerState = offerStorage.findOfferStateByCode(session, preAuthCode);
         if (offerState == null) {
-            var errorMessage = "No credential offer state for code: " + code;
+            var errorMessage = "No credential offer state for pre-auth code: " + preAuthCode;
             event.detail(REASON, errorMessage).error(Errors.INVALID_CODE);
             throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_REQUEST,
                     errorMessage, Response.Status.BAD_REQUEST);
@@ -99,50 +105,69 @@ public class PreAuthorizedCodeGrantType extends OAuth2GrantTypeBase {
             throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_GRANT,
                     "Code is expired", Response.Status.BAD_REQUEST);
         }
+
+        String expTxCode = offerState.getTxCode();
+        if (expTxCode != null) {
+            if (Strings.isEmpty(txCode)) {
+                event.error(Errors.MISSING_TX_CODE);
+                throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_GRANT,
+                        "Missing TxCode", Response.Status.BAD_REQUEST);
+            }
+            // Prevent timing attacks - execution time does not depend on where the first difference occurs
+            if (!MessageDigest.isEqual(expTxCode.getBytes(), txCode.getBytes())) {
+                event.error(Errors.INVALID_TX_CODE);
+                throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_GRANT,
+                        "Invalid TxCode", Response.Status.BAD_REQUEST);
+            }
+        }
+
         var credOffer = offerState.getCredentialsOffer();
 
-        var appUserId = offerState.getUserId();
-        var userModel = session.users().getUserById(realm, appUserId);
-        if (userModel == null) {
-            var errorMessage = "No user with ID: " + appUserId;
+        var targetUserId = offerState.getUserId();
+        var targetUserModel = session.users().getUserById(realm, targetUserId);
+        if (targetUserModel == null) {
+            var errorMessage = "No user with ID: " + targetUserId;
             event.detail(REASON, errorMessage).error(Errors.INVALID_CODE);
             throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_REQUEST,
                     errorMessage, Response.Status.BAD_REQUEST);
         }
-        if (!userModel.isEnabled()) {
-            var errorMessage = "User '" + userModel.getUsername() + "' disabled";
+        if (!targetUserModel.isEnabled()) {
+            var errorMessage = "User '" + targetUserModel.getUsername() + "' disabled";
             event.detail(REASON, errorMessage).error(Errors.INVALID_CODE);
             throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_REQUEST,
                     errorMessage, Response.Status.BAD_REQUEST);
         }
 
-        var appClientId = offerState.getClientId();
-        ClientModel clientModel = realm.getClientByClientId(appClientId);
+        var targetClientId = offerState.getClientId();
+        ClientModel clientModel = realm.getClientByClientId(targetClientId);
         if (clientModel == null) {
-            var errorMessage = "No client model for: " + appClientId;
+            var errorMessage = "No client model for: " + targetClientId;
             event.detail(REASON, errorMessage).error(Errors.INVALID_CODE);
             throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_REQUEST,
                     errorMessage, Response.Status.BAD_REQUEST);
         }
 
-        UserSessionModel userSession = session.sessions().createUserSession(null, realm, userModel, userModel.getUsername(),
+        UserSessionModel userSession = session.sessions().createUserSession(null, realm, targetUserModel, targetUserModel.getUsername(),
                 null, "pre-authorized-code", false, null,
                 null, UserSessionModel.SessionPersistenceState.TRANSIENT);
 
         AuthenticatedClientSessionModel clientSession = session.sessions().createClientSession(realm, clientModel, userSession);
-        String credentialConfigurationIds = JsonSerialization.valueAsString(credOffer.getCredentialConfigurationIds());
-        clientSession.setNote(OID4VCIssuerEndpoint.CREDENTIAL_CONFIGURATION_IDS_NOTE, credentialConfigurationIds);
         clientSession.setNote(OIDCLoginProtocol.ISSUER, credOffer.getCredentialIssuer());
         clientSession.setNote(VC_ISSUANCE_FLOW, PreAuthorizedCodeGrantTypeFactory.GRANT_TYPE);
 
-        ClientSessionContext sessionContext = fromClientSessionAndScopeParameter(clientSession, OAuth2Constants.SCOPE_OPENID, session);
+        List<ClientScopeModel> credentialScopes = resolveCredentialScopesForCredentialOffer(credOffer.getCredentialConfigurationIds());
+        Set<ClientScopeModel> requestedScopes = TokenManager.getRequestedClientScopes(session, OAuth2Constants.SCOPE_OPENID, clientModel, targetUserModel)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        requestedScopes.addAll(credentialScopes);
+
+        ClientSessionContext sessionContext = fromClientSessionAndClientScopes(clientSession, requestedScopes, null, session);
         sessionContext.setAttribute(Constants.GRANT_TYPE, PreAuthorizedCodeGrantTypeFactory.GRANT_TYPE);
 
         // set the client as retrieved from the pre-authorized session
         session.getContext().setClient(clientModel);
 
         event.client(clientModel)
-                .user(userModel);
+                .user(targetUserModel);
 
         // Check if authorization_details parameter was explicitly provided
         String authorizationDetailsParam = formParams.getFirst(OAuth2Constants.AUTHORIZATION_DETAILS);
@@ -230,6 +255,38 @@ public class PreAuthorizedCodeGrantType extends OAuth2GrantTypeBase {
 
         event.success();
         return cors.allowAllOrigins().add(Response.ok(tokenResponse).type(MediaType.APPLICATION_JSON_TYPE));
+    }
+
+    private List<ClientScopeModel> resolveCredentialScopesForCredentialOffer(List<String> credentialConfigurationIds) {
+        if (credentialConfigurationIds == null || credentialConfigurationIds.isEmpty()) {
+            String errorMessage = "No credential_configuration_ids found in credential offer";
+            event.detail(REASON, errorMessage).error(Errors.INVALID_CODE);
+            throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_REQUEST,
+                    errorMessage, Response.Status.BAD_REQUEST);
+        }
+
+        List<ClientScopeModel> credentialScopes = credentialConfigurationIds.stream()
+                .map(credentialConfigurationId -> {
+                    ClientScopeModel clientScope = OID4VCUtil.getClientScopeByCredentialConfigId(session, realm, credentialConfigurationId);
+                    if (clientScope == null) {
+                        String errorMessage = "Client scope was not found for credential configuration ID: " + credentialConfigurationId;
+                        event.detail(Details.CREDENTIAL_TYPE, credentialConfigurationId);
+                        event.detail(REASON, errorMessage).error(UNKNOWN_CREDENTIAL_CONFIGURATION.getValue());
+                        throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_REQUEST,
+                                errorMessage, Response.Status.BAD_REQUEST);
+                    }
+                    return clientScope;
+                })
+                .collect(Collectors.collectingAndThen(Collectors.toCollection(LinkedHashSet::new), List::copyOf));
+
+        if (credentialScopes.isEmpty()) {
+            String errorMessage = "No credential scopes resolved from credential offer";
+            event.detail(REASON, errorMessage).error(Errors.INVALID_CODE);
+            throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_REQUEST,
+                    errorMessage, Response.Status.BAD_REQUEST);
+        }
+
+        return credentialScopes;
     }
 
     @Override

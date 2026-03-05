@@ -29,6 +29,9 @@ import com.fasterxml.jackson.annotation.JsonValue;
 public enum ErrorType {
 
     INVALID_CREDENTIAL_OFFER_REQUEST("invalid_request"),
+    INVALID_CLIENT("invalid_client"),
+    INVALID_REQUEST("invalid_request"),
+    INVALID_GRANT("invalid_grant"),
     INVALID_CREDENTIAL_REQUEST("invalid_credential_request"),
     INVALID_TOKEN("invalid_token"),
     UNKNOWN_CREDENTIAL_CONFIGURATION("unknown_credential_configuration"),

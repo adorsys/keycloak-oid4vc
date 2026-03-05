@@ -34,6 +34,8 @@ import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.UserModel;
 import org.keycloak.models.UserSessionModel;
 import org.keycloak.models.oid4vci.CredentialScopeModel;
+import org.keycloak.protocol.oid4vc.OID4VCLoginProtocolFactory;
+import org.keycloak.protocol.oid4vc.issuance.credentialoffer.CredentialOfferState;
 import org.keycloak.protocol.oid4vc.issuance.credentialoffer.CredentialOfferStorage;
 import org.keycloak.protocol.oid4vc.model.Claim;
 import org.keycloak.protocol.oid4vc.model.ClaimsDescription;
@@ -46,18 +48,11 @@ import org.keycloak.protocol.oidc.grants.PreAuthorizedCodeGrantTypeFactory;
 import org.keycloak.protocol.oidc.rar.AuthorizationDetailsProcessor;
 import org.keycloak.protocol.oidc.rar.InvalidAuthorizationDetailsException;
 import org.keycloak.representations.AuthorizationDetailsJSONRepresentation;
-import org.keycloak.util.AuthorizationDetailsParser;
-import org.keycloak.util.JsonSerialization;
 
 import org.jboss.logging.Logger;
 
-import static org.keycloak.OID4VCConstants.CREDENTIAL_CONFIGURATION_ID;
-import static org.keycloak.OID4VCConstants.CREDENTIAL_IDENTIFIERS;
 import static org.keycloak.OID4VCConstants.OPENID_CREDENTIAL;
 import static org.keycloak.models.Constants.AUTHORIZATION_DETAILS_RESPONSE;
-import static org.keycloak.protocol.oid4vc.model.ClaimsDescription.MANDATORY;
-import static org.keycloak.protocol.oid4vc.model.ClaimsDescription.PATH;
-import static org.keycloak.protocol.oid4vc.model.OID4VCAuthorizationDetail.CLAIMS;
 
 public class OID4VCAuthorizationDetailsProcessor implements AuthorizationDetailsProcessor<OID4VCAuthorizationDetail> {
     private static final Logger logger = Logger.getLogger(OID4VCAuthorizationDetailsProcessor.class);
@@ -130,7 +125,7 @@ public class OID4VCAuthorizationDetailsProcessor implements AuthorizationDetails
         if (oid4vcDetail.getCredentialIdentifiers() != null && !oid4vcDetail.getCredentialIdentifiers().isEmpty()) {
             for (String credentialId : oid4vcDetail.getCredentialIdentifiers()) {
                 // Check if offer state already exists
-                CredentialOfferStorage.CredentialOfferState existingState = offerStorage.findOfferStateByCredentialId(session, credentialId);
+                CredentialOfferState existingState = offerStorage.findOfferStateByCredentialId(session, credentialId);
 
                 if (existingState == null) {
                     // Create a new offer state for authorization code flow
@@ -140,7 +135,7 @@ public class OID4VCAuthorizationDetailsProcessor implements AuthorizationDetails
 
                     // Use a reasonable expiration time (e.g., 1 hour)
                     int expiration = Time.currentTime() + 3600;
-                    CredentialOfferStorage.CredentialOfferState offerState = new CredentialOfferStorage.CredentialOfferState(
+                    CredentialOfferState offerState = new CredentialOfferState(
                             credOffer, client.getClientId(), user.getId(), expiration);
                     offerState.setAuthorizationDetails(oid4vcDetail);
 
@@ -296,24 +291,37 @@ public class OID4VCAuthorizationDetailsProcessor implements AuthorizationDetails
 
 
     /**
-     * Generate authorization_details from the credential offer when authorization_details parameter is not present in the token request.
-     * This method generates authorization_details based on the credential_configuration_ids from the credential offer.
+     * Generate authorization_details when authorization_details parameter is not present in the token request.
+     * This method derives authorization_details from credential scopes in current request context.
      *
-     * @param clientSession the client session that contains the credential offer information
+     * @param userSession      the current user session
+     * @param clientSessionCtx the client session context from current token request
      * @return the authorization details response if generation was successful, null otherwise
      */
-    private List<OID4VCAuthorizationDetail> generateAuthorizationDetailsFromCredentialOffer(AuthenticatedClientSessionModel clientSession) {
-        logger.debug("Processing authorization_details from credential offer");
+    private List<OID4VCAuthorizationDetail> generateAuthorizationDetailsFromCredentialOffer(UserSessionModel userSession,
+                                                                                             ClientSessionContext clientSessionCtx) {
+        logger.debug("Processing authorization_details from current request scopes");
 
-        // Extract credential_configuration_ids from the credential offer
-        List<String> credentialConfigurationIds = extractCredentialConfigurationIds(clientSession);
-
+        // Derive credential_configuration_ids from the current request client scopes
+        List<String> credentialConfigurationIds = deriveCredentialConfigurationIds(clientSessionCtx);
         if (credentialConfigurationIds == null || credentialConfigurationIds.isEmpty()) {
-            logger.debug("No credential_configuration_ids found in credential offer, cannot generate authorization_details");
+            logger.debug("No credential_configuration_ids found in current request scopes, cannot generate authorization_details");
             return null;
         }
 
-        return generateAuthorizationDetails(credentialConfigurationIds);
+        // Generate the OID4VCAuthorizationDetail objects
+        List<OID4VCAuthorizationDetail> authorizationDetailsList = generateAuthorizationDetails(credentialConfigurationIds);
+        if (authorizationDetailsList == null || authorizationDetailsList.isEmpty()) {
+            return authorizationDetailsList;
+        }
+
+        // For authorization code flow, create OfferState for each generated identifier
+        // so that the credential endpoint can resolve them later.
+        for (OID4VCAuthorizationDetail detail : authorizationDetailsList) {
+            createOfferStateForAuthorizationCodeFlow(userSession, clientSessionCtx, detail);
+        }
+
+        return authorizationDetailsList;
     }
 
     /**
@@ -361,69 +369,21 @@ public class OID4VCAuthorizationDetailsProcessor implements AuthorizationDetails
     }
 
     /**
-     * Extract credential_configuration_ids from the credential offer stored in client session
+     * Derive credential_configuration_ids from client scopes in current request context.
      */
-    private List<String> extractCredentialConfigurationIds(AuthenticatedClientSessionModel clientSession) {
-        // Get credential configuration IDs from the predictable location
-        // This is stored when the credential offer is created in getCredentialOfferURI
-        String credentialConfigIdsJson = clientSession.getNote(OID4VCIssuerEndpoint.CREDENTIAL_CONFIGURATION_IDS_NOTE);
-        if (credentialConfigIdsJson != null) {
-            logger.debugf("Found credential configuration IDs in predictable location");
-            try {
-                List<String> configIds = JsonSerialization.readValue(credentialConfigIdsJson, List.class);
-                logger.debugf("Successfully parsed credential configuration IDs: %s", configIds);
-                return configIds;
-            } catch (Exception e) {
-                logger.warnf("Failed to parse credential configuration IDs from predictable location: %s", e.getMessage());
-            }
-        }
-
-        logger.debugf("No credential_configuration_ids found in predictable location");
-        return null;
+    private List<String> deriveCredentialConfigurationIds(ClientSessionContext clientSessionCtx) {
+        List<String> configIds = clientSessionCtx.getClientScopesStream()
+                .filter(clientScope -> OID4VCLoginProtocolFactory.PROTOCOL_ID.equals(clientScope.getProtocol()))
+                .map(clientScope -> clientScope.getAttribute(CredentialScopeModel.VC_CONFIGURATION_ID))
+                .filter(Objects::nonNull)
+                .toList();
+        logger.debugf("Resolved credential configuration IDs from current request client scopes: %s", configIds);
+        return configIds;
     }
 
     @Override
     public List<OID4VCAuthorizationDetail> handleMissingAuthorizationDetails(UserSessionModel userSession, ClientSessionContext clientSessionCtx) {
-        // Generate authorization_details from credential offer OR from requested scopes if RAR is missing.
-        // This ensures the token response always contains the necessary authorization_details for OID4VCI.
-
-        AuthenticatedClientSessionModel clientSession = clientSessionCtx.getClientSession();
-        List<String> credentialConfigurationIds = null;
-
-        // 1. Try to get IDs from the session note (Credential Offer flow)
-        if (clientSession.getNote(OID4VCIssuerEndpoint.CREDENTIAL_CONFIGURATION_IDS_NOTE) != null) {
-            credentialConfigurationIds = extractCredentialConfigurationIds(clientSession);
-            logger.debugf("Generating authorization_details from session note: %s", credentialConfigurationIds);
-        }
-
-        // 2. If no note, try to get IDs from requested OID4VCI scopes (Scope-based fallback)
-        if (credentialConfigurationIds == null || credentialConfigurationIds.isEmpty()) {
-            credentialConfigurationIds = clientSessionCtx.getClientScopesStream()
-                    .filter(scope -> OID4VCIConstants.OID4VC_PROTOCOL.equals(scope.getProtocol()))
-                    .map(scope -> scope.getAttribute(CredentialScopeModel.CONFIGURATION_ID))
-                    .filter(Objects::nonNull)
-                    .collect(Collectors.toList());
-            if (credentialConfigurationIds != null && !credentialConfigurationIds.isEmpty()) {
-                logger.debugf("Generating authorization_details from requested oid4vc scopes: %s", credentialConfigurationIds);
-            }
-        }
-
-        if (credentialConfigurationIds == null || credentialConfigurationIds.isEmpty()) {
-            return null;
-        }
-
-        // Generate the OID4VCAuthorizationDetail objects
-        List<OID4VCAuthorizationDetail> authorizationDetailsList = generateAuthorizationDetails(credentialConfigurationIds);
-
-        if (authorizationDetailsList != null && !authorizationDetailsList.isEmpty()) {
-            // For authorization code flow, we must create OfferState for each generated identifier
-            // so that the credential endpoint can resolve them later.
-            for (OID4VCAuthorizationDetail detail : authorizationDetailsList) {
-                createOfferStateForAuthorizationCodeFlow(userSession, clientSessionCtx, detail);
-            }
-        }
-
-        return authorizationDetailsList;
+        return generateAuthorizationDetailsFromCredentialOffer(userSession, clientSessionCtx);
     }
 
     @Override
@@ -447,47 +407,6 @@ public class OID4VCAuthorizationDetailsProcessor implements AuthorizationDetails
     @Override
     public void close() {
         // No cleanup needed
-    }
-
-
-    public static class OID4VCAuthorizationDetailsParser implements AuthorizationDetailsParser {
-
-        @Override
-        public <T extends AuthorizationDetailsJSONRepresentation> T asSubtype(AuthorizationDetailsJSONRepresentation authzDetail, Class<T> clazz) {
-            if (OID4VCAuthorizationDetail.class.equals(clazz)) {
-                if (authzDetail instanceof OID4VCAuthorizationDetail) {
-                    return clazz.cast(authzDetail);
-                } else {
-                    OID4VCAuthorizationDetail detail = new OID4VCAuthorizationDetail();
-                    fillFields(authzDetail, detail);
-                    return clazz.cast(detail);
-                }
-            } else {
-                throw new IllegalArgumentException("Authorization details '" + authzDetail + "' is unsupported to be parsed to '" + clazz + "'.");
-            }
-        }
-
-        private void fillFields(AuthorizationDetailsJSONRepresentation inDetail, OID4VCAuthorizationDetail outDetail) {
-            outDetail.setType(inDetail.getType());
-            outDetail.setLocations(inDetail.getLocations());
-            outDetail.setCredentialConfigurationId((String) inDetail.getCustomData().get(CREDENTIAL_CONFIGURATION_ID));
-            outDetail.setCredentialIdentifiers((List<String>) inDetail.getCustomData().get(CREDENTIAL_IDENTIFIERS));
-            outDetail.setClaims(parseClaims((List<Map>) inDetail.getCustomData().get(CLAIMS)));
-        }
-
-        private static List<ClaimsDescription> parseClaims(List<Map> genericClaims) {
-            if (genericClaims == null) {
-                return null;
-            }
-
-            return genericClaims.stream()
-                    .map(claim -> {
-                        List<Object> path = (List<Object>) claim.get(PATH);
-                        Boolean mandatory = (Boolean) claim.get(MANDATORY);
-                        return new ClaimsDescription(path, mandatory);
-                    })
-                    .toList();
-        }
     }
 
 }

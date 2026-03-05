@@ -1312,6 +1312,16 @@ public class RealmAdapter implements StorageProviderRealmModel, JpaModel<RealmEn
     }
 
     @Override
+    public void setScimApiEnabled(boolean enabled) {
+        setAttribute(RealmAttributes.SCIM_API_ENABLED, enabled);
+    }
+
+    @Override
+    public boolean isScimApiEnabled() {
+        return getAttribute(RealmAttributes.SCIM_API_ENABLED, Boolean.FALSE);
+    }
+
+    @Override
     public ClientModel getMasterAdminClient() {
         String masterAdminClientId = realm.getMasterAdminClient();
         if (masterAdminClientId == null) {

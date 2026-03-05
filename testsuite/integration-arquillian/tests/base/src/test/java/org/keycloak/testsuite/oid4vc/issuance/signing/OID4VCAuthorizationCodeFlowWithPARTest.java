@@ -153,7 +153,7 @@ public class OID4VCAuthorizationCodeFlowWithPARTest extends OID4VCIssuerEndpoint
         assertEquals(HttpStatus.SC_OK, tokenResponse.getStatusCode());
 
         // Step 4: Verify authorization_details is present in token response
-        List<OID4VCAuthorizationDetail> authDetailsResponse = tokenResponse.getOid4vcAuthorizationDetails();
+        List<OID4VCAuthorizationDetail> authDetailsResponse = tokenResponse.getOID4VCAuthorizationDetails();
         assertNotNull("authorization_details should be present in the response", authDetailsResponse);
         assertEquals("Should have exactly one authorization detail", 1, authDetailsResponse.size());
 
@@ -291,20 +291,16 @@ public class OID4VCAuthorizationCodeFlowWithPARTest extends OID4VCIssuerEndpoint
                 .send();
         assertEquals(HttpStatus.SC_OK, tokenResponse.getStatusCode());
 
-        // Step 4: Verify authorization_details in token response (auto-generated from credential scope)
-        List<OID4VCAuthorizationDetail> authDetailsResponse = tokenResponse.getOid4vcAuthorizationDetails();
-        assertNotNull("authorization_details should be auto-generated from credential scope even when not in PAR request",
-                authDetailsResponse);
-        assertTrue("authorization_details should not be empty",
-                !authDetailsResponse.isEmpty());
-        assertEquals("Should contain one authorization detail", 1, authDetailsResponse.size());
-
-        OID4VCAuthorizationDetail authDetail = authDetailsResponse.get(0);
-        assertNotNull("Authorization detail should have credential_configuration_id",
-                authDetail.getCredentialConfigurationId());
-        assertNotNull("Authorization detail should have credential_identifiers",
-                authDetail.getCredentialIdentifiers());
-        assertEquals("Should have exactly one credential identifier", 1, authDetail.getCredentialIdentifiers().size());
+        // Step 4: Verify authorization_details are derived from requested OID4VC scope
+        List<OID4VCAuthorizationDetail> authDetailsResponse = tokenResponse.getOID4VCAuthorizationDetails();
+        assertNotNull("authorization_details should be present in the token response", authDetailsResponse);
+        assertFalse("authorization_details should not be empty", authDetailsResponse.isEmpty());
+        OID4VCAuthorizationDetail firstAuthorizationDetail = authDetailsResponse.get(0);
+        assertEquals("credential_configuration_id should match requested scope",
+                getCredentialClientScope().getAttributes().get(CredentialScopeModel.CONFIGURATION_ID),
+                firstAuthorizationDetail.getCredentialConfigurationId());
+        assertNotNull("credential_identifiers should be present", firstAuthorizationDetail.getCredentialIdentifiers());
+        assertFalse("credential_identifiers should not be empty", firstAuthorizationDetail.getCredentialIdentifiers().isEmpty());
     }
 
     /**

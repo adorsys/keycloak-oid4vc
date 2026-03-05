@@ -333,6 +333,7 @@ public class PicocliTest extends AbstractConfigurationTest {
         build("build", "--db=postgres");
         NonRunningPicocli nonRunningPicocli = pseudoLaunch("show-config");
         assertThat(nonRunningPicocli.getOutString(), containsString("postgres (Persisted)"));
+        assertThat(nonRunningPicocli.getOutString(), not(containsString("null")));
     }
 
     @Test
@@ -1955,6 +1956,30 @@ public class PicocliTest extends AbstractConfigurationTest {
         KeycloakMain.main(new String[] {"tools", "windows-service"}, nonRunningPicocli);
         assertEquals(CommandLine.ExitCode.USAGE, nonRunningPicocli.exitCode);
         assertTrue(nonRunningPicocli.getErrString().contains("Unknown option"));
+    }
+
+    @Test
+    public void failPoolMaxSizeTooLowForJdbcPing() {
+        NonRunningPicocli nonRunningPicocli = pseudoLaunch("start", "--db=postgres", "--db-pool-max-size=3", "--cache=ispn");
+        assertError(nonRunningPicocli, "db-pool-max-size");
+    }
+
+    @Test
+    public void failPoolMaxSizeTooLowForExplicitJdbcPingStack() {
+        NonRunningPicocli nonRunningPicocli = pseudoLaunch("start", "--db=postgres", "--db-pool-max-size=3", "--cache=ispn", "--cache-stack=jdbc-ping");
+        assertError(nonRunningPicocli, "db-pool-max-size");
+    }
+
+    @Test
+    public void poolMaxSizeLowAllowedWithoutJdbcPing() {
+        NonRunningPicocli nonRunningPicocli = pseudoLaunch("start-dev", "--db-pool-max-size=3", "--cache=local");
+        assertNoError(nonRunningPicocli);
+    }
+
+    @Test
+    public void poolMaxSizeLowAllowedWithKubernetesStack() {
+        NonRunningPicocli nonRunningPicocli = pseudoLaunch("start-dev", "--db-pool-max-size=3", "--cache=ispn", "--cache-stack=kubernetes");
+        assertNoError(nonRunningPicocli);
     }
 
 }

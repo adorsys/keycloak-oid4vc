@@ -3,6 +3,7 @@ package org.keycloak.services.client;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Supplier;
@@ -14,6 +15,9 @@ import jakarta.annotation.Nullable;
 import jakarta.ws.rs.NotFoundException;
 import jakarta.ws.rs.core.Response;
 
+import org.keycloak.events.admin.OperationType;
+import org.keycloak.events.admin.ResourceType;
+import org.keycloak.events.admin.v2.AdminEventV2Builder;
 import org.keycloak.models.ClientModel;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
@@ -27,6 +31,7 @@ import org.keycloak.representations.idm.ClientRepresentation;
 import org.keycloak.representations.idm.RoleRepresentation;
 import org.keycloak.services.PatchType;
 import org.keycloak.services.ServiceException;
+import org.keycloak.services.resources.admin.AdminEventBuilder;
 import org.keycloak.services.resources.admin.ClientResource;
 import org.keycloak.services.resources.admin.ClientsResource;
 import org.keycloak.services.resources.admin.RealmAdminResource;
@@ -43,7 +48,9 @@ import com.fasterxml.jackson.databind.ObjectReader;
 import org.apache.http.HttpEntity;
 import org.apache.http.util.EntityUtils;
 
-// TODO
+/**
+ * Default implementation of ClientService for Admin API v2.
+ */
 public class DefaultClientService implements ClientService {
     private static final ObjectMapper MAPPER = new ObjectMapperResolver().getContext(null);
 
@@ -54,6 +61,7 @@ public class DefaultClientService implements ClientService {
     // v1 resources
     private final RealmAdminResource realmResource;
     private final ClientsResource clientsResource;
+    private final AdminEventBuilder adminEventBuilder;
     private ClientResource clientResource;
 
     public DefaultClientService(@Nonnull KeycloakSession session,
@@ -67,6 +75,9 @@ public class DefaultClientService implements ClientService {
         this.realmResource = realmResource;
         this.clientsResource = realmResource.getClients();
         this.clientResource = clientResource;
+        RealmModel realm = session.getContext().getRealm();
+        this.adminEventBuilder = new AdminEventV2Builder(realm, permissions.adminAuth(), session, session.getContext().getConnection())
+                .resource(ResourceType.CLIENT);
     }
 
     public DefaultClientService(@Nonnull KeycloakSession session,
@@ -101,7 +112,27 @@ public class DefaultClientService implements ClientService {
     }
 
     @Override
-    public CreateOrUpdateResult createOrUpdate(RealmModel realm, BaseClientRepresentation client, boolean allowUpdate) throws ServiceException {
+    public BaseClientRepresentation createClient(RealmModel realm, BaseClientRepresentation client) throws ServiceException {
+        return createOrUpdate(client, CreateOrUpdateStrategy.ONLY_CREATE).representation();
+    }
+
+    @Override
+    public CreateOrUpdateResult createOrUpdateClient(RealmModel realm, String clientId, BaseClientRepresentation client) throws ServiceException {
+        if (!Objects.equals(clientId, client.getClientId())) {
+            throw new ServiceException("Field 'clientId' in payload does not match the provided 'clientId'", Response.Status.BAD_REQUEST);
+        }
+        return createOrUpdate(client, CreateOrUpdateStrategy.PUT);
+    }
+
+    private enum CreateOrUpdateStrategy {
+        ONLY_CREATE,
+        PUT,
+        // PATCH is currently separated from PUT only due to validation running before full preparation/defaulting.
+        // Once we validate the fully prepared resource, PUT and PATCH should share the same validation logic.
+        PATCH
+    }
+
+    private CreateOrUpdateResult createOrUpdate(BaseClientRepresentation client, CreateOrUpdateStrategy strategy) throws ServiceException {
         validateUnknownFields(client);
 
         boolean created = false;
@@ -113,7 +144,7 @@ public class DefaultClientService implements ClientService {
         }
 
         if (clientResource != null) {
-            if (!allowUpdate) {
+            if (strategy.equals(CreateOrUpdateStrategy.ONLY_CREATE)) {
                 throw new ServiceException("Client already exists", Response.Status.CONFLICT);
             }
             model = mapper.toModel(client, clientResource.viewClientModel());
@@ -125,7 +156,7 @@ public class DefaultClientService implements ClientService {
             }
         } else {
             created = true;
-            validator.validate(client, CreateClientDefault.class); // TODO improve it to avoid second validation when we know it is create and not update
+            validator.validate(client, CreateClientDefault.class);
 
             // First, create a basic v1 representation to persist the client in the database.
             // We can't use mapper.toModel(client) directly for creation because the "detached model"
@@ -150,9 +181,26 @@ public class DefaultClientService implements ClientService {
         if (client instanceof OIDCClientRepresentation oidcClient) {
             handleServiceAccount(model, oidcClient);
         }
-        var updated = mapper.fromModel(model);
 
-        return new CreateOrUpdateResult(updated, created);
+        fireAdminEvent(created ? OperationType.CREATE : OperationType.UPDATE, mapper.fromModel(model));
+
+        return new CreateOrUpdateResult(mapper.fromModel(model), created);
+    }
+
+    /**
+     * Fires a v2 admin event for client operations (only enabled for testing now to avoid duplicated admin events)
+     *
+     * @param operationType the type of operation (CREATE, UPDATE, DELETE)
+     * @param representation the v2 representation of the client
+     */
+    private void fireAdminEvent(OperationType operationType, BaseClientRepresentation representation) {
+        if (Boolean.parseBoolean(System.getProperty("kc.admin-v2.client-service.events.enabled","false"))) {
+            adminEventBuilder
+                    .operation(operationType)
+                    .resourcePath(session.getContext().getUri())
+                    .representation(representation)
+                    .success();
+        }
     }
 
     @Override
@@ -179,7 +227,7 @@ public class DefaultClientService implements ClientService {
             default -> throw new ServiceException("Invalid patch type", Response.Status.UNSUPPORTED_MEDIA_TYPE);
         }
 
-        return createOrUpdate(realm, updated, true).representation();
+        return createOrUpdate(updated, CreateOrUpdateStrategy.PATCH).representation();
     }
 
     @Override
@@ -194,7 +242,9 @@ public class DefaultClientService implements ClientService {
         if (clientResource == null) {
             throw new ServiceException("Cannot find the specified client", Response.Status.NOT_FOUND);
         }
+        var client = clientResource.getClient();
         clientResource.deleteClient();
+        fireAdminEvent(OperationType.DELETE, BaseClientRepresentation.createMinimalRepresentation(client.getClientId(), client.getProtocol()));
     }
 
     /**

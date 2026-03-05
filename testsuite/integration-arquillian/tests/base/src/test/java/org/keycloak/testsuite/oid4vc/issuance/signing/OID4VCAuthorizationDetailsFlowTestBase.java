@@ -128,7 +128,7 @@ public abstract class OID4VCAuthorizationDetailsFlowTestBase extends OID4VCIssue
                 .credentialOfferUriRequest(credentialConfigurationId)
                 .preAuthorized(true)
                 .bearerToken(token)
-                .username("john")
+                .targetUser("john")
                 .send();
         assertEquals(HttpStatus.SC_OK, credentialOfferURIResponse.getStatusCode());
         CredentialOfferURI credOfferUri = credentialOfferURIResponse.getCredentialOfferURI();
@@ -215,7 +215,7 @@ public abstract class OID4VCAuthorizationDetailsFlowTestBase extends OID4VCIssue
         String credentialConfigurationId;
         OID4VCAuthorizationDetail authDetailResponse;
 
-        List<OID4VCAuthorizationDetail> authDetailsResponse = tokenResponse.getOid4vcAuthorizationDetails();
+        List<OID4VCAuthorizationDetail> authDetailsResponse = tokenResponse.getOID4VCAuthorizationDetails();
         assertNotNull("authorization_details should be present in the response", authDetailsResponse);
         assertEquals("Should have authorization_details for each credential configuration in the offer",
                 1, authDetailsResponse.size());
@@ -323,7 +323,7 @@ public abstract class OID4VCAuthorizationDetailsFlowTestBase extends OID4VCIssue
         assertEquals(tokenResponse.getScope(), getCredentialClientScope().getName());
 
         assertEquals(HttpStatus.SC_OK, tokenResponse.getStatusCode());
-        List<OID4VCAuthorizationDetail> authDetailsResponse = tokenResponse.getOid4vcAuthorizationDetails();
+        List<OID4VCAuthorizationDetail> authDetailsResponse = tokenResponse.getOID4VCAuthorizationDetails();
         assertNotNull("authorization_details should be present in the response", authDetailsResponse);
         assertEquals(1, authDetailsResponse.size());
         OID4VCAuthorizationDetail authDetailResponse = authDetailsResponse.get(0);
@@ -376,7 +376,7 @@ public abstract class OID4VCAuthorizationDetailsFlowTestBase extends OID4VCIssue
                 .send();
 
         assertEquals(HttpStatus.SC_OK, tokenResponse.getStatusCode());
-        List<OID4VCAuthorizationDetail> authDetailsResponse = tokenResponse.getOid4vcAuthorizationDetails();
+        List<OID4VCAuthorizationDetail> authDetailsResponse = tokenResponse.getOID4VCAuthorizationDetails();
         assertNotNull("authorization_details should be present in the response", authDetailsResponse);
         assertEquals(1, authDetailsResponse.size());
         OID4VCAuthorizationDetail authDetailResponse = authDetailsResponse.get(0);
@@ -496,7 +496,7 @@ public abstract class OID4VCAuthorizationDetailsFlowTestBase extends OID4VCIssue
         } else {
             // If it succeeds, verify the response structure
             assertEquals(HttpStatus.SC_OK, statusCode);
-            List<OID4VCAuthorizationDetail> authDetailsResponse = tokenResponse.getOid4vcAuthorizationDetails();
+            List<OID4VCAuthorizationDetail> authDetailsResponse = tokenResponse.getOID4VCAuthorizationDetails();
             assertNotNull("authorization_details should be present in the response", authDetailsResponse);
             assertEquals(1, authDetailsResponse.size());
         }
@@ -590,7 +590,7 @@ public abstract class OID4VCAuthorizationDetailsFlowTestBase extends OID4VCIssue
 
         assertEquals(HttpStatus.SC_OK, tokenResponse.getStatusCode());
 
-        List<OID4VCAuthorizationDetail> authDetailsResponse = tokenResponse.getOid4vcAuthorizationDetails();
+        List<OID4VCAuthorizationDetail> authDetailsResponse = tokenResponse.getOID4VCAuthorizationDetails();
         assertNotNull("authorization_details should be present in the response", authDetailsResponse);
         assertEquals("Should have authorization_details for each credential configuration in the offer",
                 ctx.credentialsOffer.getCredentialConfigurationIds().size(), authDetailsResponse.size());
@@ -636,7 +636,7 @@ public abstract class OID4VCAuthorizationDetailsFlowTestBase extends OID4VCIssue
 
         assertEquals(HttpStatus.SC_OK, tokenResponse.getStatusCode());
 
-        List<OID4VCAuthorizationDetail> authDetailsResponse = tokenResponse.getOid4vcAuthorizationDetails();
+        List<OID4VCAuthorizationDetail> authDetailsResponse = tokenResponse.getOID4VCAuthorizationDetails();
         assertNotNull("authorization_details should be present in the response", authDetailsResponse);
         assertEquals("Should have authorization_details for each credential configuration in the offer",
                 ctx.credentialsOffer.getCredentialConfigurationIds().size(), authDetailsResponse.size());
@@ -719,7 +719,7 @@ public abstract class OID4VCAuthorizationDetailsFlowTestBase extends OID4VCIssue
         String preAuthorizedToken = accessTokenResponse.getAccessToken();
         assertNotNull("Access token should be present", preAuthorizedToken);
 
-        List<OID4VCAuthorizationDetail> authDetailsResponse = accessTokenResponse.getOid4vcAuthorizationDetails();
+        List<OID4VCAuthorizationDetail> authDetailsResponse = accessTokenResponse.getOID4VCAuthorizationDetails();
         assertNotNull("authorization_details should be present", authDetailsResponse);
         assertFalse("authorization_details should not be empty", authDetailsResponse.isEmpty());
 
@@ -818,7 +818,7 @@ public abstract class OID4VCAuthorizationDetailsFlowTestBase extends OID4VCIssue
 
         assertEquals(HttpStatus.SC_OK, tokenResponse.getStatusCode());
 
-        List<OID4VCAuthorizationDetail> authDetailsResponse = tokenResponse.getOid4vcAuthorizationDetails();
+        List<OID4VCAuthorizationDetail> authDetailsResponse = tokenResponse.getOID4VCAuthorizationDetails();
         assertNotNull("authorization_details should be present in the response", authDetailsResponse);
 
         // Verify that we have authorization_details for each credential configuration in the offer
@@ -896,7 +896,7 @@ public abstract class OID4VCAuthorizationDetailsFlowTestBase extends OID4VCIssue
         OID4VCAuthorizationDetail authDetailResponse;
 
         assertEquals(HttpStatus.SC_OK, tokenResponse.getStatusCode());
-        List<OID4VCAuthorizationDetail> authDetailsResponse = tokenResponse.getOid4vcAuthorizationDetails();
+        List<OID4VCAuthorizationDetail> authDetailsResponse = tokenResponse.getOID4VCAuthorizationDetails();
         assertNotNull("authorization_details should be present in the response", authDetailsResponse);
         assertEquals(1, authDetailsResponse.size());
 
