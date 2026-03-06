@@ -17,9 +17,15 @@
 
 package org.keycloak.testsuite.oid4vc.issuance.signing;
 
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
+import java.security.NoSuchAlgorithmException;
+import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.cert.CertificateEncodingException;
+import java.security.cert.X509Certificate;
 import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
@@ -29,6 +35,7 @@ import java.util.UUID;
 import org.keycloak.OID4VCConstants;
 import org.keycloak.TokenVerifier;
 import org.keycloak.common.VerificationException;
+import org.keycloak.common.util.CertificateUtils;
 import org.keycloak.common.util.MultivaluedHashMap;
 import org.keycloak.crypto.Algorithm;
 import org.keycloak.crypto.AsymmetricSignatureVerifierContext;
@@ -212,7 +219,40 @@ public class SdJwtCredentialSignerTest extends OID4VCTest {
         getTestingClient()
                 .server(TEST_REALM_NAME)
                 .run(session -> {
-                    String signingKeyId = getKeyIdFromSession(session);
+                    // Generate a proper certificate chain (CA + leaf) for HAIP compliance
+                    // The leaf certificate will be included in x5c, but the CA (trust anchor) will be filtered out
+                    KeyWrapper keyWrapper = getKeyFromSession(session);
+                    try {
+                        // Generate CA key pair and certificate
+                        KeyPairGenerator kpg = KeyPairGenerator.getInstance("RSA");
+                        kpg.initialize(2048);
+                        KeyPair caKeyPair = kpg.generateKeyPair();
+                        X509Certificate caCert = CertificateUtils.generateV1SelfSignedCertificate(caKeyPair, "Test CA");
+
+                        // Generate leaf certificate signed by CA (non-self-signed)
+                        KeyPair leafKeyPair = new KeyPair(
+                                (PublicKey) keyWrapper.getPublicKey(),
+                                (PrivateKey) keyWrapper.getPrivateKey()
+                        );
+                        X509Certificate leafCert = CertificateUtils.generateV3Certificate(
+                                leafKeyPair,
+                                caKeyPair.getPrivate(),
+                                caCert,
+                                "TestKey"
+                        );
+
+                        // Set certificate chain on KeyWrapper: [leaf, CA]
+                        // The filtering logic will remove the CA (trust anchor), leaving only the leaf
+                        List<X509Certificate> certificateChain = new ArrayList<>();
+                        certificateChain.add(leafCert);
+                        certificateChain.add(caCert);
+                        keyWrapper.setCertificateChain(certificateChain);
+                        keyWrapper.setCertificate(leafCert);
+                    } catch (Exception e) {
+                        fail("Failed to generate proper certificate chain for test: " + e.getMessage());
+                    }
+                    
+                    String signingKeyId = keyWrapper.getKid();
                     CredentialBuildConfig credentialBuildConfig = new CredentialBuildConfig()
                             .setCredentialIssuer(TEST_DID.toString())
                             .setCredentialType("https://credentials.example.com/test-credential")
@@ -240,7 +280,6 @@ public class SdJwtCredentialSignerTest extends OID4VCTest {
                             .add(splittedToken[2])
                             .toString();
 
-                    KeyWrapper keyWrapper = getKeyFromSession(session);
                     SignatureVerifierContext verifierContext = new AsymmetricSignatureVerifierContext(keyWrapper);
 
                     TokenVerifier<JsonWebToken> verifier = TokenVerifier
@@ -254,6 +293,10 @@ public class SdJwtCredentialSignerTest extends OID4VCTest {
                         JWSHeader header = verifier.getHeader();
                         assertNotNull("x5c header should be present in SD-JWT credential", header.getX5c());
                         assertFalse("x5c header should contain at least one certificate", header.getX5c().isEmpty());
+                        
+                        // Verify that only the leaf certificate is in x5c (CA trust anchor was filtered out per HAIP-6.1.1)
+                        assertEquals("x5c should contain only the leaf certificate (CA trust anchor filtered out)", 
+                                1, header.getX5c().size());
 
                         if (keyWrapper.getCertificate() != null) {
                             try {

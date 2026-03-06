@@ -84,27 +84,35 @@ public class SdJwtCredentialSigner extends AbstractCredentialSigner<String> {
         if (certificateChain != null && !certificateChain.isEmpty()) {
             // Copy and remove any trailing self-signed certificate(s) (trust anchors) to satisfy HAIP-6.1.1,
             // which requires that the trust anchor is NOT included in the x5c chain.
-            // However, if there's only a single self-signed certificate, include it for test compatibility.
             List<X509Certificate> filteredChain = certificateChain.stream()
                     .filter(Objects::nonNull)
                     .collect(Collectors.toList());
 
-            // Only remove trailing self-signed certificates if there are multiple certificates.
-            // A single self-signed certificate is kept for test compatibility.
-            if (filteredChain.size() > 1) {
-                while (!filteredChain.isEmpty()) {
-                    X509Certificate last = filteredChain.get(filteredChain.size() - 1);
-                    if (last.getSubjectX500Principal().equals(last.getIssuerX500Principal())) {
-                        // Last certificate is self-signed (trust anchor) -> drop it from x5c
-                        filteredChain.remove(filteredChain.size() - 1);
-                    } else {
-                        break;
-                    }
+            // Per HAIP-6.1.1: "The X.509 certificate signing the request MUST NOT be self-signed."
+            // Check if the first certificate (signing certificate) is self-signed
+            if (!filteredChain.isEmpty()) {
+                X509Certificate signingCert = filteredChain.get(0);
+                if (signingCert.getSubjectX500Principal().equals(signingCert.getIssuerX500Principal())) {
+                    LOGGER.debugf("Signing certificate is self-signed; skipping x5c header for SD-JWT credential per HAIP-6.1.1 (signing certificate MUST NOT be self-signed).");
+                    return;
                 }
             }
 
+            // Remove trailing self-signed certificates (trust anchors) from the chain
+            // Per HAIP-6.1.1: "The X.509 certificate of the trust anchor MUST NOT be included in the x5c JOSE header"
+            while (!filteredChain.isEmpty()) {
+                X509Certificate last = filteredChain.get(filteredChain.size() - 1);
+                if (last.getSubjectX500Principal().equals(last.getIssuerX500Principal())) {
+                    // Last certificate is self-signed (trust anchor) -> drop it from x5c
+                    filteredChain.remove(filteredChain.size() - 1);
+                } else {
+                    break;
+                }
+            }
+
+            // If all certificates were self-signed (trust anchors), skip x5c header per HAIP-6.1.1
             if (filteredChain.isEmpty()) {
-                LOGGER.debugf("All certificates in chain were self-signed; skipping x5c header for SD-JWT credential.");
+                LOGGER.debugf("All certificates in chain were self-signed (trust anchors); skipping x5c header for SD-JWT credential per HAIP-6.1.1.");
                 return;
             }
 

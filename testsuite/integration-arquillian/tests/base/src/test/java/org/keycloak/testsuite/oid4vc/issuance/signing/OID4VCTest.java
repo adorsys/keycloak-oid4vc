@@ -27,6 +27,7 @@ import java.security.NoSuchProviderException;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.cert.Certificate;
+import java.security.cert.X509Certificate;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Arrays;
@@ -249,13 +250,49 @@ public abstract class OID4VCTest extends AbstractTestRealmKeycloakTest {
 	}
 
 	public static ComponentExportRepresentation getRsaKeyProvider(KeyWrapper keyWrapper) {
-		ComponentExportRepresentation componentExportRepresentation = new ComponentExportRepresentation();
-		componentExportRepresentation.setName("rsa-key-provider");
-		componentExportRepresentation.setId(UUID.randomUUID().toString());
-		componentExportRepresentation.setProviderId("rsa");
+        return getRsaKeyProvider(keyWrapper, false);
+    }
 
-		Certificate certificate = CertificateUtils.generateV1SelfSignedCertificate(
-				new KeyPair((PublicKey) keyWrapper.getPublicKey(), (PrivateKey) keyWrapper.getPrivateKey()), "TestKey");
+    /**
+     * Creates an RSA key provider with optional proper certificate chain (CA-signed leaf) for HAIP compliance.
+     *
+     * @param keyWrapper     The key wrapper containing the key pair
+     * @param useProperChain If true, generates a CA-signed leaf certificate (non-self-signed) for HAIP compliance.
+     *                       If false, uses a self-signed certificate (for backward compatibility).
+     * @return ComponentExportRepresentation configured with the key provider
+     */
+    public static ComponentExportRepresentation getRsaKeyProvider(KeyWrapper keyWrapper, boolean useProperChain) {
+        ComponentExportRepresentation componentExportRepresentation = new ComponentExportRepresentation();
+        componentExportRepresentation.setName("rsa-key-provider");
+        componentExportRepresentation.setId(UUID.randomUUID().toString());
+        componentExportRepresentation.setProviderId("rsa");
+
+        Certificate certificate;
+        if (useProperChain) {
+            // Generate a CA and CA-signed leaf certificate for HAIP compliance
+            try {
+                KeyPair caKeyPair = KeyPairGenerator.getInstance("RSA").generateKeyPair();
+                caKeyPair.getPublic().getAlgorithm();
+                X509Certificate caCert = CertificateUtils.generateV1SelfSignedCertificate(caKeyPair, "Test CA");
+
+                KeyPair leafKeyPair = new KeyPair(
+                        (PublicKey) keyWrapper.getPublicKey(),
+                        (PrivateKey) keyWrapper.getPrivateKey()
+                );
+                certificate = CertificateUtils.generateV3Certificate(
+                        leafKeyPair,
+                        caKeyPair.getPrivate(),
+                        caCert,
+                        "TestKey"
+                );
+            } catch (Exception e) {
+                throw new RuntimeException("Failed to generate CA-signed certificate for test", e);
+            }
+        } else {
+            // Use self-signed certificate for backward compatibility
+            certificate = CertificateUtils.generateV1SelfSignedCertificate(
+                    new KeyPair((PublicKey) keyWrapper.getPublicKey(), (PrivateKey) keyWrapper.getPrivateKey()), "TestKey");
+        }
 
 		componentExportRepresentation.setConfig(new MultivaluedHashMap<>(
 				Map.of(
