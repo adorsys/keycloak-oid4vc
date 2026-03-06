@@ -91,6 +91,7 @@ public class OID4VCIssuerWellKnownProvider implements WellKnownProvider {
 
     public static final String VC_KEY = "vc";
     public static final String ATTR_ENCRYPTION_REQUIRED = "oid4vci.encryption.required";
+    public static final String ATTR_REQUEST_ENCRYPTION_REQUIRED = "oid4vci.request.encryption.required";
 
     public static final String DEFLATE_COMPRESSION = "DEF";
     public static final String ATTR_REQUEST_ZIP_ALGS = "oid4vci.request.zip.algorithms";
@@ -121,31 +122,21 @@ public class OID4VCIssuerWellKnownProvider implements WellKnownProvider {
     public CredentialIssuer getIssuerMetadata() {
         KeycloakContext context = keycloakSession.getContext();
 
-        // Build encryption metadata first to enforce coupling rule from spec:
-        // If credential_response_encryption is included, credential_request_encryption MUST also be included.
+        // Build encryption metadata
+        // Note: Request and response encryption are independent per OID4VCI spec Section 8.3.1.2.
+        // A wallet can send an unencrypted JSON request but still request an encrypted response.
         CredentialResponseEncryptionMetadata responseEnc = getCredentialResponseEncryption(keycloakSession);
         CredentialRequestEncryptionMetadata requestEnc = getCredentialRequestEncryption(keycloakSession);
 
-        // Keep response encryption metadata even if request encryption metadata is missing
+        // Note: Request and response encryption are independent. Both can be configured independently.
         if (responseEnc != null && requestEnc == null) {
-            LOGGER.warn("credential_response_encryption is advertised but credential_request_encryption metadata is not available. " +
-                    "If response encryption is included, request encryption should also be included. " +
-                    "keep response metadata and setting encryption_required=false.");
-            if (Boolean.TRUE.equals(responseEnc.getEncryptionRequired())) {
-                responseEnc.setEncryptionRequired(false);
-            }
+            LOGGER.debug("credential_response_encryption is advertised but credential_request_encryption metadata is not available. " +
+                    "This is allowed - request and response encryption are independent per OID4VCI spec.");
         }
 
-        // Consistency rule: if both are present and response encryption is required, mark request encryption as required too
-        if (responseEnc != null && requestEnc != null) {
-            boolean responseRequired = Boolean.TRUE.equals(responseEnc.getEncryptionRequired());
-            boolean requestRequired = Boolean.TRUE.equals(requestEnc.isEncryptionRequired());
-            if (responseRequired && !requestRequired) {
-                LOGGER.warn("credential_response_encryption.encryption_required=true while credential_request_encryption.encryption_required is false. " +
-                        "Marking request encryption as required to maintain consistency.");
-                requestEnc.setEncryptionRequired(true);
-            }
-        }
+        // Note: We do NOT automatically require request encryption when response encryption is required.
+        // Per OID4VCI spec Section 8.3.1.2, request encryption and response encryption are independent.
+        // A wallet can send an unencrypted JSON request but still request an encrypted response.
 
         // Add deprecation headers/logs if the old realm-scoped route was used
         addDeprecationHeadersIfOldRoute(keycloakSession);
@@ -359,7 +350,11 @@ public class OID4VCIssuerWellKnownProvider implements WellKnownProvider {
 
     /**
      * Returns the credential request encryption metadata for the issuer.
-     * Determines supported algorithms and JWK Set from available realm keys
+     * Determines supported algorithms and JWK Set from available realm keys.
+     *
+     * Note: Request encryption and response encryption are independent per OID4VCI spec.
+     * Request encryption is only required if explicitly configured via a separate attribute.
+     * By default, request encryption is optional even if response encryption is required.
      */
     public static CredentialRequestEncryptionMetadata getCredentialRequestEncryption(KeycloakSession session) {
         RealmModel realm = session.getContext().getRealm();
@@ -367,11 +362,17 @@ public class OID4VCIssuerWellKnownProvider implements WellKnownProvider {
         // Build JWKS with public encryption keys
         JSONWebKeySet jwks = buildJwks(session);
 
-        // If encryption is required but no keys exist → reject unencrypted requests
-        boolean encryptionRequired = isEncryptionRequired(realm);
+        // Check for explicit request encryption requirement (separate from response encryption).
+        // Default to false - request encryption is optional unless explicitly required.
+        boolean requestEncryptionRequired = false;
+        String requestEncRequiredAttr = realm.getAttribute(ATTR_REQUEST_ENCRYPTION_REQUIRED);
+        if (requestEncRequiredAttr != null) {
+            requestEncryptionRequired = Boolean.parseBoolean(requestEncRequiredAttr);
+        }
+
         if (jwks.getKeys() == null || jwks.getKeys().length == 0) {
-            if (encryptionRequired) {
-                LOGGER.error("Encryption is required but no valid encryption keys are available.");
+            if (requestEncryptionRequired) {
+                LOGGER.error("Request encryption is required but no valid encryption keys are available.");
                 throw new IllegalStateException("Missing encryption keys for required credential_request_encryption.");
             } else {
                 LOGGER.warn("No valid encryption keys found; omitting credential_request_encryption metadata.");
@@ -384,7 +385,7 @@ public class OID4VCIssuerWellKnownProvider implements WellKnownProvider {
                 .setJwks(jwks)
                 .setEncValuesSupported(getSupportedEncryptionMethods())
                 .setZipValuesSupported(getSupportedZipAlgorithms(realm))
-                .setEncryptionRequired(encryptionRequired);
+                .setEncryptionRequired(requestEncryptionRequired);
 
         return metadata;
     }

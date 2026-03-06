@@ -40,10 +40,13 @@ import org.keycloak.models.KeyManager;
 import org.keycloak.models.RealmModel;
 import org.keycloak.models.oid4vci.CredentialScopeModel;
 import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerEndpoint;
+import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerWellKnownProvider;
 import org.keycloak.protocol.oid4vc.model.CredentialIssuer;
+import org.keycloak.protocol.oid4vc.model.CredentialRequestEncryptionMetadata;
 import org.keycloak.protocol.oid4vc.model.CredentialRequest;
 import org.keycloak.protocol.oid4vc.model.CredentialResponse;
 import org.keycloak.protocol.oid4vc.model.CredentialResponseEncryption;
+import org.keycloak.protocol.oid4vc.model.CredentialResponseEncryptionMetadata;
 import org.keycloak.protocol.oid4vc.model.ErrorResponse;
 import org.keycloak.protocol.oid4vc.model.ErrorType;
 import org.keycloak.protocol.oid4vc.model.OID4VCAuthorizationDetail;
@@ -169,7 +172,7 @@ public class OID4VCIssuerEndpointEncryptionTest extends OID4VCIssuerEndpointTest
 
         testingClient.server(TEST_REALM_NAME).run(session -> {
             RealmModel realm = session.getContext().getRealm();
-            realm.setAttribute("oid4vci.encryption.required", "true");
+            realm.setAttribute("oid4vci.request.encryption.required", "true");
             realm.setAttribute("oid4vci.request.enc.algorithms", "A256GCM");
 
             try {
@@ -192,7 +195,7 @@ public class OID4VCIssuerEndpointEncryptionTest extends OID4VCIssuerEndpointTest
                     assertEquals("Encryption is required but request is not a valid JWE: Not a JWE String", error.getErrorDescription());
                 }
             } finally {
-                realm.removeAttribute("oid4vci.encryption.required");
+                realm.removeAttribute("oid4vci.request.encryption.required");
                 realm.removeAttribute("oid4vci.request.enc.algorithms");
             }
         });
@@ -693,8 +696,106 @@ public class OID4VCIssuerEndpointEncryptionTest extends OID4VCIssuerEndpointTest
                 } catch (BadRequestException e) {
                     ErrorResponse error = (ErrorResponse) e.getResponse().getEntity();
                     assertEquals(ErrorType.INVALID_ENCRYPTION_PARAMETERS.getValue(), error.getError());
-                    assertEquals("Encryption is required but request is not a valid JWE: Not a JWE String", error.getErrorDescription());
+                        assertEquals(
+                                "Response encryption is required by the Credential Issuer, but no encryption parameters were provided.",
+                                error.getErrorDescription());
                 }
+            } finally {
+                realm.removeAttribute("oid4vci.encryption.required");
+            }
+        });
+    }
+
+    /**
+     * Test that verifies request encryption and response encryption are independent.
+     * When only response encryption is required, an unencrypted JSON request with
+     * response encryption parameters should succeed.
+     */
+    @Test
+    public void testResponseEncryptionRequiredWithoutRequestEncryption() {
+        final String scopeName = jwtTypeCredentialClientScope.getName();
+        String credConfigId = jwtTypeCredentialClientScope.getAttributes().get(CredentialScopeModel.CONFIGURATION_ID);
+        CredentialIssuer credentialIssuer = getCredentialIssuerMetadata();
+        OID4VCAuthorizationDetail authDetail = new OID4VCAuthorizationDetail();
+        authDetail.setType(OPENID_CREDENTIAL);
+        authDetail.setCredentialConfigurationId(credConfigId);
+        authDetail.setLocations(List.of(credentialIssuer.getCredentialIssuer()));
+
+        String authCode = getAuthorizationCode(oauth, client, "john", scopeName);
+        AccessTokenResponse tokenResponse = getBearerToken(oauth, authCode, authDetail);
+        String token = tokenResponse.getAccessToken();
+        List<OID4VCAuthorizationDetail> authDetailsResponse = tokenResponse.getOID4VCAuthorizationDetails();
+        assertNotNull("authorization_details should be present in the response", authDetailsResponse);
+        assertFalse("authorization_details should not be empty", authDetailsResponse.isEmpty());
+        String credentialIdentifier = authDetailsResponse.get(0).getCredentialIdentifiers().get(0);
+        assertNotNull("credential_identifier should be present", credentialIdentifier);
+
+        String cNonce = getCNonce();
+        String issuer = getRealmPath(TEST_REALM_NAME);
+        String jwtProof = OID4VCTest.generateJwtProof(issuer, cNonce);
+
+        testingClient.server(TEST_REALM_NAME).run(session -> {
+            RealmModel realm = session.getContext().getRealm();
+            // Enable response encryption requirement WITHOUT request encryption requirement
+            // This tests that they are independent per OID4VCI spec Section 8.3.1.2
+            realm.setAttribute("oid4vci.encryption.required", "true");
+            // Do NOT set oid4vci.request.enc.algorithms - this means request encryption is not required
+
+            try {
+                // Verify metadata shows response encryption required but request encryption not required
+                CredentialIssuer metadata = new OID4VCIssuerWellKnownProvider(session).getIssuerMetadata();
+                CredentialResponseEncryptionMetadata responseEnc = metadata.getCredentialResponseEncryption();
+                CredentialRequestEncryptionMetadata requestEnc = metadata.getCredentialRequestEncryption();
+
+                assertNotNull("credential_response_encryption should be present", responseEnc);
+                assertTrue("Response encryption should be required", responseEnc.getEncryptionRequired());
+
+                // Request encryption metadata may be present (if keys exist) but should NOT be required
+                if (requestEnc != null) {
+                    assertFalse("Request encryption should NOT be required when only response encryption is configured",
+                            requestEnc.isEncryptionRequired());
+                }
+
+                AppAuthManager.BearerTokenAuthenticator authenticator = new AppAuthManager.BearerTokenAuthenticator(session);
+                authenticator.setTokenString(token);
+                OID4VCIssuerEndpoint issuerEndpoint = prepareIssuerEndpoint(session, authenticator);
+
+                // Generate keys for response encryption
+                Map<String, Object> jwkPair = generateRsaJwkWithPrivateKey();
+                JWK responseJwk = (JWK) jwkPair.get("jwk");
+                PrivateKey responsePrivateKey = (PrivateKey) jwkPair.get("privateKey");
+
+                // Create unencrypted JSON request with response encryption parameters
+                CredentialRequest credentialRequest = new CredentialRequest()
+                        .setCredentialIdentifier(credentialIdentifier)
+                        .setProofs(new Proofs().setJwt(List.of(jwtProof)))
+                        .setCredentialResponseEncryption(
+                                new CredentialResponseEncryption()
+                                        .setEnc(A256GCM)
+                                        .setJwk(responseJwk));
+
+                String requestPayload = JsonSerialization.writeValueAsString(credentialRequest);
+
+                // This should succeed - unencrypted request is allowed when only response encryption is required
+                Response response = issuerEndpoint.requestCredential(requestPayload);
+
+                assertEquals("Unencrypted request with response encryption params should succeed when only response encryption is required",
+                        200, response.getStatus());
+                assertEquals("Response should be JWT type for encrypted responses",
+                        APPLICATION_JWT, response.getMediaType().toString());
+
+                // Decrypt and verify response
+                String encryptedResponse = (String) response.getEntity();
+                CredentialResponse decryptedResponse = decryptJweResponse(encryptedResponse, responsePrivateKey);
+
+                assertNotNull("Decrypted response should contain a credential", decryptedResponse.getCredentials());
+                JsonWebToken jsonWebToken = TokenVerifier.create(
+                        (String) decryptedResponse.getCredentials().get(0).getCredential(),
+                        JsonWebToken.class).getToken();
+                assertNotNull("A valid credential string should have been responded", jsonWebToken);
+
+            } catch (Exception e) {
+                fail("Test failed with exception: " + e.getClass().getName() + ": " + e.getMessage());
             } finally {
                 realm.removeAttribute("oid4vci.encryption.required");
             }

@@ -1104,8 +1104,14 @@ public class OID4VCIssuerEndpoint {
             contentType = contentType.split(";")[0].trim(); // Handle parameters like charset
         }
         boolean contentTypeIsJwt = MediaType.APPLICATION_JWT.equalsIgnoreCase(contentType);
+        // Heuristic: if payload looks like a compact JWE (5 dot-separated parts) and is not JSON, treat it as encrypted
+        String trimmedPayload = requestPayload != null ? requestPayload.trim() : "";
+        boolean payloadLooksLikeJwe = !trimmedPayload.isEmpty()
+                && trimmedPayload.charAt(0) != '{'
+                && trimmedPayload.charAt(0) != '['
+                && trimmedPayload.chars().filter(ch -> ch == '.').count() == 4;
 
-        if (isRequestEncryptionRequired || contentTypeIsJwt) {
+        if (isRequestEncryptionRequired || contentTypeIsJwt || (requestEncryptionMetadata != null && payloadLooksLikeJwe)) {
             if (requestEncryptionMetadata == null && contentTypeIsJwt) {
                 String errorMessage = "Received JWT content-type request, but credential_request_encryption is not supported.";
                 LOGGER.debug(errorMessage);
@@ -1128,8 +1134,8 @@ public class OID4VCIssuerEndpoint {
                     }
                     throw new BadRequestException(getErrorResponse(ErrorType.INVALID_ENCRYPTION_PARAMETERS, errorMessage));
                 }
-                if (contentTypeIsJwt) {
-                    String errorMessage = "Request has JWT content-type but is not a valid JWE: " + e.getMessage();
+                if (contentTypeIsJwt || payloadLooksLikeJwe) {
+                    String errorMessage = "Request was treated as encrypted but is not a valid JWE: " + e.getMessage();
                     LOGGER.debug(errorMessage);
                     if (eventBuilder != null) {
                         eventBuilder.detail(Details.REASON, errorMessage)
