@@ -587,7 +587,6 @@ public class OID4VCIssuerEndpointEncryptionTest extends OID4VCIssuerEndpointTest
             JWK jwk;
             try {
                 jwk = generateRsaJwk();
-                // Set an unsupported algorithm in the JWK
                 jwk.setAlgorithm("UNSUPPORTED_ALG");
             } catch (NoSuchAlgorithmException e) {
                 throw new RuntimeException("Failed to generate JWK", e);
@@ -739,7 +738,6 @@ public class OID4VCIssuerEndpointEncryptionTest extends OID4VCIssuerEndpointTest
             // Enable response encryption requirement WITHOUT request encryption requirement
             // This tests that they are independent per OID4VCI spec Section 8.3.1.2
             realm.setAttribute("oid4vci.encryption.required", "true");
-            // Do NOT set oid4vci.request.enc.algorithms - this means request encryption is not required
 
             try {
                 // Verify metadata shows response encryption required but request encryption not required

@@ -1073,9 +1073,6 @@ public class OID4VCIssuerEndpoint {
             }
         }
 
-        // Persistence of this state is required per OID4VCI Section 14.3 to allow multiple accesses to the credential endpoint.
-        // Expiration is handled automatically by the underlying storage (Infinispan).
-
         return response;
     }
 

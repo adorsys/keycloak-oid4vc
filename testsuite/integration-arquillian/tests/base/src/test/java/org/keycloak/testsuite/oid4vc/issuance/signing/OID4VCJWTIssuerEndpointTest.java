@@ -320,9 +320,6 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
         List<OID4VCAuthorizationDetail> authDetailsResponse = tokenResponse.getOID4VCAuthorizationDetails();
         String credentialIdentifier = authDetailsResponse.get(0).getCredentialIdentifiers().get(0);
 
-        // These must be obtained BEFORE entering the server-side lambda to avoid
-        // capturing `this` (the test class) in the lambda, which causes a
-        // NotSerializableException since the test class is not serializable.
         final String cNonce = getCNonce();
         final String issuer = getRealmPath(TEST_REALM_NAME);
 
@@ -360,7 +357,6 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
     @Test(expected = BadRequestException.class)
     public void testRequestCredentialUnsupportedCredential() throws Throwable {
         String token = getBearerToken(oauth);
-        // Must be obtained BEFORE the server lambda to avoid capturing `this`
         final String cNonce = getCNonce();
         final String issuer = getRealmPath(TEST_REALM_NAME);
         withCausePropagation(() -> {
@@ -668,8 +664,6 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
         // This simulates trying to request a different credential than what's authorized
         String fakeCredentialIdentifier = "fake-credential-id-not-in-token-12345";
 
-        // Try to use JWT token to request a non-existent/unauthorized credential_identifier.
-        // The server must reject this with unknown_credential_identifier.
         try (Client client = AdminClientUtil.createResteasyClient()) {
             URI credentialUri = UriBuilder.fromUri(credentialIssuer.getCredentialEndpoint()).build();
             WebTarget credentialTarget = client.target(credentialUri);
@@ -1387,8 +1381,8 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
 
         assertEquals("First offer should fail on second access (replay protection)",
                 Response.Status.BAD_REQUEST.getStatusCode(), response1.getStatusCode());
-        assertEquals("Error type should be invalid_credential_offer_request",
-                ErrorType.INVALID_CREDENTIAL_OFFER_REQUEST.getValue(),
+        assertEquals("Error type should be invalid_request",
+                ErrorType.INVALID_REQUEST.getValue(),
                 response1.getError());
 
         // 6. Verify that accessing second offer again also fails (replay protection per-nonce)
@@ -1399,8 +1393,8 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
 
         assertEquals("Second offer should fail on second access (replay protection)",
                 Response.Status.BAD_REQUEST.getStatusCode(), response2.getStatusCode());
-        assertEquals("Error type should be invalid_credential_offer_request",
-                ErrorType.INVALID_CREDENTIAL_OFFER_REQUEST.getValue(),
+        assertEquals("Error type should be invalid_request",
+                ErrorType.INVALID_REQUEST.getValue(),
                 response2.getError());
     }
 

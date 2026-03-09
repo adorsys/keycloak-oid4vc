@@ -82,8 +82,6 @@ public class SdJwtCredentialSigner extends AbstractCredentialSigner<String> {
         List<X509Certificate> certificateChain = signer.getCertificateChain();
 
         if (certificateChain != null && !certificateChain.isEmpty()) {
-            // Copy and remove any trailing self-signed certificate(s) (trust anchors) to satisfy HAIP-6.1.1,
-            // which requires that the trust anchor is NOT included in the x5c chain.
             List<X509Certificate> filteredChain = certificateChain.stream()
                     .filter(Objects::nonNull)
                     .collect(Collectors.toList());

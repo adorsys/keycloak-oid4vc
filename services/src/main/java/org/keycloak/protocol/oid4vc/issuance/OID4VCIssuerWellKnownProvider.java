@@ -134,10 +134,6 @@ public class OID4VCIssuerWellKnownProvider implements WellKnownProvider {
                     "This is allowed - request and response encryption are independent per OID4VCI spec.");
         }
 
-        // Note: We do NOT automatically require request encryption when response encryption is required.
-        // Per OID4VCI spec Section 8.3.1.2, request encryption and response encryption are independent.
-        // A wallet can send an unencrypted JSON request but still request an encrypted response.
-
         // Add deprecation headers/logs if the old realm-scoped route was used
         addDeprecationHeadersIfOldRoute(keycloakSession);
 
