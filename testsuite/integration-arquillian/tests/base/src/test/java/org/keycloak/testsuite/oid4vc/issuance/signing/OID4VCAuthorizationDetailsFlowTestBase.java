@@ -36,7 +36,6 @@ import org.keycloak.protocol.oid4vc.model.CredentialResponse;
 import org.keycloak.protocol.oid4vc.model.CredentialsOffer;
 import org.keycloak.protocol.oid4vc.model.ErrorType;
 import org.keycloak.protocol.oid4vc.model.OID4VCAuthorizationDetail;
-import org.keycloak.protocol.oid4vc.model.PreAuthorizedCode;
 import org.keycloak.protocol.oid4vc.model.Proofs;
 import org.keycloak.protocol.oidc.representations.OIDCConfigurationRepresentation;
 import org.keycloak.representations.AccessToken;
@@ -309,7 +308,7 @@ public abstract class OID4VCAuthorizationDetailsFlowTestBase extends OID4VCIssue
         List<OID4VCAuthorizationDetail> authDetails = List.of(authDetail);
 
         AccessTokenResponse tokenResponse = oauth.oid4vc()
-                .preAuthorizedCodeGrantRequest(ctx.credentialsOffer.getGrants().getPreAuthorizedCode().getPreAuthorizedCode())
+                .preAuthorizedCodeGrantRequest(ctx.credentialsOffer.getPreAuthorizedCode())
                 .endpoint(ctx.openidConfig.getTokenEndpoint())
                 .authorizationDetails(authDetails)
                 .send();
@@ -370,7 +369,7 @@ public abstract class OID4VCAuthorizationDetailsFlowTestBase extends OID4VCIssue
         List<OID4VCAuthorizationDetail> authDetails = List.of(authDetail);
 
         AccessTokenResponse tokenResponse = oauth.oid4vc()
-                .preAuthorizedCodeGrantRequest(ctx.credentialsOffer.getGrants().getPreAuthorizedCode().getPreAuthorizedCode())
+                .preAuthorizedCodeGrantRequest(ctx.credentialsOffer.getPreAuthorizedCode())
                 .endpoint(ctx.openidConfig.getTokenEndpoint())
                 .authorizationDetails(authDetails)
                 .send();
@@ -420,7 +419,7 @@ public abstract class OID4VCAuthorizationDetailsFlowTestBase extends OID4VCIssue
         List<OID4VCAuthorizationDetail> authDetails = List.of(authDetail);
 
         AccessTokenResponse tokenResponse = oauth.oid4vc()
-                .preAuthorizedCodeGrantRequest(ctx.credentialsOffer.getGrants().getPreAuthorizedCode().getPreAuthorizedCode())
+                .preAuthorizedCodeGrantRequest(ctx.credentialsOffer.getPreAuthorizedCode())
                 .endpoint(ctx.openidConfig.getTokenEndpoint())
                 .authorizationDetails(authDetails)
                 .send();
@@ -451,7 +450,7 @@ public abstract class OID4VCAuthorizationDetailsFlowTestBase extends OID4VCIssue
         List<OID4VCAuthorizationDetail> authDetails = List.of(authDetail);
 
         AccessTokenResponse tokenResponse = oauth.oid4vc()
-                .preAuthorizedCodeGrantRequest(ctx.credentialsOffer.getGrants().getPreAuthorizedCode().getPreAuthorizedCode())
+                .preAuthorizedCodeGrantRequest(ctx.credentialsOffer.getPreAuthorizedCode())
                 .endpoint(ctx.openidConfig.getTokenEndpoint())
                 .authorizationDetails(authDetails)
                 .send();
@@ -482,7 +481,7 @@ public abstract class OID4VCAuthorizationDetailsFlowTestBase extends OID4VCIssue
         List<OID4VCAuthorizationDetail> authDetails = List.of(authDetail);
 
         AccessTokenResponse tokenResponse = oauth.oid4vc()
-                .preAuthorizedCodeGrantRequest(ctx.credentialsOffer.getGrants().getPreAuthorizedCode().getPreAuthorizedCode())
+                .preAuthorizedCodeGrantRequest(ctx.credentialsOffer.getPreAuthorizedCode())
                 .endpoint(ctx.openidConfig.getTokenEndpoint())
                 .authorizationDetails(authDetails)
                 .send();
@@ -515,7 +514,7 @@ public abstract class OID4VCAuthorizationDetailsFlowTestBase extends OID4VCIssue
         List<OID4VCAuthorizationDetail> authDetails = List.of(authDetail);
 
         AccessTokenResponse tokenResponse = oauth.oid4vc()
-                .preAuthorizedCodeGrantRequest(ctx.credentialsOffer.getGrants().getPreAuthorizedCode().getPreAuthorizedCode())
+                .preAuthorizedCodeGrantRequest(ctx.credentialsOffer.getPreAuthorizedCode())
                 .endpoint(ctx.openidConfig.getTokenEndpoint())
                 .authorizationDetails(authDetails)
                 .send();
@@ -546,7 +545,7 @@ public abstract class OID4VCAuthorizationDetailsFlowTestBase extends OID4VCIssue
         List<OID4VCAuthorizationDetail> authDetails = List.of(authDetail);
 
         AccessTokenResponse tokenResponse = oauth.oid4vc()
-                .preAuthorizedCodeGrantRequest(ctx.credentialsOffer.getGrants().getPreAuthorizedCode().getPreAuthorizedCode())
+                .preAuthorizedCodeGrantRequest(ctx.credentialsOffer.getPreAuthorizedCode())
                 .endpoint(ctx.openidConfig.getTokenEndpoint())
                 .authorizationDetails(authDetails)
                 .send();
@@ -565,7 +564,7 @@ public abstract class OID4VCAuthorizationDetailsFlowTestBase extends OID4VCIssue
 
         // Send empty authorization_details array - should fail
         AccessTokenResponse tokenResponse = oauth.oid4vc()
-                .preAuthorizedCodeGrantRequest(ctx.credentialsOffer.getGrants().getPreAuthorizedCode().getPreAuthorizedCode())
+                .preAuthorizedCodeGrantRequest(ctx.credentialsOffer.getPreAuthorizedCode())
                 .endpoint(ctx.openidConfig.getTokenEndpoint())
                 .authorizationDetails(List.of())
                 .send();
@@ -584,7 +583,7 @@ public abstract class OID4VCAuthorizationDetailsFlowTestBase extends OID4VCIssue
         // The system should generate authorization_details based on credential_configuration_ids from the credential offer
 
         AccessTokenResponse tokenResponse = oauth.oid4vc()
-                .preAuthorizedCodeGrantRequest(ctx.credentialsOffer.getGrants().getPreAuthorizedCode().getPreAuthorizedCode())
+                .preAuthorizedCodeGrantRequest(ctx.credentialsOffer.getPreAuthorizedCode())
                 .endpoint(ctx.openidConfig.getTokenEndpoint())
                 .send();
 
@@ -622,11 +621,10 @@ public abstract class OID4VCAuthorizationDetailsFlowTestBase extends OID4VCIssue
         String token = getBearerToken(oauth, client, getCredentialClientScope().getName());
 
         Oid4vcTestContext ctx = prepareOid4vcTestContext(token);
-        PreAuthorizedCode preAuthorizedCode = ctx.credentialsOffer.getGrants().getPreAuthorizedCode();
 
         // Step 1: Request token without authorization_details parameter (no scope needed)
         AccessTokenResponse tokenResponse = oauth.oid4vc()
-                .preAuthorizedCodeGrantRequest(preAuthorizedCode.getPreAuthorizedCode())
+                .preAuthorizedCodeGrantRequest(ctx.credentialsOffer.getPreAuthorizedCode())
                 .endpoint(ctx.openidConfig.getTokenEndpoint())
                 .send();
 
@@ -707,11 +705,10 @@ public abstract class OID4VCAuthorizationDetailsFlowTestBase extends OID4VCIssue
     public void testPreAuthorizedCodeTokenEndpointRestriction() throws Exception {
         String token = getBearerToken(oauth, client, getCredentialClientScope().getName());
         Oid4vcTestContext ctx = prepareOid4vcTestContext(token);
-        PreAuthorizedCode preAuthorizedCode = ctx.credentialsOffer.getGrants().getPreAuthorizedCode();
 
         // Step 1: Get pre-authorized code token
         AccessTokenResponse accessTokenResponse = oauth.oid4vc()
-                .preAuthorizedCodeGrantRequest(preAuthorizedCode.getPreAuthorizedCode())
+                .preAuthorizedCodeGrantRequest(ctx.credentialsOffer.getPreAuthorizedCode())
                 .endpoint(ctx.openidConfig.getTokenEndpoint())
                 .send();
 
@@ -812,7 +809,7 @@ public abstract class OID4VCAuthorizationDetailsFlowTestBase extends OID4VCIssue
 
         // Step 1: Request token without authorization_details parameter
         AccessTokenResponse tokenResponse = oauth.oid4vc()
-                .preAuthorizedCodeGrantRequest(ctx.credentialsOffer.getGrants().getPreAuthorizedCode().getPreAuthorizedCode())
+                .preAuthorizedCodeGrantRequest(ctx.credentialsOffer.getPreAuthorizedCode())
                 .endpoint(ctx.openidConfig.getTokenEndpoint())
                 .send();
 
@@ -886,7 +883,7 @@ public abstract class OID4VCAuthorizationDetailsFlowTestBase extends OID4VCIssue
         List<OID4VCAuthorizationDetail> authDetails = List.of(authDetail);
 
         AccessTokenResponse tokenResponse = oauth.oid4vc()
-                .preAuthorizedCodeGrantRequest(ctx.credentialsOffer.getGrants().getPreAuthorizedCode().getPreAuthorizedCode())
+                .preAuthorizedCodeGrantRequest(ctx.credentialsOffer.getPreAuthorizedCode())
                 .endpoint(ctx.openidConfig.getTokenEndpoint())
                 .authorizationDetails(authDetails)
                 .send();

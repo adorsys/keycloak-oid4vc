@@ -33,7 +33,6 @@ import org.keycloak.protocol.oid4vc.model.CredentialResponse;
 import org.keycloak.protocol.oid4vc.model.CredentialsOffer;
 import org.keycloak.protocol.oid4vc.model.ErrorType;
 import org.keycloak.protocol.oid4vc.model.OID4VCAuthorizationDetail;
-import org.keycloak.protocol.oid4vc.model.PreAuthorizedCode;
 import org.keycloak.protocol.oid4vc.model.Proofs;
 import org.keycloak.protocol.oid4vc.model.SupportedCredentialConfiguration;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
@@ -357,7 +356,6 @@ public class OID4VCICredentialOfferMatrixTest extends OID4VCIssuerEndpointTest {
         CredentialOfferUriResponse credentialOfferURIResponse = oauth.oid4vc()
                 .credentialOfferUriRequest(credConfigId)
                 .preAuthorized(ctx.preAuthorized)
-                .txCode(ctx.preAuthorized)
                 .targetUser(ctx.appUser)
                 .bearerToken(token)
                 .send();
@@ -375,11 +373,8 @@ public class OID4VCICredentialOfferMatrixTest extends OID4VCIssuerEndpointTest {
     }
 
     private AccessTokenResponse getPreAuthorizedAccessTokenResponse(CredentialsOffer credOffer) throws Exception {
-        PreAuthorizedCode preAuthCodeGrant = credOffer.getGrants().getPreAuthorizedCode();
-        String preAuthCode = preAuthCodeGrant.getPreAuthorizedCode();
-        String txCode = getTestingClient().testing().getTxCode(preAuthCode);
+        String preAuthCode = credOffer.getPreAuthorizedCode();
         return oauth.oid4vc().preAuthorizedCodeGrantRequest(preAuthCode)
-                .txCode(txCode)
                 .send();
     }
 

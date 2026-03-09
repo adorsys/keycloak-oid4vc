@@ -11,8 +11,8 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import jakarta.annotation.Nonnull;
-import jakarta.annotation.Nullable;
 import jakarta.ws.rs.NotFoundException;
+import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.Response;
 
 import org.keycloak.events.admin.OperationType;
@@ -37,6 +37,7 @@ import org.keycloak.services.resources.admin.ClientsResource;
 import org.keycloak.services.resources.admin.RealmAdminResource;
 import org.keycloak.services.resources.admin.fgap.AdminPermissionEvaluator;
 import org.keycloak.services.util.ObjectMapperResolver;
+import org.keycloak.utils.StringUtil;
 import org.keycloak.validation.ValidationUtil;
 import org.keycloak.validation.jakarta.HibernateValidatorProvider;
 import org.keycloak.validation.jakarta.JakartaValidatorProvider;
@@ -49,7 +50,7 @@ import org.apache.http.HttpEntity;
 import org.apache.http.util.EntityUtils;
 
 /**
- * Default implementation of ClientService for Admin API v2.
+ * Legacy implementation of ClientService for Admin API v2 that uses Admin API v1 under hood.
  */
 public class DefaultClientService implements ClientService {
     private static final ObjectMapper MAPPER = new ObjectMapperResolver().getContext(null);
@@ -57,48 +58,33 @@ public class DefaultClientService implements ClientService {
     private final KeycloakSession session;
     private final JakartaValidatorProvider validator;
     private final AdminPermissionEvaluator permissions;
+    private final AdminEventBuilder adminEventBuilder;
 
     // v1 resources
     private final RealmAdminResource realmResource;
     private final ClientsResource clientsResource;
-    private final AdminEventBuilder adminEventBuilder;
-    private ClientResource clientResource;
 
     public DefaultClientService(@Nonnull KeycloakSession session,
+                                @Nonnull RealmModel realm,
                                 @Nonnull AdminPermissionEvaluator permissions,
-                                @Nonnull RealmAdminResource realmResource,
-                                @Nullable ClientResource clientResource) {
+                                @Nonnull RealmAdminResource realmResource) {
         this.session = session;
         this.permissions = permissions;
         this.validator = new HibernateValidatorProvider();
 
         this.realmResource = realmResource;
         this.clientsResource = realmResource.getClients();
-        this.clientResource = clientResource;
-        RealmModel realm = session.getContext().getRealm();
         this.adminEventBuilder = new AdminEventV2Builder(realm, permissions.adminAuth(), session, session.getContext().getConnection())
                 .resource(ResourceType.CLIENT);
-    }
-
-    public DefaultClientService(@Nonnull KeycloakSession session,
-                                @Nonnull AdminPermissionEvaluator permissions,
-                                @Nonnull RealmAdminResource realmResource) {
-        this(session, permissions, realmResource, null);
-    }
-
-    protected void avoidClientIdPhishing() throws ServiceException {
-        if (clientResource == null && !permissions.clients().canList()) {
-            // we do this to make sure somebody can't phish client IDs
-            throw new ServiceException(Response.Status.FORBIDDEN);
-        }
     }
 
     @Override
     public Optional<BaseClientRepresentation> getClient(RealmModel realm, String clientId, ClientProjectionOptions projectionOptions) throws ServiceException {
         // TODO: is the access map on the representation needed
-        avoidClientIdPhishing();
-        return Optional.ofNullable(clientResource).map(ClientResource::viewClientModel)
-                .map(model -> session.getProvider(ClientModelMapper.class, model.getProtocol()).fromModel(model));
+        var clientResource = assertAndGetClientResource(realm, clientId);
+        return Optional.of(clientResource)
+                .map(ClientResource::viewClientModel)
+                .map(model -> getMapper(model.getProtocol()).fromModel(model));
     }
 
     @Override
@@ -107,13 +93,13 @@ public class DefaultClientService implements ClientService {
         // TODO: is the access map on the representation needed
         return clientsResource.getClientModels(null, true, false, null, null, null)
                 .filter(model -> model.getProtocol() != null) // Skip clients with null protocol
-                .map(model -> session.getProvider(ClientModelMapper.class, model.getProtocol()).fromModel(model))
+                .map(model -> getMapper(model.getProtocol()).fromModel(model))
                 .filter(java.util.Objects::nonNull);
     }
 
     @Override
     public BaseClientRepresentation createClient(RealmModel realm, BaseClientRepresentation client) throws ServiceException {
-        return createOrUpdate(client, CreateOrUpdateStrategy.ONLY_CREATE).representation();
+        return createOrUpdate(realm, null, client, CreateOrUpdateStrategy.ONLY_CREATE).representation();
     }
 
     @Override
@@ -121,7 +107,7 @@ public class DefaultClientService implements ClientService {
         if (!Objects.equals(clientId, client.getClientId())) {
             throw new ServiceException("Field 'clientId' in payload does not match the provided 'clientId'", Response.Status.BAD_REQUEST);
         }
-        return createOrUpdate(client, CreateOrUpdateStrategy.PUT);
+        return createOrUpdate(realm, clientId, client, CreateOrUpdateStrategy.PUT);
     }
 
     private enum CreateOrUpdateStrategy {
@@ -132,17 +118,14 @@ public class DefaultClientService implements ClientService {
         PATCH
     }
 
-    private CreateOrUpdateResult createOrUpdate(BaseClientRepresentation client, CreateOrUpdateStrategy strategy) throws ServiceException {
+    private CreateOrUpdateResult createOrUpdate(RealmModel realm, String clientId, BaseClientRepresentation client, CreateOrUpdateStrategy strategy) throws ServiceException {
         validateUnknownFields(client);
 
         boolean created = false;
         ClientModel model;
-        ClientModelMapper mapper = session.getProvider(ClientModelMapper.class, client.getProtocol());
+        ClientModelMapper mapper = getMapper(client.getProtocol());
 
-        if (mapper == null) {
-            throw new ServiceException("Mapper not found, unsupported client protocol: " + client.getProtocol(), Response.Status.BAD_REQUEST);
-        }
-
+        var clientResource = getClientResource(realm, clientId).orElse(null);
         if (clientResource != null) {
             if (strategy.equals(CreateOrUpdateStrategy.ONLY_CREATE)) {
                 throw new ServiceException("Client already exists", Response.Status.CONFLICT);
@@ -177,9 +160,9 @@ public class DefaultClientService implements ClientService {
             });
         }
 
-        handleRoles(client.getRoles());
+        handleRoles(clientResource, client.getRoles());
         if (client instanceof OIDCClientRepresentation oidcClient) {
-            handleServiceAccount(model, oidcClient);
+            handleServiceAccount(clientResource, model, oidcClient);
         }
 
         fireAdminEvent(created ? OperationType.CREATE : OperationType.UPDATE, mapper.fromModel(model));
@@ -227,7 +210,7 @@ public class DefaultClientService implements ClientService {
             default -> throw new ServiceException("Invalid patch type", Response.Status.UNSUPPORTED_MEDIA_TYPE);
         }
 
-        return createOrUpdate(updated, CreateOrUpdateStrategy.PATCH).representation();
+        return createOrUpdate(realm, clientId, updated, CreateOrUpdateStrategy.PATCH).representation();
     }
 
     @Override
@@ -238,13 +221,13 @@ public class DefaultClientService implements ClientService {
 
     @Override
     public void deleteClient(RealmModel realm, String clientId) throws ServiceException {
-        avoidClientIdPhishing();
-        if (clientResource == null) {
-            throw new ServiceException("Cannot find the specified client", Response.Status.NOT_FOUND);
-        }
-        var client = clientResource.getClient();
+        var clientResource = assertAndGetClientResource(realm, clientId);
+        var client = Optional.of(clientResource.viewClientModel())
+                .map(c -> getMapper(c.getProtocol()).fromModel(c))
+                .orElseThrow(() -> new ServiceException("Cannot map client model", Response.Status.BAD_REQUEST));
+
         clientResource.deleteClient();
-        fireAdminEvent(OperationType.DELETE, BaseClientRepresentation.createMinimalRepresentation(client.getClientId(), client.getProtocol()));
+        fireAdminEvent(OperationType.DELETE, client);
     }
 
     /**
@@ -252,7 +235,7 @@ public class DefaultClientService implements ClientService {
      * <p>
      * Reuses API v1 logic
      */
-    protected void handleRoles(Set<String> rolesFromRep) {
+    protected void handleRoles(ClientResource clientResource, Set<String> rolesFromRep) {
         var roleResource = clientResource.getRoleContainerResource();
 
         Set<String> desiredRoleNames = Optional.ofNullable(rolesFromRep)
@@ -283,7 +266,7 @@ public class DefaultClientService implements ClientService {
      * <p>
      * Reuses API v1 logic
      */
-    protected void handleServiceAccount(ClientModel model, OIDCClientRepresentation rep) {
+    protected void handleServiceAccount(ClientResource clientResource, ClientModel model, OIDCClientRepresentation rep) {
         boolean serviceAccountEnabled = rep.getLoginFlows().contains(OIDCClientRepresentation.Flow.SERVICE_ACCOUNT);
 
         ClientResource.updateClientServiceAccount(session, model, serviceAccountEnabled);
@@ -342,6 +325,28 @@ public class DefaultClientService implements ClientService {
     protected void validateUnknownFields(BaseClientRepresentation rep) {
         if (!rep.getAdditionalFields().isEmpty()) {
             throw new ServiceException("Payload contains unknown fields: " + rep.getAdditionalFields().keySet(), Response.Status.BAD_REQUEST);
+        }
+    }
+
+    private ClientResource assertAndGetClientResource(RealmModel realm, String clientId) {
+        var client = Optional.ofNullable(session.clients().getClientByClientId(realm, clientId));
+        // handles the phishing check
+        return clientsResource.getClient(client.map(ClientModel::getId).orElse(""));
+    }
+
+    protected ClientModelMapper getMapper(String protocol) {
+        return Optional.ofNullable(session.getProvider(ClientModelMapper.class, protocol))
+                .orElseThrow(() -> new ServiceException("Mapper not found, unsupported client protocol: " + protocol, Response.Status.BAD_REQUEST));
+    }
+
+    private Optional<ClientResource> getClientResource(RealmModel realm, String clientId) {
+        if (StringUtil.isBlank(clientId)) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.of(assertAndGetClientResource(realm, clientId));
+        } catch (WebApplicationException e) {
+            return Optional.empty();
         }
     }
 }
