@@ -43,7 +43,6 @@ import jakarta.ws.rs.BadRequestException;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DefaultValue;
 import jakarta.ws.rs.GET;
-import jakarta.ws.rs.HEAD;
 import jakarta.ws.rs.OPTIONS;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
@@ -151,8 +150,8 @@ import static org.keycloak.OID4VCConstants.OPENID_CREDENTIAL;
 import static org.keycloak.constants.OID4VCIConstants.CREDENTIAL_OFFER_CREATE;
 import static org.keycloak.constants.OID4VCIConstants.OID4VC_PROTOCOL;
 import static org.keycloak.models.oid4vci.CredentialScopeModel.VC_CONFIGURATION_ID;
-import static org.keycloak.protocol.oid4vc.model.ErrorType.INVALID_REQUEST;
 import static org.keycloak.protocol.oid4vc.model.ErrorType.INVALID_CREDENTIAL_REQUEST;
+import static org.keycloak.protocol.oid4vc.model.ErrorType.INVALID_REQUEST;
 import static org.keycloak.protocol.oid4vc.model.ErrorType.UNKNOWN_CREDENTIAL_CONFIGURATION;
 import static org.keycloak.protocol.oid4vc.model.ErrorType.UNKNOWN_CREDENTIAL_IDENTIFIER;
 
@@ -901,11 +900,7 @@ public class OID4VCIssuerEndpoint {
         AccessToken accessToken = authResult.token();
 
         // Pre-validate the proof nonce BEFORE looking up the credential offer state.
-        // This is required for correct nonce replay protection:
-        // After a successful issuance, the offer state is removed. On a replay attempt using the same
-        // (now-expired or already-used) nonce, findOfferStateByCredentialId() would return null because
-        // the state is gone, causing UNKNOWN_CREDENTIAL_IDENTIFIER to be returned instead of invalid_nonce.
-        // By validating the nonce first, we return the correct invalid_nonce error for replay attempts.
+        // This is required for correct nonce replay protection.
         preValidateProofNonce(credentialRequestVO, eventBuilder);
 
         // Check if the credential identifier exists in the offer state
