@@ -21,7 +21,6 @@ import java.security.cert.CertificateEncodingException;
 import java.security.cert.X509Certificate;
 import java.util.Base64;
 import java.util.List;
-import java.util.Objects;
 import java.util.stream.Collectors;
 
 import org.keycloak.crypto.SignatureSignerContext;
@@ -72,6 +71,18 @@ public class SdJwtCredentialSigner extends AbstractCredentialSigner<String> {
      * Uses the certificate chain from the signer to ensure we use the exact same key
      * that will be used for signing, following Keycloak's established pattern.
      * <p>
+     * The certificate chain originates from Keycloak's {@code KeyWrapper}, which reads
+     * certificates from the realm key store. Self-signed certificates can appear in two
+     * scenarios:
+     * <ul>
+     *   <li>A standalone self-signed certificate is the only certificate configured
+     *       (common in dev/test environments). In this case {@code getCertificateChain()}
+     *       returns a single-element list containing that self-signed certificate.</li>
+     *   <li>An admin imported a full chain including the root CA (trust anchor) into
+     *       the key store. The root CA is self-signed and must be stripped.</li>
+     * </ul>
+     * Both cases must be handled to comply with HAIP-6.1.1 requirements.
+     * <p>
      * See <a href="https://openid.github.io/OpenID4VC-HAIP/openid4vc-high-assurance-interoperability-profile-wg-draft.html#section-6.1.1">HAIP Section 6.1.1</a>
      * for the requirement on issuer identification and key resolution.
      *
@@ -79,42 +90,10 @@ public class SdJwtCredentialSigner extends AbstractCredentialSigner<String> {
      * @param signer              The signer context containing the certificate(s) for the signing key
      */
     private void addX5cHeader(SdJwtCredentialBody sdJwtCredentialBody, SignatureSignerContext signer) {
-        List<X509Certificate> certificateChain = signer.getCertificateChain();
+        List<X509Certificate> normalizedChain = X509CertificateChainUtil.normalizeForX5c(signer.getCertificateChain());
 
-        if (certificateChain != null && !certificateChain.isEmpty()) {
-            List<X509Certificate> filteredChain = certificateChain.stream()
-                    .filter(Objects::nonNull)
-                    .collect(Collectors.toList());
-
-            // Per HAIP-6.1.1: "The X.509 certificate signing the request MUST NOT be self-signed."
-            // Check if the first certificate (signing certificate) is self-signed
-            if (!filteredChain.isEmpty()) {
-                X509Certificate signingCert = filteredChain.get(0);
-                if (signingCert.getSubjectX500Principal().equals(signingCert.getIssuerX500Principal())) {
-                    LOGGER.debugf("Signing certificate is self-signed; skipping x5c header for SD-JWT credential per HAIP-6.1.1 (signing certificate MUST NOT be self-signed).");
-                    return;
-                }
-            }
-
-            // Remove trailing self-signed certificates (trust anchors) from the chain
-            // Per HAIP-6.1.1: "The X.509 certificate of the trust anchor MUST NOT be included in the x5c JOSE header"
-            while (!filteredChain.isEmpty()) {
-                X509Certificate last = filteredChain.get(filteredChain.size() - 1);
-                if (last.getSubjectX500Principal().equals(last.getIssuerX500Principal())) {
-                    // Last certificate is self-signed (trust anchor) -> drop it from x5c
-                    filteredChain.remove(filteredChain.size() - 1);
-                } else {
-                    break;
-                }
-            }
-
-            // If all certificates were self-signed (trust anchors), skip x5c header per HAIP-6.1.1
-            if (filteredChain.isEmpty()) {
-                LOGGER.debugf("All certificates in chain were self-signed (trust anchors); skipping x5c header for SD-JWT credential per HAIP-6.1.1.");
-                return;
-            }
-
-            List<String> x5cList = filteredChain.stream()
+        if (!normalizedChain.isEmpty()) {
+            List<String> x5cList = normalizedChain.stream()
                     .map(cert -> {
                         try {
                             return Base64.getEncoder().encodeToString(cert.getEncoded());
@@ -124,11 +103,7 @@ public class SdJwtCredentialSigner extends AbstractCredentialSigner<String> {
                     })
                     .collect(Collectors.toList());
 
-            if (!x5cList.isEmpty()) {
-                sdJwtCredentialBody.getIssuerSignedJWT().getJwsHeader().setX5c(x5cList);
-            } else {
-                LOGGER.debugf("No valid certificates found in certificate chain for x5c header in SD-JWT credential.");
-            }
+            sdJwtCredentialBody.getIssuerSignedJWT().getJwsHeader().setX5c(x5cList);
         } else {
             LOGGER.debugf("No certificate or certificate chain available for x5c header in SD-JWT credential.");
         }

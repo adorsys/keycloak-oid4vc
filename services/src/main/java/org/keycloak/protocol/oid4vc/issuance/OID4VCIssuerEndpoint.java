@@ -23,9 +23,6 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.PublicKey;
 import java.time.Instant;
-import java.time.ZoneOffset;
-import java.time.ZonedDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
@@ -241,7 +238,7 @@ public class OID4VCIssuerEndpoint {
                 .map(factory -> (CredentialBuilderFactory) factory)
                 .map(factory -> factory.create(keycloakSession, null))
                 .collect(Collectors.toMap(CredentialBuilder::getSupportedFormat,
-                        credentialBuilder ->  credentialBuilder));
+                        credentialBuilder -> credentialBuilder));
     }
 
     /**
@@ -336,7 +333,7 @@ public class OID4VCIssuerEndpoint {
 
         Response.ResponseBuilder responseBuilder = Response.ok()
                 .header(HttpHeaders.CACHE_CONTROL, "no-store")
-                .header(HttpHeaders.DATE, DateTimeFormatter.RFC_1123_DATE_TIME.format(ZonedDateTime.now(ZoneOffset.UTC)))
+                .header(HttpHeaders.DATE, HttpDateUtil.nowAsHttpDate())
                 .entity(nonceResponse);
 
         if (headerDPoPNonce != null) {
@@ -406,7 +403,7 @@ public class OID4VCIssuerEndpoint {
      *   <li>For a targeted offer, the issuing user must hold the {@code credential_offer_create} role</li>
      *   <li>An offer can optionally have a predefined expiry date</li>
      * </ul>
-     *
+     * <p>
      * The responseType supports "Same Device" and "Cross Device" use cases.
      * </p>
      * +---------+------------------+-------------------------------------------+
@@ -576,7 +573,7 @@ public class OID4VCIssuerEndpoint {
         if (responseType == OfferResponseType.QR) {
             byte[] qrBytes = generateQrCode(credOfferURI, width, height);
             return cors.add(Response.ok()
-                    .header(HttpHeaders.DATE, DateTimeFormatter.RFC_1123_DATE_TIME.format(ZonedDateTime.now(ZoneOffset.UTC)))
+                    .header(HttpHeaders.DATE, HttpDateUtil.nowAsHttpDate())
                     .type(RESPONSE_TYPE_IMG_PNG)
                     .entity(qrBytes));
         }
@@ -587,14 +584,14 @@ public class OID4VCIssuerEndpoint {
             String encodedBytes = Arrays.toString(Base64.getEncoder().encode(qrBytes));
             credOfferURI.setQrCode("data:image/png;base64," + encodedBytes);
             return cors.add(Response.ok()
-                    .header(HttpHeaders.DATE, DateTimeFormatter.RFC_1123_DATE_TIME.format(ZonedDateTime.now(ZoneOffset.UTC)))
+                    .header(HttpHeaders.DATE, HttpDateUtil.nowAsHttpDate())
                     .type(MediaType.APPLICATION_JSON)
                     .entity(credOfferURI));
         }
 
         // Respond with URI as 'application/json'
         return cors.add(Response.ok()
-                .header(HttpHeaders.DATE, DateTimeFormatter.RFC_1123_DATE_TIME.format(ZonedDateTime.now(ZoneOffset.UTC)))
+                .header(HttpHeaders.DATE, HttpDateUtil.nowAsHttpDate())
                 .type(MediaType.APPLICATION_JSON)
                 .entity(credOfferURI));
     }
@@ -706,7 +703,9 @@ public class OID4VCIssuerEndpoint {
         LOGGER.debugf("Responding with offer: %s", JsonSerialization.valueAsString(credOffer));
 
         eventBuilder.success();
-        return cors.add(Response.ok().header(HttpHeaders.DATE, DateTimeFormatter.RFC_1123_DATE_TIME.format(ZonedDateTime.now(ZoneOffset.UTC))).entity(credOffer));
+        return cors.add(Response.ok()
+                .header(HttpHeaders.DATE, HttpDateUtil.nowAsHttpDate())
+                .entity(credOffer));
     }
 
     private void checkScope(CredentialScopeModel requestedCredential) {
@@ -744,11 +743,7 @@ public class OID4VCIssuerEndpoint {
     @Produces({MediaType.APPLICATION_JSON, MediaType.APPLICATION_JWT})
     @Path(CREDENTIAL_PATH)
     public Response requestCredential(String requestPayload) {
-        try {
-            return requestCredentialInternal(requestPayload);
-        } finally {
-            session.removeAttribute("VALIDATED_NONCES");
-        }
+        return requestCredentialInternal(requestPayload);
     }
 
     private Response requestCredentialInternal(String requestPayload) {
@@ -887,8 +882,9 @@ public class OID4VCIssuerEndpoint {
         AccessToken accessToken = authResult.token();
 
         // Pre-validate the proof nonce BEFORE looking up the credential offer state.
-        // This is required for correct nonce replay protection.
-        preValidateProofNonce(credentialRequestVO, eventBuilder);
+        // This ensures that replayed nonces trigger the correct invalid_nonce error
+        // rather than the misleading unknown_credential_identifier.
+        Set<String> preValidatedNonces = preValidateProofNonce(credentialRequestVO, eventBuilder);
 
         // Check if the credential identifier exists in the offer state
         offerStorage = session.getProvider(CredentialOfferStorage.class);
@@ -1023,11 +1019,14 @@ public class OID4VCIssuerEndpoint {
             String jwe = encryptCredentialResponse(responseVO, encryptionParams, encryptionMetadata);
             response = Response.ok()
                     .type(MediaType.APPLICATION_JWT)
-                    .header(HttpHeaders.DATE, DateTimeFormatter.RFC_1123_DATE_TIME.format(ZonedDateTime.now(ZoneOffset.UTC)))
+                    .header(HttpHeaders.DATE, HttpDateUtil.nowAsHttpDate())
                     .entity(jwe)
                     .build();
         } else {
-            response = Response.ok().header(HttpHeaders.DATE, DateTimeFormatter.RFC_1123_DATE_TIME.format(ZonedDateTime.now(ZoneOffset.UTC))).entity(responseVO).build();
+            response = Response.ok()
+                    .header(HttpHeaders.DATE, HttpDateUtil.nowAsHttpDate())
+                    .entity(responseVO)
+                    .build();
         }
 
         // Mark event as successful
@@ -1036,26 +1035,16 @@ public class OID4VCIssuerEndpoint {
                 .detail(Details.VERIFIABLE_CREDENTIALS_ISSUED, String.valueOf(responseVO.getCredentials().size()));
         eventBuilder.success();
 
-        // After a successful issuance, consume all validated nonces so that replay attempts
+        // After a successful issuance, consume all pre-validated nonces so that replay attempts
         // using the same c_nonce are rejected with invalid_nonce, while still allowing
         // retries of previously failed requests with the same nonce.
         CNonceHandler cNonceHandler = session.getProvider(CNonceHandler.class);
-        if (cNonceHandler instanceof JwtCNonceHandler jwtCNonceHandler) {
-            Set<String> validatedNonces = (Set<String>) session.getAttribute("VALIDATED_NONCES");
-            if (validatedNonces != null && !validatedNonces.isEmpty()) {
-                String expectedAudience = OID4VCIssuerWellKnownProvider.getCredentialsEndpoint(session.getContext());
-                String expectedSource = OID4VCIssuerWellKnownProvider.getNonceEndpoint(session.getContext());
-                for (String nonce : validatedNonces) {
-                    try {
-                        jwtCNonceHandler.verifyCNonce(
-                                nonce,
-                                List.of(expectedAudience),
-                                Map.of(JwtCNonceHandler.SOURCE_ENDPOINT, expectedSource),
-                                true
-                        );
-                    } catch (VerificationException e) {
-                        LOGGER.debugf("Failed to consume c_nonce '%s' after successful issuance: %s", nonce, e.getMessage());
-                    }
+        if (cNonceHandler instanceof JwtCNonceHandler jwtCNonceHandler && !preValidatedNonces.isEmpty()) {
+            for (String nonce : preValidatedNonces) {
+                try {
+                    jwtCNonceHandler.consumeCNonce(nonce);
+                } catch (VerificationException e) {
+                    LOGGER.debugf("Failed to consume c_nonce '%s' after successful issuance: %s", nonce, e.getMessage());
                 }
             }
         }
@@ -1083,12 +1072,8 @@ public class OID4VCIssuerEndpoint {
             contentType = contentType.split(";")[0].trim(); // Handle parameters like charset
         }
         boolean contentTypeIsJwt = MediaType.APPLICATION_JWT.equalsIgnoreCase(contentType);
-        // Heuristic: if payload looks like a compact JWE (5 dot-separated parts) and is not JSON, treat it as encrypted
-        String trimmedPayload = requestPayload != null ? requestPayload.trim() : "";
-        boolean payloadLooksLikeJwe = !trimmedPayload.isEmpty()
-                && trimmedPayload.charAt(0) != '{'
-                && trimmedPayload.charAt(0) != '['
-                && trimmedPayload.chars().filter(ch -> ch == '.').count() == 4;
+        // Heuristic: if payload can be parsed as a compact JWE and is not JSON, treat it as encrypted.
+        boolean payloadLooksLikeJwe = isLikelyJwe(requestPayload);
 
         if (isRequestEncryptionRequired || contentTypeIsJwt || (requestEncryptionMetadata != null && payloadLooksLikeJwe)) {
             if (requestEncryptionMetadata == null && contentTypeIsJwt) {
@@ -1141,10 +1126,31 @@ public class OID4VCIssuerEndpoint {
     }
 
     /**
+     * Best-effort check whether the given payload looks like a compact JWE rather than JSON.
+     * <p>
+     * We first exclude obvious JSON payloads (starting with '{' or '['), then try to parse
+     * the string with Keycloak's {@link JWE} implementation. This keeps the heuristic simple
+     * and aligned with Keycloak's JWE parsing logic.
+     */
+    private boolean isLikelyJwe(String requestPayload) {
+        String trimmedPayload = requestPayload != null ? requestPayload.trim() : "";
+        if (trimmedPayload.isEmpty()) {
+            return false;
+        }
+        char first = trimmedPayload.charAt(0);
+        if (first == '{' || first == '[') {
+            // JSON payloads are handled separately
+            return false;
+        }
+        new JWE(trimmedPayload);
+        return true;
+    }
+
+    /**
      * Decrypts a JWE-encoded Credential Request and validates it against metadata.
      *
      * @param jweString The JWE compact serialization
-     * @param metadata The CredentialRequestEncryptionMetadata
+     * @param metadata  The CredentialRequestEncryptionMetadata
      * @return The parsed CredentialRequest
      * @throws JWEException If decryption or validation fails
      */
@@ -1224,7 +1230,7 @@ public class OID4VCIssuerEndpoint {
     /**
      * Decompresses content using the specified algorithm.
      *
-     * @param content The compressed content
+     * @param content      The compressed content
      * @param zipAlgorithm The compression algorithm (e.g., "DEF")
      * @return The decompressed content
      * @throws JWEException If decompression fails
@@ -1348,10 +1354,10 @@ public class OID4VCIssuerEndpoint {
     /**
      * Encrypts a CredentialResponse as a JWE using the provided encryption parameters.
      *
-     * @param response The CredentialResponse to encrypt
+     * @param response         The CredentialResponse to encrypt
      * @param encryptionParams The encryption parameters (alg, enc, jwk)
      * @return The compact JWE serialization
-     * @throws BadRequestException If encryption parameters are invalid
+     * @throws BadRequestException     If encryption parameters are invalid
      * @throws WebApplicationException If encryption fails due to server issues
      */
     private String encryptCredentialResponse(CredentialResponse response,
@@ -1637,31 +1643,30 @@ public class OID4VCIssuerEndpoint {
      * {@code invalid_nonce} rather than the misleading {@code UNKNOWN_CREDENTIAL_IDENTIFIER}.
      * </p>
      * <p>
-     * If no proofs are present in the request, this method does nothing (nonce is optional when
-     * the credential configuration does not require proof).
+     * If no proofs are present in the request, this method returns an empty set (nonce is optional
+     * when the credential configuration does not require proof).
      * </p>
      *
      * @param credentialRequestVO the credential request containing the proofs
      * @param eventBuilder        event builder for audit logging
+     * @return the set of unique nonces that were successfully validated; used later to consume
+     * nonces after a successful credential issuance
      */
-    private void preValidateProofNonce(CredentialRequest credentialRequestVO, EventBuilder eventBuilder) {
+    private Set<String> preValidateProofNonce(CredentialRequest credentialRequestVO, EventBuilder eventBuilder) {
+        Set<String> validatedNonces = new HashSet<>();
+
         Proofs proofs = credentialRequestVO.getProofs();
         if (proofs == null) {
-            return;
+            return validatedNonces;
         }
 
         CNonceHandler cNonceHandler = session.getProvider(CNonceHandler.class);
         if (cNonceHandler == null) {
-            return;
+            return validatedNonces;
         }
 
         String expectedAudience = OID4VCIssuerWellKnownProvider.getCredentialsEndpoint(session.getContext());
         String expectedSource = OID4VCIssuerWellKnownProvider.getNonceEndpoint(session.getContext());
-
-        // Track nonces in this request to allow multiple proofs with the same nonce.
-        // This set is per-request; it is also used later to consume nonces after successful issuance.
-        Set<String> validatedNonces = new HashSet<>();
-        session.setAttribute("VALIDATED_NONCES", validatedNonces);
 
         // Extract and validate nonce from JWT proofs
         List<String> jwtProofs = proofs.getJwt();
@@ -1674,7 +1679,6 @@ public class OID4VCIssuerEndpoint {
 
                     // Only validate each unique nonce once per request
                     if (nonce != null && !validatedNonces.contains(nonce)) {
-                        // Validate the nonce without consuming it yet; consumption happens after success
                         cNonceHandler.verifyCNonce(
                                 nonce,
                                 List.of(expectedAudience),
@@ -1706,7 +1710,6 @@ public class OID4VCIssuerEndpoint {
 
                     // Only validate each unique nonce once per request
                     if (nonce != null && !validatedNonces.contains(nonce)) {
-                        // Validate the nonce without consuming it yet; consumption happens after success
                         cNonceHandler.verifyCNonce(
                                 nonce,
                                 List.of(expectedAudience),
@@ -1716,10 +1719,8 @@ public class OID4VCIssuerEndpoint {
                     }
                 } catch (VerificationException e) {
                     LOGGER.debugf("Pre-validation of attestation proof nonce failed: %s", e.getMessage());
-                    // Preserve the detailed validation error message for debugging
                     String errorMessage = e.getMessage();
                     eventBuilder.detail(Details.REASON, errorMessage).error(ErrorType.INVALID_NONCE.getValue());
-                    // Wrap the exception to preserve the message for test assertions
                     throw new BadRequestException("Could not validate provided proof",
                             getErrorResponse(ErrorType.INVALID_NONCE, errorMessage), new VerificationException(errorMessage));
                 } catch (Exception e) {
@@ -1728,8 +1729,7 @@ public class OID4VCIssuerEndpoint {
             }
         }
 
-        // Store validated nonces in session attribute so proof validators can skip re-validation
-        session.setAttribute("VALIDATED_NONCES", validatedNonces);
+        return validatedNonces;
     }
 
     private CredentialScopeModel getClientScopeModel(SupportedCredentialConfiguration credentialConfig) {
@@ -1752,7 +1752,7 @@ public class OID4VCIssuerEndpoint {
         errorResponse.setError(errorType).setErrorDescription(errorDescription);
         return Response
                 .status(Response.Status.BAD_REQUEST)
-                .header(HttpHeaders.DATE, DateTimeFormatter.RFC_1123_DATE_TIME.format(ZonedDateTime.now(ZoneOffset.UTC)))
+                .header(HttpHeaders.DATE, HttpDateUtil.nowAsHttpDate())
                 .entity(errorResponse)
                 .type(MediaType.APPLICATION_JSON);
     }

@@ -16,9 +16,6 @@
  */
 package org.keycloak.protocol.oid4vc.issuance;
 
-import java.time.ZoneOffset;
-import java.time.ZonedDateTime;
-import java.time.format.DateTimeFormatter;
 
 import jakarta.ws.rs.core.UriInfo;
 
@@ -63,7 +60,9 @@ public class JWTVCIssuerWellKnownProvider implements WellKnownProvider {
 
         addDeprecationHeadersIfOldRoute();
 
-        session.getContext().getHttpResponse().setHeader(HttpHeaders.DATE, DateTimeFormatter.RFC_1123_DATE_TIME.format(ZonedDateTime.now(ZoneOffset.UTC)));
+        // OID4VCI conformance: Date header is required on issuer and metadata responses
+        // (RFC 7231 Date header in RFC 1123 format).
+        session.getContext().getHttpResponse().setHeader(HttpHeaders.DATE, HttpDateUtil.nowAsHttpDate());
 
         JWTVCIssuerMetadata config = new JWTVCIssuerMetadata();
         config.setIssuer(Urls.realmIssuer(frontendUriInfo.getBaseUri(), realm.getName()));

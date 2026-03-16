@@ -104,38 +104,70 @@ public class JwtCNonceHandler implements CNonceHandler {
     @Override
     public void verifyCNonce(String cNonce, List<String> audiences, @Nullable Map<String, Object> additionalDetails)
             throws VerificationException {
-        // Default verification does NOT consume the nonce; consumption is controlled explicitly
-        // by callers that need replay protection (e.g. after successful issuance).
-        verifyCNonce(cNonce, audiences, additionalDetails, false);
-    }
-
-    /**
-     * Verifies a c_nonce with optional consumption.
-     *
-     * @param cNonce            the nonce to verify
-     * @param audiences         expected audiences
-     * @param additionalDetails additional validation details
-     * @param consume           whether to consume the nonce (mark as used)
-     * @throws VerificationException if verification fails
-     */
-    public void verifyCNonce(String cNonce, List<String> audiences, @Nullable Map<String, Object> additionalDetails, boolean consume)
-            throws VerificationException {
         if (cNonce == null) {
             throw new VerificationException("c_nonce is required");
         }
 
-        // Check if nonce has already been used (replay protection)
-        if (consume) {
-            if (!keycloakSession.singleUseObjects().putIfAbsent(cNonce, 60)) {
-                throw new VerificationException("c_nonce has already been used");
-            }
-        } else {
-            // Just check if nonce exists (already consumed)
-            if (keycloakSession.singleUseObjects().contains(cNonce)) {
-                throw new VerificationException("c_nonce has already been used");
-            }
+        // Reject nonces that have already been consumed (replay protection)
+        if (keycloakSession.singleUseObjects().contains(cNonce)) {
+            throw new VerificationException("c_nonce has already been used");
         }
 
+        verifyCNonceToken(cNonce, audiences, additionalDetails);
+    }
+
+    /**
+     * Marks a c_nonce as consumed so that subsequent replay attempts are rejected.
+     * <p>
+     * The TTL for the single-use record is derived from the {@code exp} claim inside the
+     * JWT c_nonce itself, so the record naturally expires when the nonce would have expired
+     * anyway. This avoids using an arbitrary hard-coded TTL.
+     * </p>
+     *
+     * @param cNonce the nonce to consume
+     * @throws VerificationException if the nonce was already consumed or cannot be parsed
+     */
+    public void consumeCNonce(String cNonce) throws VerificationException {
+        if (cNonce == null) {
+            throw new VerificationException("c_nonce is required");
+        }
+
+        // Derive TTL from the exp claim in the JWT c_nonce
+        int ttlSeconds = getExpirationTtl(cNonce);
+
+        if (!keycloakSession.singleUseObjects().putIfAbsent(cNonce, ttlSeconds)) {
+            throw new VerificationException("c_nonce has already been used");
+        }
+    }
+
+    /**
+     * Extracts the remaining TTL (in seconds) from the {@code exp} claim of a JWT c_nonce.
+     * Falls back to the configured nonce lifetime if the token cannot be parsed or has no exp.
+     */
+    private int getExpirationTtl(String cNonce) {
+        try {
+            TokenVerifier<JsonWebToken> tokenVerifier = TokenVerifier.create(cNonce, JsonWebToken.class);
+            JsonWebToken token = tokenVerifier.getToken();
+            Long exp = token.getExp();
+            if (exp != null) {
+                long remaining = exp - Time.currentTime();
+                // Use at least 60s to guard against clock skew; cap at a reasonable upper bound
+                return (int) Math.max(60, remaining);
+            }
+        } catch (VerificationException e) {
+            logger.debug("Could not parse c_nonce JWT to extract exp for TTL; using default", e);
+        }
+        // Fallback: use the configured nonce lifetime
+        RealmModel realm = keycloakSession.getContext().getRealm();
+        return realm.getAttribute(OID4VCIConstants.C_NONCE_LIFETIME_IN_SECONDS, 60);
+    }
+
+    /**
+     * Verifies the JWT c_nonce token (signature, issuer, audience, salt, expiration, additional claims).
+     * This is a pure verification with no side effects on replay state.
+     */
+    private void verifyCNonceToken(String cNonce, List<String> audiences, @Nullable Map<String, Object> additionalDetails)
+            throws VerificationException {
         TokenVerifier<JsonWebToken> verifier = TokenVerifier.create(cNonce, JsonWebToken.class);
         KeycloakContext keycloakContext = keycloakSession.getContext();
         List<TokenVerifier.Predicate<JsonWebToken>> verifiers = //
