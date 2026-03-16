@@ -78,7 +78,7 @@ public abstract class AbstractScimResourceTypeProvider<M extends Model, R extend
 
         KeycloakContext context = session.getContext();
 
-        if (!context.hasPermission(model, getRealmResourceType(), AdminPermissionsSchema.MANAGE)) {
+        if (!context.hasPermission(model, getRealmResourceType(), AdminPermissionsSchema.VIEW)) {
             throw new ForbiddenException();
         }
 
@@ -92,9 +92,6 @@ public abstract class AbstractScimResourceTypeProvider<M extends Model, R extend
     @Override
     public Stream<R> getAll(SearchRequest searchRequest) {
         return getModels(searchRequest).map(m -> {
-            if (AdminPermissionsSchema.SCHEMA.isAdminPermissionsEnabled(session.getContext().getRealm())) {
-                return get(m.getId());
-            }
             try {
                 return get(m.getId());
             } catch (ForbiddenException fe) {
@@ -149,16 +146,17 @@ public abstract class AbstractScimResourceTypeProvider<M extends Model, R extend
 
     @Override
     public String getSchema() {
-        return schema.getName();
+        return schema.getId();
     }
 
+    @Override
     public List<ModelSchema<M, R>> getSchemas() {
         return schemas;
     }
 
     @Override
     public List<String> getSchemaExtensions() {
-        return schemaExtensions.stream().map(ModelSchema::getName).toList();
+        return schemaExtensions.stream().map(ModelSchema::getId).toList();
     }
 
     protected abstract R onCreate(R resource);
@@ -175,7 +173,7 @@ public abstract class AbstractScimResourceTypeProvider<M extends Model, R extend
 
     protected void populate(M model, R resource) {
         for (ModelSchema<M, R> schema : schemas) {
-            if (resource.hasSchema(schema.getName())) {
+            if (resource.hasSchema(schema.getId())) {
                 schema.populate(model, resource);
             }
         }

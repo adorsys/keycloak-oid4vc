@@ -47,9 +47,13 @@ import org.keycloak.testframework.realm.ManagedRealm;
 import org.keycloak.testframework.realm.RealmConfig;
 import org.keycloak.testframework.realm.RealmConfigBuilder;
 import org.keycloak.testframework.realm.UserConfigBuilder;
+import org.keycloak.testframework.remote.timeoffset.InjectTimeOffSet;
+import org.keycloak.testframework.remote.timeoffset.TimeOffSet;
 import org.keycloak.testframework.server.KeycloakServerConfig;
 import org.keycloak.testframework.server.KeycloakServerConfigBuilder;
 import org.keycloak.testframework.server.KeycloakUrls;
+import org.keycloak.testframework.ui.annotations.InjectWebDriver;
+import org.keycloak.testframework.ui.webdriver.ManagedWebDriver;
 import org.keycloak.util.AuthorizationDetailsParser;
 import org.keycloak.util.JsonSerialization;
 
@@ -61,6 +65,12 @@ import static org.keycloak.OID4VCConstants.OID4VCI_ENABLED_ATTRIBUTE_KEY;
 import static org.keycloak.OID4VCConstants.OPENID_CREDENTIAL;
 import static org.keycloak.constants.OID4VCIConstants.CREDENTIAL_OFFER_CREATE;
 
+/**
+ * Abstract base class for OID4VCI Testing
+ *
+ * [TODO] Can the server runtime mode be configured by the testcase?
+ * Server-side debugging: KC_TEST_SERVER=embedded
+ */
 public abstract class OID4VCIssuerTestBase {
 
     final Logger log = Logger.getLogger(getClass());
@@ -83,6 +93,12 @@ public abstract class OID4VCIssuerTestBase {
 
     @InjectOAuthClient
     OAuthClient oauth;
+
+    @InjectTimeOffSet
+    TimeOffSet timeOffSet;
+
+    @InjectWebDriver
+    ManagedWebDriver driver;
 
     String clientId = "test-app";
     ClientRepresentation client;
@@ -396,6 +412,7 @@ public abstract class OID4VCIssuerTestBase {
         @Override
         public RealmConfigBuilder configure(RealmConfigBuilder realm) {
             realm.name(TEST_REALM_NAME);
+            realm.verifiableCredentialsEnabled(true);
             return realm;
         }
     }

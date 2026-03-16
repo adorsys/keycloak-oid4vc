@@ -7,6 +7,7 @@ import jakarta.persistence.criteria.Root;
 
 import org.keycloak.scim.filter.ScimFilterParser;
 import org.keycloak.scim.filter.ScimFilterParserBaseVisitor;
+import org.keycloak.scim.resource.spi.ScimResourceTypeProvider;
 
 /**
  * Visitor that converts an SCIM filter AST into a JPA Predicate.
@@ -19,9 +20,9 @@ public class ScimJPAPredicateEvaluator extends ScimFilterParserBaseVisitor<JPAFi
     private final ScimJPAPredicateProvider predicateProvider;
 
     @SuppressWarnings("unchecked,rawtypes")
-    public ScimJPAPredicateEvaluator(List schemas, CriteriaBuilder cb, Root<?> root) {
+    public ScimJPAPredicateEvaluator(ScimResourceTypeProvider resourceTypeProvider, List schemas, CriteriaBuilder cb, Root<?> root) {
         this.cb = cb;
-        this.predicateProvider = new ScimJPAPredicateProvider(schemas, cb, root);
+        this.predicateProvider = new ScimJPAPredicateProvider(resourceTypeProvider, schemas, cb, root);
     }
 
     @Override
@@ -83,7 +84,8 @@ public class ScimJPAPredicateEvaluator extends ScimFilterParserBaseVisitor<JPAFi
     @Override
     public JPAFilterResult visitPresentExpression(ScimFilterParser.PresentExpressionContext ctx) {
         String scimAttrPath = ctx.ATTRPATH().getText();
-        return predicateProvider.createPresentPredicate(scimAttrPath);
+        String operator = ctx.PR().getText().toLowerCase();
+        return predicateProvider.createPredicate(scimAttrPath, operator, null);
     }
 
     @Override
@@ -92,7 +94,7 @@ public class ScimJPAPredicateEvaluator extends ScimFilterParserBaseVisitor<JPAFi
         String operator = ctx.compareOp().getText().toLowerCase();
         String value = extractValue(ctx.compValue());
 
-        return predicateProvider.createComparisonPredicate(scimAttrPath, operator, value);
+        return predicateProvider.createPredicate(scimAttrPath, operator, value);
     }
 
     private String extractValue(ScimFilterParser.CompValueContext ctx) {

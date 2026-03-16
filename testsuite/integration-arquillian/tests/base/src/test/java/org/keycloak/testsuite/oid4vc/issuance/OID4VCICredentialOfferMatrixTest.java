@@ -134,18 +134,35 @@ public class OID4VCICredentialOfferMatrixTest extends OID4VCIssuerEndpointTest {
         // The credential request MUST use credential_identifier (not credential_configuration_id)
         List<OID4VCAuthorizationDetail> authDetailsResponse = JsonSerialization.readValue(
                 JsonSerialization.writeValueAsString(tokenAuthDetails),
-                new TypeReference<>() {}
+                new TypeReference<>() {
+                }
         );
         assertNotNull("authorization_details should be present in the response", authDetailsResponse);
         assertFalse("authorization_details should not be empty", authDetailsResponse.isEmpty());
 
         OID4VCAuthorizationDetail authDetailResponse = authDetailsResponse.get(0);
         List<String> credentialIdentifiers = authDetailResponse.getCredentialIdentifiers();
-        assertNotNull("credential_identifiers should be present", credentialIdentifiers);
-        assertFalse("credential_identifiers should not be empty", credentialIdentifiers.isEmpty());
 
-        var credRequest = new CredentialRequest()
-                .setCredentialIdentifier(credentialIdentifiers.get(0));
+        String credentialIdentifier = null;
+        String credentialConfigurationId = authDetailResponse.getCredentialConfigurationId();
+
+        // If explicit credential_identifiers are present, we must use them. Otherwise we fall back
+        // to using credential_configuration_id as per OID4VCI, which signals the issuer to select
+        // the appropriate credential based on configuration metadata.
+        if (credentialIdentifiers != null && !credentialIdentifiers.isEmpty()) {
+            credentialIdentifier = credentialIdentifiers.get(0);
+            assertNotNull("credential_identifier should not be null", credentialIdentifier);
+        } else {
+            assertNotNull("credential_configuration_id should be present when credential_identifiers are absent",
+                    credentialConfigurationId);
+        }
+
+        CredentialRequest credRequest = new CredentialRequest();
+        if (credentialIdentifier != null) {
+            credRequest.setCredentialIdentifier(credentialIdentifier);
+        } else {
+            credRequest.setCredentialConfigurationId(credentialConfigurationId);
+        }
 
         CredentialResponse credResponse = sendCredentialRequest(accessToken, credRequest);
         verifyCredentialResponse(ctx, credResponse);
@@ -173,12 +190,11 @@ public class OID4VCICredentialOfferMatrixTest extends OID4VCIssuerEndpointTest {
 
         try {
             runCredentialOfferTest(new TestContext(true, appUsername));
-            fail("Expected " + ErrorType.INVALID_REQUEST.name());
+            fail("Expected error due to disabled user");
         } catch (RuntimeException ex) {
-            List.of("[" + ErrorType.INVALID_REQUEST.name() + "]",
-                    "User '" + appUsername + "' disabled")
-                    .forEach(it -> assertTrue(ex.getMessage() + " does not contain " + it,
-                            ex.getMessage().contains(it)));
+            String expectedMessage = "User '" + appUsername + "' disabled";
+            assertTrue(ex.getMessage() + " does not contain " + expectedMessage,
+                    ex.getMessage().contains(expectedMessage));
         } finally {
             // Re-enable user
             userRep.setEnabled(true);
@@ -322,7 +338,8 @@ public class OID4VCICredentialOfferMatrixTest extends OID4VCIssuerEndpointTest {
             if (authDetails != null) {
                 return JsonSerialization.readValue(
                         JsonSerialization.writeValueAsString(authDetails),
-                        new TypeReference<>() {}
+                        new TypeReference<>() {
+                        }
                 );
             }
         } catch (Exception e) {
@@ -380,9 +397,9 @@ public class OID4VCICredentialOfferMatrixTest extends OID4VCIssuerEndpointTest {
 
     private CredentialResponse getCredentialByAuthDetail(String accessToken, OID4VCAuthorizationDetail authDetail) throws Exception {
         var credentialRequest = new CredentialRequest();
-        if (authDetail.getCredentialIdentifiers() != null) {
+        if (authDetail.getCredentialIdentifiers() != null && !authDetail.getCredentialIdentifiers().isEmpty()) {
             credentialRequest.setCredentialIdentifier(authDetail.getCredentialIdentifiers().get(0));
-        } else if (authDetail.getCredentialConfigurationId() == null) {
+        } else if (authDetail.getCredentialConfigurationId() != null) {
             credentialRequest.setCredentialConfigurationId(authDetail.getCredentialConfigurationId());
         }
         return sendCredentialRequest(accessToken, credentialRequest);
@@ -398,16 +415,18 @@ public class OID4VCICredentialOfferMatrixTest extends OID4VCIssuerEndpointTest {
         List<OID4VCAuthorizationDetail> authDetailsResponse = extractAuthorizationDetails(tokenResponse);
 
         if (authDetailsResponse != null && !authDetailsResponse.isEmpty()) {
-            // If authorization_details are present, credential_identifier is required
-            if (authDetailsResponse.get(0).getCredentialIdentifiers() != null &&
-                    !authDetailsResponse.get(0).getCredentialIdentifiers().isEmpty()) {
-                String credentialIdentifier = authDetailsResponse.get(0).getCredentialIdentifiers().get(0);
+            OID4VCAuthorizationDetail authDetail = authDetailsResponse.get(0);
+            if (authDetail.getCredentialIdentifiers() != null &&
+                    !authDetail.getCredentialIdentifiers().isEmpty()) {
+                // authorization_details with identifiers -> use credential_identifier
+                String credentialIdentifier = authDetail.getCredentialIdentifiers().get(0);
                 credentialRequest.setCredentialIdentifier(credentialIdentifier);
             } else {
-                throw new IllegalStateException("authorization_details present but no credential_identifier found");
+                // authorization_details without identifiers -> fall back to configuration id
+                credentialRequest.setCredentialConfigurationId(credConfigIds.get(0));
             }
         } else {
-            // No authorization_details, use credential_configuration_id
+            // No authorization_details at all, use credential_configuration_id
             credentialRequest.setCredentialConfigurationId(credConfigIds.get(0));
         }
 

@@ -119,7 +119,10 @@ For more details on the Operator configuration, see the https://www.keycloak.org
 
 If you are using an external {jdgserver_name} server for example in a multi-cluster setup, you should upgrade to version 16.0 as this is the version {project_name} was tested with.
 
-When upgrading the external {jdgserver_name}, enable the legacy metrics to ensure that alerts and dashboard still receive the same metrics as before. See https://www.keycloak.org/observability/metrics-for-troubleshooting-external-infinispan-multi-cluster[External Infinispan metrics] and where to add `legacy: true` to the ConfigMap.
+When upgrading the external {jdgserver_name}, the following changes are necessary:
+
+1. Enable the legacy metrics to ensure that alerts and dashboard still receive the same metrics as before. See https://www.keycloak.org/observability/metrics-for-troubleshooting-external-infinispan-multi-cluster[External Infinispan metrics] and where to add `legacy: true` to the ConfigMap.
+2. Define `indexing.startupMode=NONE` in your Cache configurations. See https://www.keycloak.org/high-availability/multi-cluster/deploy-infinispan-kubernetes-crossdc[Deploying Infinispan] for examples.
 
 === Usage of virtual threads for embedded caches
 
@@ -168,7 +171,8 @@ This behavior is enabled by default and can be controlled with the server option
 
 * `--truststore-kubernetes-enabled=true|false` (default: `true`)
 
-No changes are required for most deployments. If you previously relied on the Operator to manage these truststore entries, the server now performs the same function directly.
+No changes are required for most deployments.
+If you previously relied on the Operator to manage these truststore entries, the server now performs the same function directly.
 
 WARNING: when `https-client-auth` is set to `required` or `request` without an explicit `https-trust-store-file`, mTLS client certificate validation falls back to the system truststore. With `truststore-kubernetes-enabled=true`, this means certificates signed by the Kubernetes cluster CA will be accepted as valid client certificates. If this is not desired, either set `https-trust-store-file` explicitly or disable `truststore-kubernetes-enabled`.
 
@@ -208,10 +212,6 @@ They should avoid keeping the returned items in memory by for example binding th
 
 A similar change was done for the `UserSessionPersisterProvider`.
 
-=== OpenJDK upgrade
-
-The official container images for server and the Operator now use OpenJDK 25 instead of previously used OpenJDK 21.
-
 === Updated HTTP status code for invalid_grant errors in the Resource Owner Password Credentials Grant
 
 Authentication failures resulting in an invalid_grant now correctly return an HTTP 400 status code instead of 401 for the Resource Owner Password Credentials and UMA Permission grants. This change was done to properly follow the OAuth 2.0 Authorization Framework specification.
@@ -241,6 +241,12 @@ The default value is 30 minutes, as these operations may take a while to complet
 
 The provider configuration `spi-dblock--jpa--lock-wait-timeout` option has been replaced with the CLI option `transaction-setup-timeout`.
 
+=== New columns for tracking resource creation and modification timestamps
+
+The `USER_ENTITY` table now has a new column `LAST_MODIFIED_TIMESTAMP`, and the `KEYCLOAK_GROUP` table now has two new columns `CREATED_TIMESTAMP` and `LAST_MODIFIED_TIMESTAMP`. These columns track when users and groups were created and last modified.
+
+For existing users and groups created before this upgrade, these columns will be `NULL`. Newly created or modified resources will have these timestamps populated automatically.
+
 === Database character encoding checks during startup
 
 {project_name} will log a warning if the database is not configured to use UTF-8 encoding.
@@ -253,6 +259,29 @@ As part of this change, the database configuration documentation has been update
 * For MySQL and MariaDB, the documentation now recommends using `utf8mb4` as the character set.
 The previously documented `utf8mb3` (or `utf8`) character set has been removed from the documentation due to its limitations in storing certain Unicode characters.
 * Previously recommended JDBC driver settings for Oracle, MySQL, and MariaDB have been removed from the documentation, as current versions of these databases use appropriate default values.
+
+=== Automatic database connection timeout defaults
+
+To improve failover behavior and startup resilience during network issues, {project_name} now sets a default database connection timeout of 10 seconds.
+See https://www.keycloak.org/server/db[Configuring the database] for the list of databases, and on how to change this default.
+
+=== New CLI options for database TLS configuration
+
+New CLI options are now available to configure TLS encryption for database connections in a vendor-independent way:
+
+* `db-tls-mode`: Sets the TLS mode for the database connection.
+Valid values are `disabled` (default) and `verify-server`.
+When set to `disabled`, {project_name} does not configure TLS and the driver's default behavior applies.
+When set to `verify-server`, encryption and server identity verification are enabled.
+* `db-tls-trust-store-file`: The path to the truststore file containing the database server certificate or Certificate Authority (CA) certificate.
+* `db-tls-trust-store-password`: The password to access the truststore file.
+* `db-tls-trust-store-type`: The type of the truststore file (for example, `JKS` or `PKCS12`).
+
+These options replace the need to configure vendor-specific JDBC properties manually. {project_name} automatically translates them to the appropriate driver-specific settings.
+
+As an alternative to specifying a truststore file with `db-tls-trust-store-file`, you can use `--truststore-paths` to add the certificate to the Java truststore.
+
+See the https://www.keycloak.org/server/db#_secure_the_database_connection[Secure the database connection] section of the database guide for more details and examples.
 
 // ------------------------ Deprecated features ------------------------ //
 == Deprecated features

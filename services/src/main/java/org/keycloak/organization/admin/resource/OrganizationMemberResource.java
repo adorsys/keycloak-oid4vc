@@ -250,7 +250,7 @@ public class OrganizationMemberResource {
             throw ErrorResponse.error("id cannot be null", Status.BAD_REQUEST);
         }
 
-        UserModel member = getUser(memberId);
+        UserModel member = organization == null ? getUser(memberId) : getMember(memberId);
 
         return provider.getByMember(member)
                 .map(model -> ModelToRepresentation.toRepresentation(model, briefRepresentation));
@@ -271,6 +271,7 @@ public class OrganizationMemberResource {
     public Stream<GroupRepresentation> groupMemberships(@PathParam("member-id") String memberId,
                                                         @QueryParam("first") Integer firstResult,
                                                         @QueryParam("max") Integer maxResults,
+                                                        @QueryParam("search") String search,
                                                         @QueryParam("briefRepresentation") @DefaultValue("true") boolean briefRepresentation) {
         if (StringUtil.isBlank(memberId)) {
             throw ErrorResponse.error("id cannot be null", Status.BAD_REQUEST);
@@ -278,7 +279,7 @@ public class OrganizationMemberResource {
 
         UserModel member = getUser(memberId);
 
-        return provider.getOrganizationGroupsByMember(organization, member, firstResult, maxResults)
+        return provider.getOrganizationGroupsByMember(organization, member, search, firstResult, maxResults)
                 .map(group -> ModelToRepresentation.toRepresentation(group, !briefRepresentation));
     }
 
