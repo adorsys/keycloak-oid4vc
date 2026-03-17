@@ -111,32 +111,32 @@ public abstract class OID4VCIssuerTestBase {
     static final String minimalJwtTypeCredentialScopeName = "vc-with-minimal-config";
     static final String minimalJwtTypeCredentialConfigurationIdName = "vc-with-minimal-config-id";
 
-    CredentialScopeRepresentation minimalJwtTypeCredentialScope;
-    CredentialScopeRepresentation jwtTypeCredentialScope;
-    CredentialScopeRepresentation sdJwtTypeCredentialScope;
+    protected CredentialScopeRepresentation minimalJwtTypeCredentialScope;
+    protected CredentialScopeRepresentation jwtTypeCredentialScope;
+    protected CredentialScopeRepresentation sdJwtTypeCredentialScope;
 
     @InjectRealm(config = VCTestRealmConfig.class)
-    ManagedRealm testRealm;
+    protected ManagedRealm testRealm;
 
     @InjectClient(ref = "oid4vci-client", config = OID4VCIClient.class)
-    ManagedClient managedClient;
+    protected ManagedClient managedClient;
 
     @InjectOAuthClient
-    OAuthClient oauth;
+    protected OAuthClient oauth;
 
     @InjectTimeOffSet
-    TimeOffSet timeOffSet;
+    protected TimeOffSet timeOffSet;
 
     @InjectEvents
     protected Events events;
 
     @InjectWebDriver
-    ManagedWebDriver driver;
+    protected ManagedWebDriver driver;
 
-    ClientRepresentation client;
+    protected ClientRepresentation client;
 
     @InjectAdminClient
-    Keycloak keycloak;
+    protected Keycloak keycloak;
 
     @TestSetup
     public void configureTestRealm() {
@@ -214,6 +214,12 @@ public abstract class OID4VCIssuerTestBase {
     CredentialScopeRepresentation requireExistingCredentialScope(String scopeName) {
         return Optional.ofNullable(getExistingCredentialScope(scopeName))
                 .orElseThrow(() -> new IllegalStateException("No such credential scope: " + scopeName));
+    }
+
+    protected UserRepresentation getExistingUser(String username) {
+        return testRealm.admin().users().search(username).stream()
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("No such user: " + username));
     }
 
     public static ProtocolMapperRepresentation getIssuedAtTimeMapper(String subjectProperty, String truncateToTimeUnit, String valueSource) {
@@ -492,7 +498,7 @@ public abstract class OID4VCIssuerTestBase {
 
     // Config ----------------------------------------------------------------------------------------------------------
 
-    static class VCTestServerConfig implements KeycloakServerConfig {
+    public static class VCTestServerConfig implements KeycloakServerConfig {
         @Override
         public KeycloakServerConfigBuilder configure(KeycloakServerConfigBuilder config) {
             return config.features(Profile.Feature.OID4VC_VCI);
