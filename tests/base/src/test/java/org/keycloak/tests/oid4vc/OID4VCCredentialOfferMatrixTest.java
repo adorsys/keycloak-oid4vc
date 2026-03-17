@@ -2,14 +2,31 @@ package org.keycloak.tests.oid4vc;
 
 import java.net.URI;
 import java.util.List;
+import java.security.KeyPairGenerator;
+import java.security.NoSuchAlgorithmException;
+import java.security.NoSuchProviderException;
 
 import org.keycloak.TokenVerifier;
 import org.keycloak.admin.client.resource.UserResource;
+import org.keycloak.common.util.BouncyIntegration;
+import org.keycloak.common.util.KeyUtils;
+import org.keycloak.crypto.ECDSASignatureSignerContext;
+import org.keycloak.crypto.KeyUse;
+import org.keycloak.jose.jwk.JWK;
+import org.keycloak.jose.jwk.JWKBuilder;
+import org.keycloak.jose.jws.JWSBuilder;
+import org.keycloak.jose.jws.JWSHeader;
+import org.keycloak.jose.jws.JWSInput;
+import org.keycloak.crypto.KeyWrapper;
+import org.keycloak.protocol.oid4vc.issuance.keybinding.JwtProofValidator;
 import org.keycloak.protocol.oid4vc.model.CredentialIssuer;
 import org.keycloak.protocol.oid4vc.model.CredentialResponse;
+import org.keycloak.protocol.oid4vc.model.CredentialResponse.Credential;
 import org.keycloak.protocol.oid4vc.model.CredentialsOffer;
 import org.keycloak.protocol.oid4vc.model.OID4VCAuthorizationDetail;
+import org.keycloak.protocol.oid4vc.model.Proofs;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
+import org.keycloak.representations.AccessToken;
 import org.keycloak.representations.JsonWebToken;
 import org.keycloak.representations.idm.RealmRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
@@ -92,13 +109,9 @@ public class OID4VCCredentialOfferMatrixTest extends OID4VCIssuerTestBase {
         assertNotNull(accessToken, "No accessToken");
 
         String authorizedIdentifier = ctx.getAuthorizedCredentialIdentifier();
-        assertNotNull(authorizedIdentifier,"No authorized credential identifier");
+        assertNotNull(authorizedIdentifier, "No authorized credential identifier");
 
-        // Send the CredentialRequest
-        //
-        CredentialResponse credResponse = wallet.credentialRequest(ctx, accessToken)
-                .credentialIdentifier(authorizedIdentifier)
-                .send().getCredentialResponse();
+        CredentialResponse credResponse = requestCredentialWithProofByIdentifier(ctx, accessToken, authorizedIdentifier);
 
         verifyCredentialResponse(ctx, ctx.holder, credResponse);
     }
@@ -132,13 +145,9 @@ public class OID4VCCredentialOfferMatrixTest extends OID4VCIssuerTestBase {
         assertNotNull(accessToken, "No accessToken");
 
         String authorizedIdentifier = ctx.getAuthorizedCredentialIdentifier();
-        assertNotNull(authorizedIdentifier,"No authorized credential identifier");
+        assertNotNull(authorizedIdentifier, "No authorized credential identifier");
 
-        // Send the CredentialRequest
-        //
-        CredentialResponse credResponse = wallet.credentialRequest(ctx, accessToken)
-                .credentialIdentifier(authorizedIdentifier)
-                .send().getCredentialResponse();
+        CredentialResponse credResponse = requestCredentialWithProofByIdentifier(ctx, accessToken, authorizedIdentifier);
 
         verifyCredentialResponse(ctx, ctx.holder, credResponse);
     }
@@ -173,11 +182,7 @@ public class OID4VCCredentialOfferMatrixTest extends OID4VCIssuerTestBase {
         String authorizedIdentifier = ctx.getAuthorizedCredentialIdentifier();
         assertNotNull(authorizedIdentifier, "No authorized credential identifier");
 
-        // Send the CredentialRequest
-        //
-        CredentialResponse credResponse = wallet.credentialRequest(ctx, accessToken)
-                .credentialIdentifier(authorizedIdentifier)
-                .send().getCredentialResponse();
+        CredentialResponse credResponse = requestCredentialWithProofByIdentifier(ctx, accessToken, authorizedIdentifier);
 
         verifyCredentialResponse(ctx, ctx.holder, credResponse);
     }
@@ -244,19 +249,15 @@ public class OID4VCCredentialOfferMatrixTest extends OID4VCIssuerTestBase {
         String authorizedCredConfigId2 = ctx2.getAuthorizedCredentialConfigurationId();
         assertNotNull(authorizedCredConfigId2, "No authorized credential identifier");
 
-        // Send the CredentialRequest1 with first access-token. Ensure credential successfully obtained
+        // Send the CredentialRequest1 with first access-token and proof. Ensure credential successfully obtained
         //
-        CredentialResponse credResponse = wallet.credentialRequest(ctx1, accessToken1)
-                .credentialIdentifier(authorizedIdentifier1)
-                .send().getCredentialResponse();
+        CredentialResponse credResponse = requestCredentialWithProofByIdentifier(ctx1, accessToken1, authorizedIdentifier1);
 
         verifyCredentialResponse(ctx1, ctx1.holder, credResponse);
 
-        // Send the CredentialRequest2 with 2nd access-token. Ensure credential successfully obtained for the correct VC type
+        // Send the CredentialRequest2 with 2nd access-token and proof. Ensure credential successfully obtained for the correct VC type
         //
-        CredentialResponse credResponse2 = wallet.credentialRequest(ctx2, accessToken2)
-                .credentialConfigurationId(authorizedCredConfigId2)
-                .send().getCredentialResponse();
+        CredentialResponse credResponse2 = requestCredentialWithProofByConfigurationId(ctx2, accessToken2, authorizedCredConfigId2);
 
         CredentialResponse.Credential credentialObj = credResponse2.getCredentials().get(0);
         assertNotNull(credentialObj, "The first credential in the array should not be null");
@@ -338,11 +339,9 @@ public class OID4VCCredentialOfferMatrixTest extends OID4VCIssuerTestBase {
         String authorizedIdentifier = ctx.getAuthorizedCredentialIdentifier();
         assertNotNull(authorizedIdentifier, "No authorized credential identifier");
 
-        // Send the CredentialRequest
+        // Send the CredentialRequest with proof
         //
-        CredentialResponse credResponse = wallet.credentialRequest(ctx, accessToken)
-                .credentialIdentifier(authorizedIdentifier)
-                .send().getCredentialResponse();
+        CredentialResponse credResponse = requestCredentialWithProofByIdentifier(ctx, accessToken, authorizedIdentifier);
 
         verifyCredentialResponse(ctx, ctx.holder, credResponse);
     }
@@ -384,16 +383,14 @@ public class OID4VCCredentialOfferMatrixTest extends OID4VCIssuerTestBase {
         assertTrue(tokenResponse.isSuccess(), tokenResponse.getErrorDescription());
 
         String accessToken = wallet.validateHolderAccessToken(ctx, tokenResponse);
-        assertNotNull(accessToken,"No accessToken");
+        assertNotNull(accessToken, "No accessToken");
 
         String authorizedIdentifier = ctx.getAuthorizedCredentialIdentifier();
-        assertNotNull(authorizedIdentifier,"No authorized credential identifier");
+        assertNotNull(authorizedIdentifier, "No authorized credential identifier");
 
-        // Send the CredentialRequest
+        // Send the CredentialRequest with proof
         //
-        CredentialResponse credResponse = wallet.credentialRequest(ctx, accessToken)
-                .credentialIdentifier(authorizedIdentifier)
-                .send().getCredentialResponse();
+        CredentialResponse credResponse = requestCredentialWithProofByIdentifier(ctx, accessToken, authorizedIdentifier);
 
         verifyCredentialResponse(ctx, ctx.issuer, credResponse);
     }
@@ -418,16 +415,86 @@ public class OID4VCCredentialOfferMatrixTest extends OID4VCIssuerTestBase {
         String authorizedIdentifier = ctx.getAuthorizedCredentialIdentifier();
         assertNotNull(authorizedIdentifier, "No authorized credential identifier");
 
-        // Send the CredentialRequest
-        //
+        String cNonce = getCNonce();
+        String issuer = oauth.getEndpoints().getIssuer();
+        String jwtProof = generateJwtProof(issuer, cNonce);
+
         CredentialResponse credResponse = wallet.credentialRequest(ctx, accessToken)
                 .credentialIdentifier(authorizedIdentifier)
+                .proofs(new Proofs().setJwt(List.of(jwtProof)))
                 .send().getCredentialResponse();
 
         verifyCredentialResponse(ctx, ctx.holder, credResponse);
     }
 
     // Private ---------------------------------------------------------------------------------------------------------
+
+    private String getCNonce() {
+        return oauth.oid4vc().nonceRequest().send().getNonce();
+    }
+
+    private CredentialResponse requestCredentialWithProofByIdentifier(OID4VCTestContext ctx, String accessToken, String credentialIdentifier) {
+        String cNonce = getCNonce();
+        String issuer = oauth.getEndpoints().getIssuer();
+        String jwtProof = generateJwtProof(issuer, cNonce);
+
+        return wallet.credentialRequest(ctx, accessToken)
+                .credentialIdentifier(credentialIdentifier)
+                .proofs(new Proofs().setJwt(List.of(jwtProof)))
+                .send().getCredentialResponse();
+    }
+
+    private CredentialResponse requestCredentialWithProofByConfigurationId(OID4VCTestContext ctx, String accessToken, String credentialConfigurationId) {
+        String cNonce = getCNonce();
+        String issuer = oauth.getEndpoints().getIssuer();
+        String jwtProof = generateJwtProof(issuer, cNonce);
+
+        return wallet.credentialRequest(ctx, accessToken)
+                .credentialConfigurationId(credentialConfigurationId)
+                .proofs(new Proofs().setJwt(List.of(jwtProof)))
+                .send().getCredentialResponse();
+    }
+
+    private String generateJwtProof(String aud, String nonce) {
+        KeyWrapper keyWrapper = getECKey();
+        keyWrapper.setKid(null); // erase autogenerated kid
+
+        JWK jwk = JWKBuilder.create().ec(keyWrapper.getPublicKey());
+
+        return generateUnsignedJwtProof(jwk, aud, nonce)
+                .sign(new ECDSASignatureSignerContext(keyWrapper));
+    }
+
+    private KeyWrapper getECKey() {
+        try {
+            KeyPairGenerator kpg = KeyPairGenerator.getInstance("EC", BouncyIntegration.PROVIDER);
+            kpg.initialize(256);
+            var keyPair = kpg.generateKeyPair();
+            KeyWrapper kw = new KeyWrapper();
+            kw.setPrivateKey(keyPair.getPrivate());
+            kw.setPublicKey(keyPair.getPublic());
+            kw.setUse(KeyUse.SIG);
+            kw.setKid(KeyUtils.createKeyId(keyPair.getPublic()));
+            kw.setType("EC");
+            kw.setAlgorithm("ES256");
+            return kw;
+        } catch (NoSuchAlgorithmException | NoSuchProviderException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private JWSBuilder.EncodingBuilder generateUnsignedJwtProof(JWK jwk, String aud, String nonce) {
+        AccessToken token = new AccessToken();
+        token.addAudience(aud);
+        token.setNonce(nonce);
+        token.issuedNow();
+
+        return new JWSBuilder()
+                .type(JwtProofValidator.PROOF_JWT_TYP)
+                .kid(jwk.getKeyId())
+                .jwk(jwk)
+                .jsonContent(token);
+    }
 
     private void verifyCredentialResponse(OID4VCTestContext ctx, String expUser, CredentialResponse credResponse) throws Exception {
 

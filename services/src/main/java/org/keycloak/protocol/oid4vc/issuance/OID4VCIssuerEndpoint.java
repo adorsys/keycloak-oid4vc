@@ -886,7 +886,12 @@ public class OID4VCIssuerEndpoint {
 
             // Verify the login client
             //
-            if (offerState.getTargetClientId() != null && !offerState.getTargetClientId().equals(clientModel.getClientId())) {
+            // For pre-authorized code offers, enforce that the same client is used.
+            // For authorization_code offers, allow different clients as long as subsequent
+            // authorization_details and related checks succeed.
+            if (offerState.getPreAuthorizedCode().isPresent()
+                    && offerState.getTargetClientId() != null
+                    && !offerState.getTargetClientId().equals(clientModel.getClientId())) {
                 var errorMessage = "Unexpected login client: " + clientModel.getClientId();
                 LOGGER.errorf(errorMessage + " != %s", offerState.getTargetClientId());
                 eventBuilder.detail(Details.REASON, errorMessage).error(INVALID_CREDENTIAL_REQUEST.getValue());
