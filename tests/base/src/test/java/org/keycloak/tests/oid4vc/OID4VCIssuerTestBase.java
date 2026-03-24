@@ -23,9 +23,9 @@ import java.util.UUID;
 import org.keycloak.OID4VCConstants;
 import org.keycloak.VCFormat;
 import org.keycloak.admin.client.Keycloak;
+import org.keycloak.admin.client.resource.ClientResource;
 import org.keycloak.admin.client.resource.ClientScopeResource;
 import org.keycloak.admin.client.resource.ClientScopesResource;
-import org.keycloak.admin.client.resource.ClientResource;
 import org.keycloak.admin.client.resource.ClientsResource;
 import org.keycloak.admin.client.resource.RealmResource;
 import org.keycloak.common.Profile;
@@ -60,6 +60,7 @@ import org.keycloak.representations.userprofile.config.UPConfig;
 import org.keycloak.testframework.annotations.InjectAdminClient;
 import org.keycloak.testframework.annotations.InjectClient;
 import org.keycloak.testframework.annotations.InjectEvents;
+import org.keycloak.testframework.annotations.InjectKeycloakUrls;
 import org.keycloak.testframework.annotations.InjectRealm;
 import org.keycloak.testframework.annotations.TestSetup;
 import org.keycloak.testframework.events.Events;
@@ -76,6 +77,7 @@ import org.keycloak.testframework.remote.timeoffset.InjectTimeOffSet;
 import org.keycloak.testframework.remote.timeoffset.TimeOffSet;
 import org.keycloak.testframework.server.KeycloakServerConfig;
 import org.keycloak.testframework.server.KeycloakServerConfigBuilder;
+import org.keycloak.testframework.server.KeycloakUrls;
 import org.keycloak.testframework.ui.annotations.InjectWebDriver;
 import org.keycloak.testframework.ui.webdriver.ManagedWebDriver;
 import org.keycloak.testsuite.util.oauth.AccessTokenRequest;
@@ -116,12 +118,6 @@ public abstract class OID4VCIssuerTestBase {
     public static final String minimalJwtTypeCredentialScopeName = "vc-with-minimal-config";
     public static final String minimalJwtTypeCredentialConfigurationIdName = "vc-with-minimal-config-id";
 
-    protected CredentialScopeRepresentation minimalJwtTypeCredentialScope;
-    protected CredentialScopeRepresentation jwtTypeCredentialScope;
-    protected CredentialScopeRepresentation sdJwtTypeCredentialScope;
-
-    protected ClientRepresentation client;
-
     @InjectRealm(config = VCTestRealmConfig.class)
     protected ManagedRealm testRealm;
 
@@ -142,6 +138,15 @@ public abstract class OID4VCIssuerTestBase {
 
     @InjectAdminClient
     protected Keycloak keycloak;
+
+    @InjectKeycloakUrls
+    protected KeycloakUrls keycloakUrls;
+
+    protected CredentialScopeRepresentation minimalJwtTypeCredentialScope;
+    protected CredentialScopeRepresentation jwtTypeCredentialScope;
+    protected CredentialScopeRepresentation sdJwtTypeCredentialScope;
+
+    protected ClientRepresentation client;
 
     @TestSetup
     public void configureTestRealm() {
