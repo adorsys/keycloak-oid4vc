@@ -312,7 +312,16 @@ public class AttestationValidatorUtil {
     private static SignatureVerifierContext verifierFromX5CChain(
             List<String> x5cList,
             String alg,
-            KeycloakSession keycloakSession) throws VCIssuerException {
+            KeycloakSession keycloakSession) throws VCIssuerException, VerificationException {
+        JWK certJwk = resolveJwkFromValidatedX5c(x5cList, alg);
+        return verifierFromResolvedJWK(certJwk, alg, keycloakSession);
+    }
+
+    /**
+     * Validates x5c certificate chain and converts leaf certificate key to JWK.
+     * Can be reused by proof validators that accept x5c as proof key source.
+     */
+    static JWK resolveJwkFromValidatedX5c(List<String> x5cList, String alg) throws VCIssuerException {
 
         try {
             CertificateFactory cf = CertificateFactory.getInstance("X.509");
@@ -345,9 +354,7 @@ public class AttestationValidatorUtil {
 
             // Get public key from first certificate
             PublicKey publicKey = certChain.get(0).getPublicKey();
-            JWK certJwk = convertPublicKeyToJWK(publicKey, alg, certChain);
-
-            return verifierFromResolvedJWK(certJwk, alg, keycloakSession);
+            return convertPublicKeyToJWK(publicKey, alg, certChain);
 
         } catch (Exception e) {
             throw new VCIssuerException(ErrorType.INVALID_PROOF, "Failed to validate x5c certificate chain", e);

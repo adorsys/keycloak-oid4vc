@@ -110,6 +110,42 @@ public class OID4VCKeyAttestationTest extends OID4VCIssuerTestBase {
     }
 
     @Test
+    public void testValidKidJwtProofWithKeyAttestation() {
+        String cNonce = getCNonce();
+        runOnServer.run(session -> {
+            setupSessionContext(session);
+            runValidKidJwtProofWithKeyAttestationTest(session, cNonce);
+        });
+    }
+
+    @Test
+    public void testJwtProofWithKeyAttestationMustContainProofKey() {
+        String cNonce = getCNonce();
+        runOnServer.run(session -> {
+            setupSessionContext(session);
+            runJwtProofWithKeyAttestationMustContainProofKeyTest(session, cNonce);
+        });
+    }
+
+    @Test
+    public void testJwtProofWithJwkAndKidHeadersIsRejected() {
+        String cNonce = getCNonce();
+        runOnServer.run(session -> {
+            setupSessionContext(session);
+            runJwtProofWithJwkAndKidHeadersIsRejectedTest(session, cNonce);
+        });
+    }
+
+    @Test
+    public void testValidX5cJwtProofWithoutAttestation() {
+        String cNonce = getCNonce();
+        runOnServer.run(session -> {
+            setupSessionContext(session);
+            runValidX5cJwtProofWithoutAttestationTest(session, cNonce);
+        });
+    }
+
+    @Test
     public void testAttestationProofType() {
         runOnServer.run(session -> {
             setupSessionContext(session);
@@ -264,6 +300,14 @@ public class OID4VCKeyAttestationTest extends OID4VCIssuerTestBase {
                                                              KeyWrapper proofKey,
                                                              String attestationJwt,
                                                              String cNonce) {
+        return generateJwtProofWithKeyAttestation(session, proofKey, attestationJwt, cNonce, false);
+    }
+
+    private static String generateJwtProofWithKeyAttestation(KeycloakSession session,
+                                                             KeyWrapper proofKey,
+                                                             String attestationJwt,
+                                                             String cNonce,
+                                                             boolean useKidHeader) {
         try {
             JWK proofJwk = JWKBuilder.create().ec(proofKey.getPublicKey());
             proofJwk.setKeyId(proofKey.getKid());
@@ -278,7 +322,11 @@ public class OID4VCKeyAttestationTest extends OID4VCIssuerTestBase {
             Map<String, Object> header = new HashMap<>();
             header.put("alg", proofKey.getAlgorithm());
             header.put("typ", JwtProofValidator.PROOF_JWT_TYP);
-            header.put("jwk", proofJwk);
+            if (useKidHeader) {
+                header.put("kid", proofKey.getKid());
+            } else {
+                header.put("jwk", proofJwk);
+            }
             header.put("key_attestation", attestationJwt);
 
             return new JWSBuilder() {
@@ -293,6 +341,47 @@ public class OID4VCKeyAttestationTest extends OID4VCIssuerTestBase {
             }.jsonContent(token).sign(new ECDSASignatureSignerContext(proofKey));
         } catch (Exception e) {
             throw new RuntimeException("Failed to generate JWT proof with key attestation", e);
+        }
+    }
+
+    private static String generateJwtProofWithJwkAndKid(KeycloakSession session, KeyWrapper proofKey, String cNonce) {
+        try {
+            JWK proofJwk = JWKBuilder.create().ec(proofKey.getPublicKey());
+            proofJwk.setKeyId(proofKey.getKid());
+            proofJwk.setAlgorithm(proofKey.getAlgorithm());
+
+            AccessToken token = new AccessToken();
+            String credentialIssuer = OID4VCIssuerWellKnownProvider.getIssuer(session.getContext());
+            token.addAudience(credentialIssuer);
+            token.setNonce(cNonce);
+            token.issuedNow();
+
+            return new JWSBuilder()
+                    .type(JwtProofValidator.PROOF_JWT_TYP)
+                    .kid(proofKey.getKid())
+                    .jwk(proofJwk)
+                    .jsonContent(token)
+                    .sign(new ECDSASignatureSignerContext(proofKey));
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to generate JWT proof with both jwk and kid", e);
+        }
+    }
+
+    private static String generateJwtProofWithX5c(KeycloakSession session, KeyWrapper proofKey, X509Certificate cert, String cNonce) {
+        try {
+            AccessToken token = new AccessToken();
+            String credentialIssuer = OID4VCIssuerWellKnownProvider.getIssuer(session.getContext());
+            token.addAudience(credentialIssuer);
+            token.setNonce(cNonce);
+            token.issuedNow();
+
+            return new JWSBuilder()
+                    .type(JwtProofValidator.PROOF_JWT_TYP)
+                    .x5c(List.of(cert))
+                    .jsonContent(token)
+                    .sign(new ECDSASignatureSignerContext(proofKey));
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to generate JWT proof with x5c", e);
         }
     }
 
@@ -424,6 +513,8 @@ public class OID4VCKeyAttestationTest extends OID4VCIssuerTestBase {
         KeyWrapper attestationKey = getECKey("attestationKey");
         KeyWrapper proofKey = getECKey("proofKey");
         JWK proofJwk = JWKBuilder.create().ec(proofKey.getPublicKey());
+        proofJwk.setKeyId(proofKey.getKid());
+        proofJwk.setAlgorithm(proofKey.getAlgorithm());
 
         String attestationJwt = createValidAttestationJwt(session, attestationKey, proofJwk, cNonce);
         String jwtProof = generateJwtProofWithKeyAttestation(session, proofKey, attestationJwt, cNonce);
@@ -453,6 +544,104 @@ public class OID4VCKeyAttestationTest extends OID4VCIssuerTestBase {
         JwtProofValidator validator = new JwtProofValidator(session, keyResolver);
 
         validator.validateProof(vcIssuanceContext);
+    }
+
+    private static void runValidKidJwtProofWithKeyAttestationTest(KeycloakSession session, String cNonce) {
+        KeyWrapper attestationKey = getECKey("attestationKey");
+        KeyWrapper proofKey = getECKey("proofKey");
+
+        JWK proofJwk = JWKBuilder.create().ec(proofKey.getPublicKey());
+        proofJwk.setKeyId(proofKey.getKid());
+        proofJwk.setAlgorithm(proofKey.getAlgorithm());
+
+        String attestationJwt = createValidAttestationJwt(session, attestationKey, proofJwk, cNonce);
+        String jwtProof = generateJwtProofWithKeyAttestation(session, proofKey, attestationJwt, cNonce, true);
+
+        VCIssuanceContext vcIssuanceContext = createVCIssuanceContext(session);
+        vcIssuanceContext.getCredentialRequest().setProofs(new Proofs().setJwt(List.of(jwtProof)));
+
+        AttestationKeyResolver keyResolver = new StaticAttestationKeyResolver(
+                Map.of(attestationKey.getKid(), JWKBuilder.create().ec(attestationKey.getPublicKey()))
+        );
+        JwtProofValidator validator = new JwtProofValidator(session, keyResolver);
+
+        List<JWK> validatedKeys = validator.validateProof(vcIssuanceContext);
+        assertNotNull(validatedKeys);
+        assertEquals(1, validatedKeys.size());
+        assertEquals(proofKey.getKid(), validatedKeys.get(0).getKeyId());
+    }
+
+    private static void runJwtProofWithKeyAttestationMustContainProofKeyTest(KeycloakSession session, String cNonce) {
+        KeyWrapper attestationKey = getECKey("attestationKey");
+        KeyWrapper proofKey = getECKey("proofKey");
+        KeyWrapper differentKey = getECKey("differentKey");
+
+        JWK differentJwk = JWKBuilder.create().ec(differentKey.getPublicKey());
+        differentJwk.setKeyId(differentKey.getKid());
+        differentJwk.setAlgorithm(differentKey.getAlgorithm());
+
+        String attestationJwt = createValidAttestationJwt(session, attestationKey, differentJwk, cNonce);
+        String jwtProof = generateJwtProofWithKeyAttestation(session, proofKey, attestationJwt, cNonce);
+
+        VCIssuanceContext vcIssuanceContext = createVCIssuanceContext(session);
+        vcIssuanceContext.getCredentialRequest().setProofs(new Proofs().setJwt(List.of(jwtProof)));
+
+        AttestationKeyResolver keyResolver = new StaticAttestationKeyResolver(
+                Map.of(attestationKey.getKid(), JWKBuilder.create().ec(attestationKey.getPublicKey()))
+        );
+        JwtProofValidator validator = new JwtProofValidator(session, keyResolver);
+
+        assertThrows(VCIssuerException.class, () -> validator.validateProof(vcIssuanceContext),
+                "Expected proof key mismatch against attested_keys to fail");
+    }
+
+    private static void runJwtProofWithJwkAndKidHeadersIsRejectedTest(KeycloakSession session, String cNonce) {
+        KeyWrapper attestationKey = getECKey("attestationKey");
+        KeyWrapper proofKey = getECKey("proofKey");
+
+        String jwtProof = generateJwtProofWithJwkAndKid(session, proofKey, cNonce);
+
+        VCIssuanceContext vcIssuanceContext = createVCIssuanceContext(session);
+        vcIssuanceContext.getCredentialRequest().setProofs(new Proofs().setJwt(List.of(jwtProof)));
+
+        AttestationKeyResolver keyResolver = new StaticAttestationKeyResolver(
+                Map.of(attestationKey.getKid(), JWKBuilder.create().ec(attestationKey.getPublicKey()))
+        );
+        JwtProofValidator validator = new JwtProofValidator(session, keyResolver);
+
+        VCIssuerException e = assertThrows(VCIssuerException.class, () -> validator.validateProof(vcIssuanceContext));
+        assertTrue(e.getMessage().contains("mutually exclusive"),
+                "Expected mutual exclusivity validation error but got: " + e.getMessage());
+    }
+
+    private static void runValidX5cJwtProofWithoutAttestationTest(KeycloakSession session, String cNonce) {
+        try {
+            KeyPairGenerator keyGen = KeyPairGenerator.getInstance("EC");
+            keyGen.initialize(new ECGenParameterSpec("secp256r1"));
+            KeyPair keyPair = keyGen.generateKeyPair();
+            X509Certificate cert = CertificateUtils.generateV1SelfSignedCertificate(keyPair, "Proof Certificate");
+
+            KeyWrapper proofKey = new KeyWrapper();
+            proofKey.setPrivateKey(keyPair.getPrivate());
+            proofKey.setPublicKey(keyPair.getPublic());
+            proofKey.setAlgorithm("ES256");
+            proofKey.setType(KeyType.EC);
+            // Keep kid unset for this test so header contains only x5c (mutual exclusivity with kid/jwk).
+            proofKey.setKid(null);
+
+            String jwtProof = generateJwtProofWithX5c(session, proofKey, cert, cNonce);
+
+            VCIssuanceContext vcIssuanceContext = createVCIssuanceContext(session);
+            vcIssuanceContext.getCredentialRequest().setProofs(new Proofs().setJwt(List.of(jwtProof)));
+
+            JwtProofValidator validator = new JwtProofValidator(session, new StaticAttestationKeyResolver(Map.of()));
+            List<JWK> validatedKeys = validator.validateProof(vcIssuanceContext);
+
+            assertNotNull(validatedKeys, "Validated keys should not be null");
+            assertEquals(1, validatedKeys.size(), "Expected single validated key");
+        } catch (Exception e) {
+            throw new RuntimeException("x5c JWT proof validation failed", e);
+        }
     }
 
     private static void runInvalidAttestationSignatureTest(KeycloakSession session, String cNonce) throws Exception {

@@ -18,6 +18,7 @@
 package org.keycloak.protocol.oid4vc.issuance.keybinding;
 
 import java.io.IOException;
+import java.security.PublicKey;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -29,6 +30,7 @@ import java.util.Optional;
 import org.keycloak.common.VerificationException;
 import org.keycloak.crypto.SignatureVerifierContext;
 import org.keycloak.jose.jwk.JWK;
+import org.keycloak.jose.jwk.JWKParser;
 import org.keycloak.jose.jws.JWSHeader;
 import org.keycloak.jose.jws.JWSInput;
 import org.keycloak.jose.jws.JWSInputException;
@@ -133,36 +135,47 @@ public class JwtProofValidator extends AbstractProofValidator {
         JWSHeader jwsHeader = jwsInput.getHeader();
         validateJwsHeader(vcIssuanceContext, jwsHeader);
 
+        // Parse raw JOSE header claims so we can resolve optional key_attestation consistently.
+        Map<String, Object> headerClaims = JsonSerialization.mapper.convertValue(jwsHeader,
+                new TypeReference<>() {
+                });
+        KeyAttestationInfo attestationInfo = resolveHeaderAttestation(vcIssuanceContext, headerClaims);
+
         // Handle both JWK and kid cases for the proof key
         JWK jwk;
         if (jwsHeader.getKey() != null) {
             jwk = jwsHeader.getKey();
         } else if (jwsHeader.getKeyId() != null) {
-            // For kid case, we need to parse the raw header to check for key_attestation
-            Map<String, Object> headerClaims = JsonSerialization.mapper.convertValue(jwsHeader,
-                    new TypeReference<>() {
-                    });
+            if (attestationInfo.isPresent()) {
+                List<JWK> attestedKeys = attestationInfo.attestedKeys();
 
-            if (!headerClaims.containsKey(KEY_ATTESTATION_CLAIM)) {
-                throw new VCIssuerException(ErrorType.INVALID_PROOF, "Key ID provided but no key_attestation in header to resolve it");
+                // Resolve key from attestation using kid
+                jwk = attestedKeys.stream()
+                        .filter(k -> jwsHeader.getKeyId().equals(k.getKeyId()))
+                        .findFirst()
+                        .orElseThrow(() -> new VCIssuerException(ErrorType.INVALID_PROOF,
+                                "No attested key found matching kid: " + jwsHeader.getKeyId()));
+            } else {
+                jwk = keyResolver.resolveKey(jwsHeader.getKeyId(), headerClaims, Map.of());
+                if (jwk == null) {
+                    throw new VCIssuerException(ErrorType.INVALID_PROOF,
+                            "No trusted key found matching kid: " + jwsHeader.getKeyId());
+                }
             }
-
-            Object keyAttestation = headerClaims.get(KEY_ATTESTATION_CLAIM);
-            if (keyAttestation == null) {
-                throw new VCIssuerException(ErrorType.INVALID_PROOF, "The 'key_attestation' claim is present in JWT header but is null.");
-            }
-
-            List<JWK> attestedKeys = AttestationValidatorUtil.validateAttestationJwt(
-                    keyAttestation.toString(), keycloakSession, vcIssuanceContext, keyResolver).getAttestedKeys();
-
-            // Resolve key from attestation using kid
-            jwk = attestedKeys.stream()
-                    .filter(k -> jwsHeader.getKeyId().equals(k.getKeyId()))
-                    .findFirst()
-                    .orElseThrow(() -> new VCIssuerException(ErrorType.INVALID_PROOF,
-                            "No attested key found matching kid: " + jwsHeader.getKeyId()));
+        } else if (jwsHeader.getX5c() != null && !jwsHeader.getX5c().isEmpty()) {
+            jwk = AttestationValidatorUtil.resolveJwkFromValidatedX5c(jwsHeader.getX5c(), jwsHeader.getAlgorithm().name());
         } else {
-            throw new VCIssuerException(ErrorType.INVALID_PROOF, "Missing binding key. JWT must contain either jwk or kid in header.");
+            throw new VCIssuerException(ErrorType.INVALID_PROOF, "Missing binding key. JWT must contain either jwk, kid, or x5c in header.");
+        }
+
+        // If a key attestation is present, proof key must be one of attested_keys.
+        if (attestationInfo.isPresent()) {
+            boolean attested = attestationInfo.attestedKeys().stream()
+                    .anyMatch(attestedKey -> jwkMaterialEquals(attestedKey, jwk));
+            if (!attested) {
+                throw new VCIssuerException(ErrorType.INVALID_PROOF,
+                        "JWT proof key is not included in attested_keys");
+            }
         }
 
         // Rest of the validation
@@ -236,11 +249,67 @@ public class JwtProofValidator extends AbstractProofValidator {
                 .filter(type -> Objects.equals(PROOF_JWT_TYP, type))
                 .orElseThrow(() -> new VCIssuerException(ErrorType.INVALID_PROOF, "JWT type must be: " + PROOF_JWT_TYP));
 
-        // KeyId shall not be present alongside the jwk.
-        Optional.ofNullable(jwsHeader.getKeyId())
-                .ifPresent(keyId -> {
-                    throw new VCIssuerException(ErrorType.INVALID_PROOF, "KeyId not expected in this JWT. Use the jwk claim instead.");
-                });
+        boolean hasJwk = jwsHeader.getKey() != null;
+        boolean hasKid = jwsHeader.getKeyId() != null;
+        boolean hasX5c = jwsHeader.getX5c() != null && !jwsHeader.getX5c().isEmpty();
+
+        int presentKeyHeaders = (hasJwk ? 1 : 0) + (hasKid ? 1 : 0) + (hasX5c ? 1 : 0);
+        if (presentKeyHeaders > 1) {
+            throw new VCIssuerException(ErrorType.INVALID_PROOF, "Header claims kid, jwk, and x5c are mutually exclusive");
+        }
+    }
+
+    private KeyAttestationInfo resolveHeaderAttestation(VCIssuanceContext vcIssuanceContext, Map<String, Object> headerClaims)
+            throws JWSInputException, VerificationException {
+        if (!headerClaims.containsKey(KEY_ATTESTATION_CLAIM)) {
+            return KeyAttestationInfo.absent();
+        }
+
+        Object keyAttestation = headerClaims.get(KEY_ATTESTATION_CLAIM);
+        if (keyAttestation == null) {
+            throw new VCIssuerException(ErrorType.INVALID_PROOF, "The 'key_attestation' claim is present in JWT header but is null.");
+        }
+
+        List<JWK> attestedKeys = AttestationValidatorUtil.validateAttestationJwt(
+                keyAttestation.toString(), keycloakSession, vcIssuanceContext, keyResolver).getAttestedKeys();
+        if (attestedKeys == null || attestedKeys.isEmpty()) {
+            throw new VCIssuerException(ErrorType.INVALID_PROOF, "key_attestation does not contain attested keys");
+        }
+
+        return new KeyAttestationInfo(attestedKeys);
+    }
+
+    private record KeyAttestationInfo(List<JWK> attestedKeys) {
+
+        static KeyAttestationInfo absent() {
+            return new KeyAttestationInfo(List.of());
+        }
+
+        boolean isPresent() {
+            return !attestedKeys.isEmpty();
+        }
+    }
+
+    /**
+     * Compare key material instead of object identity so we can correctly match keys even when kid is absent.
+     */
+    private boolean jwkMaterialEquals(JWK left, JWK right) {
+        if (left == null || right == null) {
+            return false;
+        }
+        if (!Objects.equals(left.getKeyType(), right.getKeyType())) {
+            return false;
+        }
+
+        try {
+            PublicKey leftPublicKey = JWKParser.create(left).toPublicKey();
+            PublicKey rightPublicKey = JWKParser.create(right).toPublicKey();
+            return Objects.equals(leftPublicKey.getAlgorithm(), rightPublicKey.getAlgorithm())
+                    && Arrays.equals(leftPublicKey.getEncoded(), rightPublicKey.getEncoded());
+        } catch (RuntimeException e) {
+            // If one key cannot be parsed into a public key, treat as non-match and let caller fail with INVALID_PROOF.
+            return false;
+        }
     }
 
     private void validateProofPayload(VCIssuanceContext vcIssuanceContext, AccessToken proofPayload)

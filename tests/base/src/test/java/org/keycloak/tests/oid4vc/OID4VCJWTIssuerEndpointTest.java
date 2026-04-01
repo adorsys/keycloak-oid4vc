@@ -761,6 +761,45 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
     }
 
     @Test
+    public void testRequestCredentialWithKidProofWithoutKeyAttestation() {
+        final String scopeName = jwtTypeCredentialScope.getName();
+        String credConfigId = jwtTypeCredentialScope.getAttributes().get(CredentialScopeModel.VC_CONFIGURATION_ID);
+
+        CredentialIssuer credentialIssuer = getCredentialIssuerMetadata();
+        OID4VCAuthorizationDetail authDetail = new OID4VCAuthorizationDetail();
+        authDetail.setType(OPENID_CREDENTIAL);
+        authDetail.setCredentialConfigurationId(credConfigId);
+        authDetail.setLocations(List.of(credentialIssuer.getCredentialIssuer()));
+
+        String authCode = getAuthorizationCode(oauth, client, "john", scopeName);
+        AccessTokenResponse tokenResponse = getBearerToken(oauth, authCode, authDetail);
+        String token = tokenResponse.getAccessToken();
+        String credentialIdentifier = tokenResponse.getOID4VCAuthorizationDetails().get(0).getCredentialIdentifiers().get(0);
+        String cNonce = getCNonce();
+
+        runOnServer.run(session -> {
+            try {
+                BearerTokenAuthenticator authenticator = new BearerTokenAuthenticator(session);
+                authenticator.setTokenString(token);
+                String issuer = OID4VCIssuerWellKnownProvider.getIssuer(session.getContext());
+                String kidOnlyJwtProof = generateJwtProofWithKidNoAttestation(issuer, cNonce);
+
+                CredentialRequest request = new CredentialRequest()
+                        .setCredentialIdentifier(credentialIdentifier)
+                        .setProofs(new Proofs().setJwt(List.of(kidOnlyJwtProof)));
+                String requestPayload = JsonSerialization.writeValueAsString(request);
+
+                OID4VCIssuerEndpoint endpoint = prepareIssuerEndpoint(session, authenticator);
+                ErrorResponseException ex = assertThrows(ErrorResponseException.class,
+                        () -> endpoint.requestCredential(requestPayload));
+                assertEquals(ErrorType.INVALID_PROOF.getValue(), ex.getError());
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        });
+    }
+
+    @Test
     public void testGetJwtVcConfigFromMetadata() {
         final String scopeName = jwtTypeCredentialScope.getName();
         final String credentialConfigurationId = jwtTypeCredentialScope.getAttributes()
@@ -1446,6 +1485,21 @@ public class OID4VCJWTIssuerEndpointTest extends OID4VCIssuerEndpointTest {
         JWK jwk = JWKBuilder.create().ec(keyWrapper.getPublicKey());
 
         return generateUnsignedJwtProof(jwk, aud, nonce)
+                .sign(new ECDSASignatureSignerContext(keyWrapper));
+    }
+
+    private static String generateJwtProofWithKidNoAttestation(String aud, String nonce) {
+        KeyWrapper keyWrapper = getECKey(null);
+
+        AccessToken token = new AccessToken();
+        token.addAudience(aud);
+        token.setNonce(nonce);
+        token.issuedNow();
+
+        return new JWSBuilder()
+                .type(JwtProofValidator.PROOF_JWT_TYP)
+                .kid(keyWrapper.getKid())
+                .jsonContent(token)
                 .sign(new ECDSASignatureSignerContext(keyWrapper));
     }
 
