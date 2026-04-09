@@ -22,6 +22,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.Consumer;
 
 import org.keycloak.models.KeycloakSession;
@@ -132,9 +133,12 @@ public class OID4VCSubjectIdMapper extends OID4VCMapper {
             return;
         }
         String propertyName = attributePath.get(attributePath.size() - 1);
-        String userAttributeName = mapperModel.getConfig().get(OID4VCMapper.USER_ATTRIBUTE_KEY);
+        String userAttributeName = Optional.ofNullable(mapperModel.getConfig().get(OID4VCMapper.USER_ATTRIBUTE_KEY))
+                .map(String::trim)
+                .filter(attr -> !attr.isEmpty())
+                .orElse(UserModel.ID);
         Consumer<String> userIdConsumer = (val) -> claims.put(propertyName, val);
-        if (UserModel.ID.equals(userAttributeName)) {
+        if (UserModel.ID.equalsIgnoreCase(userAttributeName)) {
             userIdConsumer.accept(userModel.getId());
         } else {
             KeycloakModelUtils.resolveAttribute(userModel, userAttributeName, false).stream()
