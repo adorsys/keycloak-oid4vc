@@ -15,8 +15,8 @@ import org.keycloak.protocol.oid4vc.model.CredentialResponse;
 import org.keycloak.protocol.oid4vc.model.OID4VCAuthorizationDetail;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
 import org.keycloak.representations.JsonWebToken;
-import org.keycloak.representations.idm.CredentialRepresentation;
 import org.keycloak.representations.idm.ClientRepresentation;
+import org.keycloak.representations.idm.CredentialRepresentation;
 import org.keycloak.representations.idm.ProtocolMapperRepresentation;
 import org.keycloak.representations.idm.RoleRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
@@ -28,6 +28,7 @@ import org.keycloak.testsuite.util.oauth.AccessTokenResponse;
 import org.keycloak.testsuite.util.oauth.AuthorizationEndpointResponse;
 import org.keycloak.util.JsonSerialization;
 
+import org.jboss.logging.Logger;
 import org.junit.jupiter.api.Test;
 
 import static org.keycloak.OID4VCConstants.OPENID_CREDENTIAL;
@@ -39,6 +40,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @KeycloakIntegrationTest(config = OID4VCIssuerTestBase.VCTestServerConfig.class)
 public class OID4VCTargetRoleMapperTest extends OID4VCIssuerTestBase {
+    private static final Logger LOG = Logger.getLogger(OID4VCTargetRoleMapperTest.class);
 
     @Test
     public void testTargetRoleMapperIncludesConfiguredClientRoles() throws Exception {
@@ -62,7 +64,7 @@ public class OID4VCTargetRoleMapperTest extends OID4VCIssuerTestBase {
                 "clientId", clientAlias
         ));
 
-        String createdMapperId;
+        String createdMapperId = null;
         try (Response response = clientScopeResource.getProtocolMappers().createMapper(mapper)) {
             createdMapperId = ApiUtil.getCreatedId(response);
         }
@@ -117,9 +119,15 @@ public class OID4VCTargetRoleMapperTest extends OID4VCIssuerTestBase {
             assertTrue(targetClientRoleFound,
                     "roles claim should contain expected role for the target client only");
         } finally {
-            clientScopeResource.getProtocolMappers().delete(createdMapperId);
-            testRealm.admin().users().delete(createdUserId);
-            testRealm.admin().clients().get(createdClientId).remove();
+            cleanup("logout temporary users", wallet::logout);
+            String finalCreatedMapperId = createdMapperId;
+            cleanup("delete temporary mapper", () -> {
+                if (finalCreatedMapperId != null) {
+                    clientScopeResource.getProtocolMappers().delete(finalCreatedMapperId);
+                }
+            });
+            cleanup("delete temporary user", () -> testRealm.admin().users().delete(createdUserId));
+            cleanup("delete temporary client", () -> testRealm.admin().clients().get(createdClientId).remove());
         }
     }
 
@@ -167,5 +175,13 @@ public class OID4VCTargetRoleMapperTest extends OID4VCIssuerTestBase {
         UserResource userResource = testRealm.admin().users().get(userId);
         RoleRepresentation roleRepresentation = testRealm.admin().clients().get(clientId).roles().get(roleName).toRepresentation();
         userResource.roles().clientLevel(clientId).add(List.of(roleRepresentation));
+    }
+
+    private void cleanup(String action, Runnable task) {
+        try {
+            task.run();
+        } catch (Exception e) {
+            LOG.warnf(e, "Failed to %s during cleanup", action);
+        }
     }
 }
