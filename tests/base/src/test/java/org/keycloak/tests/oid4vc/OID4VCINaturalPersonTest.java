@@ -8,6 +8,7 @@ import java.util.stream.Collectors;
 import org.keycloak.TokenVerifier;
 import org.keycloak.jose.jwk.JWK;
 import org.keycloak.jose.jwk.JWKBuilder;
+import org.keycloak.mdoc.MdocIssuerSignedDocument;
 import org.keycloak.protocol.oid4vc.model.CredentialResponse;
 import org.keycloak.protocol.oid4vc.model.CredentialScopeRepresentation;
 import org.keycloak.protocol.oid4vc.model.Proofs;
@@ -26,13 +27,15 @@ import org.junit.jupiter.api.Test;
 
 import static org.keycloak.OID4VCConstants.CLAIM_NAME_VCT;
 import static org.keycloak.VCFormat.JWT_VC;
+import static org.keycloak.VCFormat.MSO_MDOC;
 import static org.keycloak.VCFormat.SD_JWT_VC;
 import static org.keycloak.constants.OID4VCIConstants.TRUSTED_KEYS_REALM_ATTR;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
-@KeycloakIntegrationTest(config = OID4VCIssuerTestBase.VCTestServerConfig.class)
+@KeycloakIntegrationTest(config = OID4VCMdocTestBase.VCTestServerWithMdocEnabled.class)
 public class OID4VCINaturalPersonTest extends OID4VCIssuerTestBase {
 
     @BeforeEach
@@ -88,6 +91,35 @@ public class OID4VCINaturalPersonTest extends OID4VCIssuerTestBase {
     public void testNaturalPersonSdJwt_JwtProof() throws Exception {
 
         var ctx = new OID4VCTestContext(client, sdJwtNaturalPersonCredentialScope);
+
+        String accessToken = getAccessToken(ctx);
+        Proofs proofs = wallet.generateJwtProof(ctx);
+        CredentialResponse credResponse = getCredentialResponse(ctx, accessToken, proofs);
+        verifyCredentialResponse(ctx, ctx.getHolder(), credResponse);
+    }
+
+    @Test
+    public void testNaturalPersonMdoc_AttestationProof() throws Exception {
+
+        ensureEcSigningKeyProvider("mdoc-natural-person-issuer-key", "P-256", "ES256", 200);
+        var ctx = new OID4VCTestContext(client, mdocNaturalPersonCredentialScope);
+
+        Proofs proofs = wallet.generateAttestationProof(ctx, ak -> {
+            JWK trustedKey = JWKBuilder.create().kid(ak.getKid()).ec(ak.getPublicKey());
+            String trustedKeyJson = JsonSerialization.valueAsString(List.of(trustedKey));
+            setRealmAttributes(Map.of(TRUSTED_KEYS_REALM_ATTR, trustedKeyJson));
+        });
+
+        String accessToken = getAccessToken(ctx);
+        CredentialResponse credResponse = getCredentialResponse(ctx, accessToken, proofs);
+        verifyCredentialResponse(ctx, ctx.getHolder(), credResponse);
+    }
+
+    @Test
+    public void testNaturalPersonMdoc_JwtProof() throws Exception {
+
+        ensureEcSigningKeyProvider("mdoc-natural-person-issuer-key", "P-256", "ES256", 200);
+        var ctx = new OID4VCTestContext(client, mdocNaturalPersonCredentialScope);
 
         String accessToken = getAccessToken(ctx);
         Proofs proofs = wallet.generateJwtProof(ctx);
@@ -163,6 +195,19 @@ public class OID4VCINaturalPersonTest extends OID4VCIssuerTestBase {
                         "email", "alice@email.cz",
                         "sub", "did:key:5678"
                 ), claims);
+            }
+            case MSO_MDOC -> {
+                MdocIssuerSignedDocument mdoc = MdocIssuerSignedDocument.parse((String) credentialObj.getCredential());
+                assertEquals(credScope.getVct(), mdoc.getMobileSecurityObject().get("docType"));
+
+                Map<String, Object> nameSpaces = mdoc.getNamespaces();
+                Map<?, ?> namespaceClaims = assertInstanceOf(Map.class, nameSpaces.get("org.iso.18013.5.1"));
+                assertEquals(Map.of(
+                        "id", "did:key:5678",
+                        "email", "alice@email.cz",
+                        "firstName", "Alice",
+                        "familyName", "Wonderland"
+                ), namespaceClaims);
             }
         }
     }
