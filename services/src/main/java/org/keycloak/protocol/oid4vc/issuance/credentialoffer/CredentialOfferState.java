@@ -39,6 +39,7 @@ public class CredentialOfferState {
     private String targetClientId;
     private String targetUserId;
     private String nonce;
+    private boolean nonceConsumed;
     private String txCode;
     private long expiresAt;
     private List<OID4VCAuthorizationDetail> authDetails;
@@ -96,6 +97,14 @@ public class CredentialOfferState {
 
     public String getNonce() {
         return nonce;
+    }
+
+    public boolean isNonceConsumed() {
+        return nonceConsumed;
+    }
+
+    public void setNonceConsumed(boolean nonceConsumed) {
+        this.nonceConsumed = nonceConsumed;
     }
 
     public String getTxCode() {

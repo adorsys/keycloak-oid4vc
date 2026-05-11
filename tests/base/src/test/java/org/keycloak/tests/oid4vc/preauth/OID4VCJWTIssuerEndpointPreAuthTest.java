@@ -171,7 +171,7 @@ public class OID4VCJWTIssuerEndpointPreAuthTest extends OID4VCIssuerEndpointTest
         String nonce = credentialOfferURI.getNonce();
         assertNotNull(nonce, "Nonce should not be null");
 
-        // 2. Fetch the Offer JSON (this removes the nonce entry for replay protection)
+        // 2. Fetch the Offer JSON (this consumes the nonce for replay protection)
         CredentialsOffer credentialsOffer = oauth.oid4vc()
                 .credentialOfferRequest(nonce)
                 .bearerToken(token)
@@ -201,8 +201,40 @@ public class OID4VCJWTIssuerEndpointPreAuthTest extends OID4VCIssuerEndpointTest
                 .preAuthorizedCodeGrantRequest(preAuthorizedCode)
                 .send();
 
-        assertEquals(HttpStatus.SC_OK, accessTokenResponse.getStatusCode(), "Token request should succeed even after nonce is removed for replay protection");
+        assertEquals(HttpStatus.SC_OK, accessTokenResponse.getStatusCode(), "Token request should succeed even after nonce is consumed for replay protection");
         assertNotNull(accessTokenResponse.getAccessToken(), "Access token should be present");
         assertFalse(accessTokenResponse.getAccessToken().isEmpty(), "Access token should not be empty");
+    }
+
+    @Test
+    public void testCredentialOfferNonceReplayIsRejected() {
+        String token = getBearerToken(oauth, client, jwtTypeCredentialScope.getName());
+        final String credentialConfigurationId = jwtTypeCredentialScope.getAttributes()
+                .get(CredentialScopeModel.VC_CONFIGURATION_ID);
+
+        CredentialOfferURI credentialOfferURI = oauth.oid4vc()
+                .credentialOfferUriRequest(credentialConfigurationId)
+                .preAuthorized(true)
+                .targetUser("john")
+                .bearerToken(token)
+                .send()
+                .getCredentialOfferURI();
+
+        assertNotNull(credentialOfferURI, "Credential offer URI should not be null");
+        String nonce = credentialOfferURI.getNonce();
+        assertNotNull(nonce, "Nonce should not be null");
+
+        CredentialOfferResponse firstOfferResponse = oauth.oid4vc()
+                .credentialOfferRequest(nonce)
+                .bearerToken(token)
+                .send();
+        assertEquals(HttpStatus.SC_OK, firstOfferResponse.getStatusCode(), "First credential offer request should succeed");
+        assertNotNull(firstOfferResponse.getCredentialsOffer(), "First credential offer should be present");
+
+        CredentialOfferResponse replayOfferResponse = oauth.oid4vc()
+                .credentialOfferRequest(nonce)
+                .bearerToken(token)
+                .send();
+        assertEquals(HttpStatus.SC_BAD_REQUEST, replayOfferResponse.getStatusCode(), "Replayed credential offer request must be rejected");
     }
 }

@@ -23,6 +23,7 @@ import org.keycloak.common.util.Time;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.SingleUseObjectProvider;
 import org.keycloak.protocol.oid4vc.OID4VCLoginProtocolFactory;
+import org.keycloak.protocol.oid4vc.model.OID4VCAuthorizationDetail;
 import org.keycloak.util.JsonSerialization;
 
 import org.jboss.logging.Logger;
@@ -41,6 +42,7 @@ class DefaultCredentialOfferStorage implements CredentialOfferStorage {
     private static final Logger LOGGER = Logger.getLogger(OID4VCLoginProtocolFactory.class);
 
     private static final String ENTRY_KEY = "json";
+    private static final String CANONICAL_KEY = "offerId";
 
     private final KeycloakSession session;
 
@@ -74,13 +76,30 @@ class DefaultCredentialOfferStorage implements CredentialOfferStorage {
             return;
         }
         
+        SingleUseObjectProvider singleUseObjects = session.singleUseObjects();
+        String offerId = entry.getCredentialsOfferId();
         String entryJson = JsonSerialization.valueAsString(entry);
 
-        // Store with key=offerId
-        session.singleUseObjects().put(entry.getCredentialsOfferId(), lifespanSeconds, Map.of(ENTRY_KEY, entryJson));
+        // Store canonical payload only once (offerId).
+        singleUseObjects.put(offerId, lifespanSeconds, Map.of(ENTRY_KEY, entryJson));
 
-        // Store with key=nonce
-        session.singleUseObjects().put(entry.getNonce(), lifespanSeconds, Map.of(ENTRY_KEY, entryJson));
+        // Store nonce alias -> canonical key.
+        singleUseObjects.put(entry.getNonce(), lifespanSeconds, Map.of(CANONICAL_KEY, offerId));
+
+        // Store optional pre-authorized code alias -> canonical key.
+        entry.getPreAuthorizedCode().ifPresent(it ->
+                singleUseObjects.put(it, lifespanSeconds, Map.of(CANONICAL_KEY, offerId))
+        );
+
+        // Store optional credentialIdentifier aliases -> canonical key.
+        Optional.ofNullable(entry.getAuthorizationDetails()).ifPresent(authDetails ->
+                authDetails.stream()
+                        .map(OID4VCAuthorizationDetail::getCredentialIdentifiers)
+                        .filter(ids -> ids != null && !ids.isEmpty())
+                        .flatMap(ids -> ids.stream().filter(id -> id != null && !id.isBlank()))
+                        .forEach(credentialIdentifier ->
+                                singleUseObjects.put(credentialIdentifier, lifespanSeconds, Map.of(CANONICAL_KEY, offerId)))
+        );
     }
 
     @Override
@@ -93,9 +112,23 @@ class DefaultCredentialOfferStorage implements CredentialOfferStorage {
 
     @Override
     public CredentialOfferState getOfferStateByNonce(String nonce) {
-        return Optional.ofNullable(session.singleUseObjects().get(nonce))
-                .map(o -> o.get(ENTRY_KEY))
-                .map(o -> JsonSerialization.valueFromString(o, CredentialOfferState.class))
+        return getOfferStateByAlias(nonce);
+    }
+
+    @Override
+    public CredentialOfferState getOfferStateByPreAuthorizedCode(String preAuthorizedCode) {
+        return getOfferStateByAlias(preAuthorizedCode);
+    }
+
+    @Override
+    public CredentialOfferState getOfferStateByCredentialIdentifier(String credentialIdentifier) {
+        return getOfferStateByAlias(credentialIdentifier);
+    }
+
+    private CredentialOfferState getOfferStateByAlias(String alias) {
+        return Optional.ofNullable(session.singleUseObjects().get(alias))
+                .map(o -> o.get(CANONICAL_KEY))
+                .map(this::getOfferStateById)
                 .orElse(null);
     }
 
@@ -104,5 +137,13 @@ class DefaultCredentialOfferStorage implements CredentialOfferStorage {
         SingleUseObjectProvider singleUseObjects = session.singleUseObjects();
         singleUseObjects.remove(offerState.getCredentialsOfferId());
         singleUseObjects.remove(offerState.getNonce());
+        offerState.getPreAuthorizedCode().ifPresent(singleUseObjects::remove);
+        Optional.ofNullable(offerState.getAuthorizationDetails()).ifPresent(authDetails ->
+                authDetails.stream()
+                        .map(OID4VCAuthorizationDetail::getCredentialIdentifiers)
+                        .filter(ids -> ids != null && !ids.isEmpty())
+                        .flatMap(ids -> ids.stream().filter(id -> id != null && !id.isBlank()))
+                        .forEach(singleUseObjects::remove)
+        );
     }
 }
