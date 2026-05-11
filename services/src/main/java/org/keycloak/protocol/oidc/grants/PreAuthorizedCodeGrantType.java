@@ -105,7 +105,14 @@ public class PreAuthorizedCodeGrantType extends OAuth2GrantTypeBase {
 
         // Recover matching credential offer state in storage
         var offerStorage = session.getProvider(CredentialOfferStorage.class);
-        var offerState = offerStorage.getOfferStateById(ctx.getCredentialsOfferId());
+        var offerState = offerStorage.getOfferStateByPreAuthorizedCode(preAuthCode);
+        if (offerState != null && ctx.getCredentialsOfferId() != null
+                && !ctx.getCredentialsOfferId().equals(offerState.getCredentialsOfferId())) {
+            var errorMessage = "Mismatched credential offer id in pre-auth context";
+            event.detail(REASON, errorMessage).error(Errors.INVALID_CODE);
+            throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_REQUEST,
+                    errorMessage, Response.Status.BAD_REQUEST);
+        }
         if (offerState == null) {
             var errorMessage = "No credential offer state for pre-auth code: " + preAuthCode;
             event.detail(REASON, errorMessage).error(Errors.INVALID_CODE);

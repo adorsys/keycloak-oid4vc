@@ -641,6 +641,15 @@ public class OID4VCIssuerEndpoint {
             throw new BadRequestException(getErrorResponse(ErrorType.INVALID_CREDENTIAL_OFFER_REQUEST, errorMessage));
         }
 
+        if (offerState.isNonceConsumed()) {
+            var errorMessage = "Credential offer nonce has already been consumed";
+            eventBuilder.detail(Details.REASON, errorMessage).error(ErrorType.INVALID_CREDENTIAL_OFFER_REQUEST.getValue());
+            throw new BadRequestException(getErrorResponse(ErrorType.INVALID_CREDENTIAL_OFFER_REQUEST, errorMessage));
+        }
+
+        offerState.setNonceConsumed(true);
+        offerStorage.putOfferState(offerState);
+
         // Add event details
         if (offerState.getTargetClientId() != null) {
             eventBuilder.client(offerState.getTargetClientId());
@@ -855,6 +864,14 @@ public class OID4VCIssuerEndpoint {
             if (offerState.getTargetClientId() != null && !offerState.getTargetClientId().equals(clientModel.getClientId())) {
                 var errorMessage = "Unexpected login client: " + clientModel.getClientId();
                 LOGGER.errorf(errorMessage + " != %s", offerState.getTargetClientId());
+                eventBuilder.detail(Details.REASON, errorMessage).error(ErrorType.INVALID_CREDENTIAL_REQUEST.getValue());
+                throw new BadRequestException(getErrorResponse(ErrorType.INVALID_CREDENTIAL_REQUEST, errorMessage));
+            }
+        } else if (!Strings.isEmpty(requestedCredentialIdentifier)) {
+            offerState = offerStorage.getOfferStateByCredentialIdentifier(requestedCredentialIdentifier);
+            if (offerState != null && offerState.isExpired()) {
+                var errorMessage = "Credential offer has already expired";
+                LOGGER.errorf(errorMessage);
                 eventBuilder.detail(Details.REASON, errorMessage).error(ErrorType.INVALID_CREDENTIAL_REQUEST.getValue());
                 throw new BadRequestException(getErrorResponse(ErrorType.INVALID_CREDENTIAL_REQUEST, errorMessage));
             }
