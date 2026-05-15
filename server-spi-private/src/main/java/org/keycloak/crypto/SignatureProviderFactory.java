@@ -16,6 +16,9 @@
  */
 package org.keycloak.crypto;
 
+import java.util.Collections;
+import java.util.Set;
+
 import org.keycloak.Config;
 import org.keycloak.models.KeycloakSessionFactory;
 import org.keycloak.provider.ProviderFactory;
@@ -32,6 +35,13 @@ public interface SignatureProviderFactory extends ProviderFactory<SignatureProvi
 
     @Override
     default void close() {
+    }
+
+    /**
+     * @return a set of JWK claims that indicate the presence of private key material for the algorithm supported by this provider.
+     */
+    default Set<String> getJwkPrivateKeyClaims() {
+        return Collections.emptySet();
     }
 
 }
