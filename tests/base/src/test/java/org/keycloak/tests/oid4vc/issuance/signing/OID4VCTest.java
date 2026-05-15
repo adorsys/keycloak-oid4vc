@@ -8,8 +8,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
-import org.keycloak.crypto.KeyWrapper;
-import org.keycloak.models.KeycloakSession;
 import org.keycloak.protocol.oid4vc.model.CredentialSubject;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
 import org.keycloak.tests.oid4vc.OID4VCIssuerEndpointTest;
@@ -43,16 +41,5 @@ public abstract class OID4VCTest extends OID4VCIssuerEndpointTest {
                 .ifPresent(credential::setIssuanceDate);
         credential.setCredentialSubject(getCredentialSubject(claims));
         return credential;
-    }
-
-    protected static KeyWrapper getKeyFromSession(KeycloakSession session) {
-        return session.keys()
-                .getKeysStream(session.getContext().getRealm())
-                .findFirst()
-                .orElseThrow(() -> new RuntimeException("No key was configured"));
-    }
-
-    protected static String getKeyIdFromSession(KeycloakSession session) {
-        return getKeyFromSession(session).getKid();
     }
 }

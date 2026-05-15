@@ -1,3 +1,20 @@
+/*
+ * Copyright 2024 Red Hat, Inc. and/or its affiliates
+ * and other contributors as indicated by the @author tags.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package org.keycloak.tests.oid4vc.issuance.signing;
 
 import java.security.PublicKey;
@@ -34,7 +51,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.fail;
 
 @KeycloakIntegrationTest(config = OID4VCIssuerTestBase.VCTestServerConfig.class)
@@ -44,38 +61,26 @@ public class JwtCredentialSignerTest extends OID4VCTest {
     private RunOnServerClient runOnServer;
 
     @Test
-    public void testUnsupportedCredentialBody() {
-        try {
-            withCausePropagation(() -> runOnServer.run(session -> new JwtCredentialSigner(session).signCredential(
-                    new LDCredentialBody(getTestCredential(Map.of())),
-                    new CredentialBuildConfig()
-            )));
-            fail("Expected CredentialSignerException");
-        } catch (Throwable t) {
-            assertTrue(t instanceof CredentialSignerException);
-        }
+    public void testUnsupportedCredentialBody() throws Throwable {
+        runOnServer.run(session -> assertThrows(
+                CredentialSignerException.class,
+                () -> new JwtCredentialSigner(session).signCredential(
+                        new LDCredentialBody(getTestCredential(Map.of())),
+                        new CredentialBuildConfig())));
     }
 
     @Test
-    public void testUnsupportedAlgorithm() {
-        try {
-            withCausePropagation(() -> runOnServer.run(session ->
-                    testSignJwtCredential(session, getKeyIdFromSession(session), "unsupported-algorithm", Map.of())));
-            fail("Expected CredentialSignerException");
-        } catch (Throwable t) {
-            assertTrue(t instanceof CredentialSignerException);
-        }
+    public void testUnsupportedAlgorithm() throws Throwable {
+        runOnServer.run(session -> assertThrows(
+                CredentialSignerException.class,
+                () -> testSignJwtCredential(session, getKeyIdFromSession(session), "unsupported-algorithm", Map.of())));
     }
 
     @Test
-    public void testFailIfNoKey() {
-        try {
-            withCausePropagation(() -> runOnServer.run(session ->
-                    testSignJwtCredential(session, "no-such-key", Algorithm.RS256, Map.of())));
-            fail("Expected CredentialSignerException");
-        } catch (Throwable t) {
-            assertTrue(t instanceof CredentialSignerException);
-        }
+    public void testFailIfNoKey() throws Throwable {
+        runOnServer.run(session -> assertThrows(
+                CredentialSignerException.class,
+                () -> testSignJwtCredential(session, "no-such-key", Algorithm.RS256, Map.of())));
     }
 
     @Test
@@ -135,15 +140,16 @@ public class JwtCredentialSignerTest extends OID4VCTest {
         KeyWrapper keyWrapper = getKeyFromSession(session);
         SignatureVerifierContext verifierContext;
         switch (algorithm) {
-            case Algorithm.ES256:
+            case Algorithm.ES256: {
                 verifierContext = new ServerECDSASignatureVerifierContext(keyWrapper);
                 break;
-            case Algorithm.RS256:
+            }
+            case Algorithm.RS256: {
                 verifierContext = new AsymmetricSignatureVerifierContext(keyWrapper);
                 break;
+            }
             default:
-                fail("Algorithm not supported.");
-                return;
+                throw new AssertionError("Algorithm not supported.");
         }
 
         TokenVerifier<JsonWebToken> verifier = TokenVerifier
@@ -163,15 +169,16 @@ public class JwtCredentialSignerTest extends OID4VCTest {
                     "JWT claim in JWT encoded VC or VP MUST be used to set the value of the expirationDate of the VC");
             if (claims.containsKey("issuanceDate")) {
                 assertEquals(((Instant) claims.get("issuanceDate")).getEpochSecond(), theToken.getNbf().longValue(),
-                        "VC Data Model v1.1 specifies that issuanceDate property MUST be represented as nbf");
+                        "VC Data Model v1.1 specifies that issuanceDate property MUST be represented as nbf JWT claim, and not iat JWT claim.");
             } else {
-                assertEquals(1000L, theToken.getNbf().longValue(),
-                        "If issuanceDate is absent, nbf should default to test time provider");
+                assertEquals(TEST_ISSUANCE_DATE.getEpochSecond(), theToken.getNbf().longValue(),
+                        "VC Data Model v1.1 specifies that issuanceDate property MUST be represented as nbf JWT claim, and not iat JWT claim.");
             }
             assertEquals(TEST_DID.toString(), theToken.getIssuer(), "The issuer should be set in the token.");
-            assertEquals(testCredential.getId().toString(), theToken.getId(), "The credential ID should be set as token ID.");
+            assertEquals(testCredential.getId().toString(), theToken.getId(), "The credential ID should be set as the token ID.");
             Optional.ofNullable(testCredential.getCredentialSubject().getClaims().get("id"))
-                    .ifPresent(id -> assertEquals(id.toString(), theToken.getSubject()));
+                    .ifPresent(id -> assertEquals(id.toString(), theToken.getSubject(),
+                            "If the credentials subject id is set, it should be set as the token subject."));
 
             assertNotNull(theToken.getOtherClaims().get("vc"), "The credentials should be included at the vc-claim.");
             VerifiableCredential credential = JsonSerialization.mapper.convertValue(theToken.getOtherClaims().get("vc"), VerifiableCredential.class);
