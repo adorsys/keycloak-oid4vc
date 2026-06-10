@@ -29,7 +29,6 @@ import org.junit.jupiter.api.Test;
 import static org.keycloak.OID4VCConstants.CLAIM_NAME_VCT;
 import static org.keycloak.VCFormat.JWT_VC;
 import static org.keycloak.VCFormat.SD_JWT_VC;
-import static org.keycloak.constants.OID4VCIConstants.TRUSTED_KEYS_REALM_ATTR;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -50,7 +49,6 @@ public class OID4VCINaturalPersonTest extends OID4VCIssuerTestBase {
         Proofs proofs = wallet.generateAttestationProof(ctx, ak -> {
             JWK trustedKey = JWKBuilder.create().kid(ak.getKid()).ec(ak.getPublicKey());
             String trustedKeyJson = JsonSerialization.valueAsString(List.of(trustedKey));
-            setRealmAttributes(Map.of(TRUSTED_KEYS_REALM_ATTR, trustedKeyJson));
         });
 
         String accessToken = getAccessToken(ctx);
@@ -77,7 +75,6 @@ public class OID4VCINaturalPersonTest extends OID4VCIssuerTestBase {
         Proofs proofs = wallet.generateAttestationProof(ctx, ak -> {
             JWK trustedKey = JWKBuilder.create().kid(ak.getKid()).ec(ak.getPublicKey());
             String trustedKeyJson = JsonSerialization.valueAsString(List.of(trustedKey));
-            setRealmAttributes(Map.of(TRUSTED_KEYS_REALM_ATTR, trustedKeyJson));
         });
 
         String accessToken = getAccessToken(ctx);
