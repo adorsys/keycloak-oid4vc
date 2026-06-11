@@ -7,8 +7,13 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 import org.keycloak.TokenVerifier;
+import org.keycloak.broker.trust.DefaultTrustIdentityProviderConfig;
+import org.keycloak.broker.trust.DefaultTrustIdentityProviderFactory;
+import org.keycloak.crypto.KeyWrapper;
+import org.keycloak.jose.jwk.JSONWebKeySet;
 import org.keycloak.jose.jwk.JWK;
 import org.keycloak.jose.jwk.JWKBuilder;
+import org.keycloak.models.RealmModel;
 import org.keycloak.protocol.oid4vc.model.CredentialDefinition;
 import org.keycloak.protocol.oid4vc.model.CredentialResponse;
 import org.keycloak.protocol.oid4vc.model.CredentialScopeRepresentation;
@@ -18,6 +23,8 @@ import org.keycloak.representations.JsonWebToken;
 import org.keycloak.sdjwt.IssuerSignedJWT;
 import org.keycloak.sdjwt.vp.SdJwtVP;
 import org.keycloak.testframework.annotations.KeycloakIntegrationTest;
+import org.keycloak.testframework.annotations.TestSetup;
+import org.keycloak.tests.oid4vc.abca.OIDCMockClientAttester;
 import org.keycloak.testsuite.util.oauth.AccessTokenResponse;
 import org.keycloak.testsuite.util.oauth.AuthorizationEndpointResponse;
 import org.keycloak.testsuite.util.oauth.PkceGenerator;
@@ -25,6 +32,7 @@ import org.keycloak.util.JsonSerialization;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.testcontainers.shaded.org.checkerframework.checker.units.qual.K;
 
 import static org.keycloak.OID4VCConstants.CLAIM_NAME_VCT;
 import static org.keycloak.VCFormat.JWT_VC;
@@ -33,12 +41,35 @@ import static org.keycloak.VCFormat.SD_JWT_VC;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
+import static org.keycloak.tests.oid4vc.OID4VCProofTestUtils.createEcKeyPair;
+
 @KeycloakIntegrationTest(config = OID4VCIssuerTestBase.VCTestServerConfig.class)
 public class OID4VCINaturalPersonTest extends OID4VCIssuerTestBase {
+
+    private static KeyWrapper attestationKey;
+    private static String attesterJwks;
+
+    @TestSetup
+    public void configure() throws Exception {
+        attestationKey = createEcKeyPair("oid4vci-trusted-attester-jwk");
+        JWK jwk = JWKBuilder.create()
+                .kid(attestationKey.getKid())
+                .ec(attestationKey.getPublicKey());;
+        JSONWebKeySet jwks = new JSONWebKeySet();
+        jwks.setKeys(new JWK[] { jwk });
+        attesterJwks = JsonSerialization.writeValueAsString(jwks);
+    }
 
     @BeforeEach
     void beforeEach() {
         oauth.client(pubClient.getClientId());
+        String jwks = attesterJwks;
+        runOnServer.run(session -> {
+            RealmModel realm = session.getContext().getRealm();
+            configureTrustIdentityProvider(realm, OID4VCI_ATTESTER_DEFAULT_TRUST_IDP_ALIAS,
+                    DefaultTrustIdentityProviderFactory.PROVIDER_ID,
+                    Map.of(DefaultTrustIdentityProviderConfig.TRUSTED_JWKS, jwks));
+        });
     }
 
     @Test
@@ -46,10 +77,7 @@ public class OID4VCINaturalPersonTest extends OID4VCIssuerTestBase {
 
         var ctx = new OID4VCTestContext(client, jwtNaturalPersonCredentialScope);
 
-        Proofs proofs = wallet.generateAttestationProof(ctx, ak -> {
-            JWK trustedKey = JWKBuilder.create().kid(ak.getKid()).ec(ak.getPublicKey());
-            String trustedKeyJson = JsonSerialization.valueAsString(List.of(trustedKey));
-        });
+        Proofs proofs = wallet.generateAttestationProof(ctx, attestationKey);
 
         String accessToken = getAccessToken(ctx);
         CredentialResponse credResponse = getCredentialResponse(ctx, accessToken, proofs);
@@ -72,10 +100,7 @@ public class OID4VCINaturalPersonTest extends OID4VCIssuerTestBase {
 
         var ctx = new OID4VCTestContext(client, sdJwtNaturalPersonCredentialScope);
 
-        Proofs proofs = wallet.generateAttestationProof(ctx, ak -> {
-            JWK trustedKey = JWKBuilder.create().kid(ak.getKid()).ec(ak.getPublicKey());
-            String trustedKeyJson = JsonSerialization.valueAsString(List.of(trustedKey));
-        });
+        Proofs proofs = wallet.generateAttestationProof(ctx, attestationKey);
 
         String accessToken = getAccessToken(ctx);
         CredentialResponse credResponse = getCredentialResponse(ctx, accessToken, proofs);

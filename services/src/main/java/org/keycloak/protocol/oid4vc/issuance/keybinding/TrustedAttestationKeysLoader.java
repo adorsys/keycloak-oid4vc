@@ -62,7 +62,7 @@ public final class TrustedAttestationKeysLoader {
                     trustedKeys.putIfAbsent(keyId, jwk);
                 });
 
-        logger.debugf("Loaded %d trusted keys from IdPs for client: %s", trustedKeys.size(), client.getClientId());
+        logger.infof("Loaded %d trusted keys from IdPs for client: %s", trustedKeys.size(), client.getClientId());
         return trustedKeys;
     }
 }
