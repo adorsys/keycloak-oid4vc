@@ -37,7 +37,7 @@ public class AttestationProofValidatorFactory implements ProofValidatorFactory {
 
     @Override
     public ProofValidator create(KeycloakSession session) {
-        Map<String, JWK> trustedKeys = TrustedAttestationKeysLoader.loadTrustedKeysFromRealm(session);
+        Map<String, JWK> trustedKeys = TrustedAttestationKeysLoader.loadTrustedKeys(session);
         AttestationKeyResolver resolver = new StaticAttestationKeyResolver(trustedKeys);
         return new AttestationProofValidator(session, resolver);
     }

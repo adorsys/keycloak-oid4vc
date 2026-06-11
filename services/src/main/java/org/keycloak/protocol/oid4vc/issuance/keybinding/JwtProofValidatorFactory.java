@@ -32,7 +32,7 @@ public class JwtProofValidatorFactory implements ProofValidatorFactory {
 
     @Override
     public ProofValidator create(KeycloakSession session) {
-        Map<String, JWK> trustedKeys = TrustedAttestationKeysLoader.loadTrustedKeysFromRealm(session);
+        Map<String, JWK> trustedKeys = TrustedAttestationKeysLoader.loadTrustedKeys(session);
         AttestationKeyResolver keyResolver = new StaticAttestationKeyResolver(trustedKeys);
 
         return new JwtProofValidator(session, keyResolver);
