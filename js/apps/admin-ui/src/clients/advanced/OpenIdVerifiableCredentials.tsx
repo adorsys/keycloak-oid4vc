@@ -1,12 +1,13 @@
 import { Button, ActionGroup } from "@patternfly/react-core";
 import { useTranslation } from "react-i18next";
-import { TextControl } from "@keycloak/keycloak-ui-shared";
 import { useFormContext } from "react-hook-form";
 import { FormAccess } from "../../components/form/FormAccess";
+import { IdentityProviderSelect } from "../../components/identity-provider/IdentityProviderSelect";
 import { convertAttributeNameToForm } from "../../util";
 import { FormFields, SaveOptions } from "../ClientDetails";
 import ClientRepresentation from "@keycloak/keycloak-admin-client/lib/defs/clientRepresentation";
 import { DefaultSwitchControl } from "../../components/SwitchControl";
+import { IdentityProviderType } from "@keycloak/keycloak-admin-client/lib/defs/identityProviderRepresentation";
 
 type OpenIdVerifiableCredentialsProps = {
   client: ClientRepresentation;
@@ -38,12 +39,17 @@ export const OpenIdVerifiableCredentials = ({
       />
 
       {oid4vciEnabled === "true" && (
-        <TextControl
+        <IdentityProviderSelect
           name={convertAttributeNameToForm<FormFields>(
             "attributes.oid4vci.attester_trust_idps",
           )}
           label={t("oid4vciAttesterTrustIdps")}
-          labelIcon={t("oid4vciAttesterTrustIdpsHelp")}
+          helpText={t("oid4vciAttesterTrustIdpsHelp")}
+          convertToName={convertAttributeNameToForm}
+          identityProviderType={IdentityProviderType.TRUST_MATERIAL}
+          realmOnly
+          stringify
+          stringifySeparator={","}
         />
       )}
 
