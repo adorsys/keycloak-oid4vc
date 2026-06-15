@@ -166,7 +166,7 @@ export async function revertAuthFlowOverride(page: Page) {
 }
 
 const oid4vciEnabledSwitch = "#attributes\\.oid4vci🍺enabled";
-const oid4vciAttesterTrustIdpsInput =
+const oid4vciAttesterTrustIdpsSelectTestId =
   "#attributes\\.oid4vci🍺attester_trust_idps";
 
 export async function switchOid4vciEnabled(page: Page, enable: boolean) {
@@ -185,15 +185,28 @@ export async function assertOid4vciEnabled(page: Page, enabled: boolean) {
   }
 }
 
-export function getOid4vciAttesterTrustIdpsInput(page: Page) {
-  return page.locator(oid4vciAttesterTrustIdpsInput);
+export function getOid4vciAttesterTrustIdpsSelect(page: Page) {
+  return page.locator(oid4vciAttesterTrustIdpsSelectTestId);
 }
 
-export async function fillOid4vciAttesterTrustIdps(
+export async function getOid4vciAttesterTrustIdpsValues(
   page: Page,
-  aliases: string,
+): Promise<string[]> {
+  await getOid4vciAttesterTrustIdpsSelect(page).click();
+  const options = page.getByRole("option");
+  // await options.first().waitFor({ state: "visible" });
+  return await options.allTextContents();
+}
+
+export async function selectOid4vciAttesterTrustIdps(
+  page: Page,
+  aliases: string[],
 ) {
-  await getOid4vciAttesterTrustIdpsInput(page).fill(aliases);
+  const select = getOid4vciAttesterTrustIdpsSelect(page);
+  for (const alias of aliases) {
+    await select.click();
+    await page.getByRole("option", { name: alias, exact: true }).click();
+  }
 }
 
 export async function saveOid4vci(page: Page) {

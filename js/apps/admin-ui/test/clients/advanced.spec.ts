@@ -4,6 +4,7 @@ import adminClient from "../utils/AdminClient.ts";
 import { login } from "../utils/login.ts";
 import { goToClients, goToRealm } from "../utils/sidebar.ts";
 import { assertEmptyTable, clickTableRowItem } from "../utils/table.ts";
+import { createDefaultTrustProvider } from "../identity-providers/main.ts";
 import {
   assertAccessTokenSignatureAlgorithm,
   assertAdvancedSwitchesOn,
@@ -34,8 +35,9 @@ import {
   revertOid4vci,
   assertOid4vciEnabled,
   switchOid4vciEnabled,
-  getOid4vciAttesterTrustIdpsInput,
-  fillOid4vciAttesterTrustIdps,
+  selectOid4vciAttesterTrustIdps,
+  getOid4vciAttesterTrustIdpsValues,
+  getOid4vciAttesterTrustIdpsSelect,
 } from "./advanced.ts";
 
 test.describe.serial("Advanced tab test", () => {
@@ -213,36 +215,41 @@ test.describe.serial("OpenID for Verifiable Credentials", () => {
     test("should show OID4VCI Attester Trust IdPs field only when OID4VCI is enabled", async ({
       page,
     }) => {
-      const attesterTrustIdpsInput = getOid4vciAttesterTrustIdpsInput(page);
+      const attesterTrustIdpsSelect = getOid4vciAttesterTrustIdpsSelect(page);
 
       await switchOid4vciEnabled(page, true);
-      await expect(attesterTrustIdpsInput).toBeVisible();
+      await expect(attesterTrustIdpsSelect).toBeVisible();
 
       await switchOid4vciEnabled(page, false);
-      await expect(attesterTrustIdpsInput).toBeHidden();
+      await expect(attesterTrustIdpsSelect).toBeHidden();
     });
 
-    test("should persist OID4VCI Attester Trust IdPs values", async ({
-      page,
-    }) => {
-      await switchOid4vciEnabled(page, true);
-      const aliasesValue = "idp-alias-1, idp-alias-2";
-      await fillOid4vciAttesterTrustIdps(page, aliasesValue);
-      await saveOid4vci(page);
+    test(
+      "should persist OID4VCI Attester Trust IdPs values",
+      { tag: "@hello" },
+      async ({ page }) => {
+        const aliases = ["trust-idp-alias-1", "trust-idp-alias-2"];
+        for (const alias of aliases) {
+          const jwksUrl = `https://jwks.io/v1/${uuidv4()}`;
+          await createDefaultTrustProvider(page, alias, jwksUrl);
+        }
 
-      // Verify the value is persisted
-      await expect(getOid4vciAttesterTrustIdpsInput(page)).toHaveValue(
-        aliasesValue,
-      );
+        await goToClients(page);
+        await clickTableRowItem(page, clientIdOpenIdConnect);
+        await goToAdvancedTab(page);
 
-      // Change the value and revert
-      await fillOid4vciAttesterTrustIdps(page, "different-idp");
-      await revertOid4vci(page);
+        await switchOid4vciEnabled(page, true);
+        await selectOid4vciAttesterTrustIdps(page, aliases);
+        await saveOid4vci(page);
 
-      // Verify the value is reverted to the original
-      await expect(getOid4vciAttesterTrustIdpsInput(page)).toHaveValue(
-        aliasesValue,
-      );
-    });
+        // Verify chips for the selected aliases are persisted
+        expect(await getOid4vciAttesterTrustIdpsValues(page)).toEqual(aliases);
+
+        // Change the value and revert
+        await selectOid4vciAttesterTrustIdps(page, [aliases[0]]);
+        await revertOid4vci(page);
+        expect(await getOid4vciAttesterTrustIdpsValues(page)).toEqual(aliases);
+      },
+    );
   });
 });
