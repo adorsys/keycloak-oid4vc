@@ -17,9 +17,6 @@
 
 package org.keycloak.protocol.oid4vc.issuance.keybinding;
 
-import java.util.Map;
-
-import org.keycloak.jose.jwk.JWK;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.protocol.oid4vc.model.ProofType;
 
@@ -32,9 +29,7 @@ public class JwtProofValidatorFactory implements ProofValidatorFactory {
 
     @Override
     public ProofValidator create(KeycloakSession session) {
-        Map<String, JWK> trustedKeys = TrustedAttestationKeysLoader.loadTrustedKeys(session);
-        AttestationKeyResolver keyResolver = new StaticAttestationKeyResolver(trustedKeys);
-
+        AttestationKeyResolver keyResolver = new TrustedAttestationKeyResolver(session);
         return new JwtProofValidator(session, keyResolver);
     }
 }
