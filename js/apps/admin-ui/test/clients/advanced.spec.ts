@@ -34,6 +34,8 @@ import {
   revertOid4vci,
   assertOid4vciEnabled,
   switchOid4vciEnabled,
+  getOid4vciAttesterTrustIdpsInput,
+  fillOid4vciAttesterTrustIdps,
 } from "./advanced.ts";
 
 test.describe.serial("Advanced tab test", () => {
@@ -206,6 +208,41 @@ test.describe.serial("OpenID for Verifiable Credentials", () => {
       await adminClient.updateRealm(realmName, {
         verifiableCredentialsEnabled: true,
       });
+    });
+
+    test("should show OID4VCI Attester Trust IdPs field only when OID4VCI is enabled", async ({
+      page,
+    }) => {
+      const attesterTrustIdpsInput = getOid4vciAttesterTrustIdpsInput(page);
+
+      await switchOid4vciEnabled(page, true);
+      await expect(attesterTrustIdpsInput).toBeVisible();
+
+      await switchOid4vciEnabled(page, false);
+      await expect(attesterTrustIdpsInput).toBeHidden();
+    });
+
+    test("should persist OID4VCI Attester Trust IdPs values", async ({
+      page,
+    }) => {
+      await switchOid4vciEnabled(page, true);
+      const aliasesValue = "idp-alias-1, idp-alias-2";
+      await fillOid4vciAttesterTrustIdps(page, aliasesValue);
+      await saveOid4vci(page);
+
+      // Verify the value is persisted
+      await expect(getOid4vciAttesterTrustIdpsInput(page)).toHaveValue(
+        aliasesValue,
+      );
+
+      // Change the value and revert
+      await fillOid4vciAttesterTrustIdps(page, "different-idp");
+      await revertOid4vci(page);
+
+      // Verify the value is reverted to the original
+      await expect(getOid4vciAttesterTrustIdpsInput(page)).toHaveValue(
+        aliasesValue,
+      );
     });
   });
 });
