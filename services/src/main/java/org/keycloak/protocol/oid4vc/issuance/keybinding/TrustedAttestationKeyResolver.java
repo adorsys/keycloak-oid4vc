@@ -43,7 +43,7 @@ public class TrustedAttestationKeyResolver implements AttestationKeyResolver {
 
         String trustIdpsConfig = client.getAttribute(OID4VCIConstants.OID4VCI_ATTESTER_TRUST_IDPS_ATTR);
         if (StringUtil.isBlank(trustIdpsConfig)) {
-            logger.debugf("No trust-material IdP aliases configured for client: %s", client.getClientId());
+            logger.warnf("No trust-material IdP aliases configured for client: %s", client.getClientId());
             return null;
         }
 

@@ -33,7 +33,7 @@ public class AttestationProofValidatorFactory implements ProofValidatorFactory {
     }
 
     @Override
-    public ProofValidator create(KeycloakSession session) {
+    public AttestationProofValidator create(KeycloakSession session) {
         AttestationKeyResolver resolver = new TrustedAttestationKeyResolver(session);
         return new AttestationProofValidator(session, resolver);
     }

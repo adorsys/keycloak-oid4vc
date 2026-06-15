@@ -8,7 +8,7 @@ import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 import java.security.interfaces.RSAPrivateCrtKey;
 import java.security.interfaces.RSAPublicKey;
-import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
@@ -26,6 +26,7 @@ import org.keycloak.protocol.oid4vc.issuance.keybinding.AttestationValidatorUtil
 import org.keycloak.protocol.oid4vc.issuance.keybinding.JwtProofValidator;
 import org.keycloak.protocol.oid4vc.model.KeyAttestationJwtBody;
 import org.keycloak.protocol.oid4vc.model.Proofs;
+import org.keycloak.protocol.oidc.utils.JWKSServerUtils;
 import org.keycloak.representations.AccessToken;
 
 import org.bouncycastle.asn1.x500.X500Name;
@@ -220,27 +221,13 @@ public final class OID4VCProofTestUtils {
     }
 
     public static JSONWebKeySet toJwks(KeyWrapper... keys) {
-        List<JWK> jwkList = new ArrayList<>();
-        for (KeyWrapper key : keys) {
-            JWK jwk;
-
-            if (key.getPublicKey() instanceof java.security.interfaces.ECPublicKey) {
-                jwk = JWKBuilder.create()
-                        .kid(key.getKid())
-                        .ec(key.getPublicKey());
-            } else if (key.getPublicKey() instanceof java.security.interfaces.RSAPublicKey) {
-                jwk = JWKBuilder.create()
-                        .kid(key.getKid())
-                        .rsa(key.getPublicKey());
-            } else {
-                throw new IllegalArgumentException("Unsupported key type: " + key.getPublicKey().getAlgorithm());
-            }
-
-            jwkList.add(jwk);
-        }
+        List<JWK> jwkList = Arrays.stream(keys)
+                .map(JWKSServerUtils::toJwk)
+                .toList();
 
         JSONWebKeySet jwks = new JSONWebKeySet();
         jwks.setKeys(jwkList.toArray(new JWK[0]));
+
         return jwks;
     }
 }

@@ -28,7 +28,7 @@ public class JwtProofValidatorFactory implements ProofValidatorFactory {
     }
 
     @Override
-    public ProofValidator create(KeycloakSession session) {
+    public JwtProofValidator create(KeycloakSession session) {
         AttestationKeyResolver keyResolver = new TrustedAttestationKeyResolver(session);
         return new JwtProofValidator(session, keyResolver);
     }
