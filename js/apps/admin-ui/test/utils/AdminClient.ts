@@ -63,11 +63,19 @@ class AdminClient {
     return await this.#client.clients.create(client);
   }
 
+  async getClient(clientName: string, realmName?: string) {
+    await this.#login();
+    return (
+      await this.#client.clients.find({
+        clientId: clientName,
+        realm: realmName,
+      })
+    )[0];
+  }
+
   async deleteClient(clientName: string) {
     await this.#login();
-    const client = (
-      await this.#client.clients.find({ clientId: clientName })
-    )[0];
+    const client = await this.getClient(clientName);
 
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- find()[0] is undefined when client does not exist
     if (client) {

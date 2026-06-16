@@ -141,6 +141,7 @@ test.describe.serial("Client Offline Session Max", () => {
 test.describe.serial("OpenID for Verifiable Credentials", () => {
   const realmName = `oid4vci-test-${uuidv4()}`;
   const clientIdOpenIdConnect = `client-oidc-${uuidv4()}`;
+
   test.beforeAll(async () => {
     await adminClient.createRealm(realmName, {
       verifiableCredentialsEnabled: true,
@@ -153,6 +154,10 @@ test.describe.serial("OpenID for Verifiable Credentials", () => {
   });
 
   test.afterAll(() => adminClient.deleteRealm(realmName));
+
+  const getTestClient = async () => {
+    return await adminClient.getClient(clientIdOpenIdConnect, realmName);
+  };
 
   test.describe.serial("with protocol openid-connect", () => {
     test.beforeEach(async ({ page }) => {
@@ -243,6 +248,10 @@ test.describe.serial("OpenID for Verifiable Credentials", () => {
 
       // Verify chips for the selected aliases are persisted
       expect(await getOid4vciAttesterTrustIdpsValues(page)).toEqual(aliases);
+      const client = await getTestClient();
+      expect(client.attributes?.["oid4vci.attester_trust_idps"]).toBe(
+        aliases.join(","),
+      );
 
       // Change the value and test reverting
       await selectOid4vciAttesterTrustIdps(page, [aliases[0]]);
