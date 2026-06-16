@@ -166,7 +166,7 @@ export async function revertAuthFlowOverride(page: Page) {
 }
 
 const oid4vciEnabledSwitch = "#attributes\\.oid4vci🍺enabled";
-const oid4vciAttesterTrustIdpsSelectTestId =
+const oid4vciAttesterTrustIdpsSelect =
   "#attributes\\.oid4vci🍺attester_trust_idps";
 
 export async function switchOid4vciEnabled(page: Page, enable: boolean) {
@@ -186,15 +186,20 @@ export async function assertOid4vciEnabled(page: Page, enabled: boolean) {
 }
 
 export function getOid4vciAttesterTrustIdpsSelect(page: Page) {
-  return page.locator(oid4vciAttesterTrustIdpsSelectTestId);
+  return page.locator(oid4vciAttesterTrustIdpsSelect);
+}
+
+export async function focusOid4vciAttesterTrustIdpsSelect(page: Page) {
+  await page.keyboard.press("Escape");
+  await getOid4vciAttesterTrustIdpsSelect(page).click();
 }
 
 export async function getOid4vciAttesterTrustIdpsValues(
   page: Page,
 ): Promise<string[]> {
-  await getOid4vciAttesterTrustIdpsSelect(page).click();
+  await focusOid4vciAttesterTrustIdpsSelect(page);
   const options = page.getByRole("option");
-  // await options.first().waitFor({ state: "visible" });
+  await options.first().waitFor({ state: "visible" });
   return await options.allTextContents();
 }
 
@@ -202,9 +207,8 @@ export async function selectOid4vciAttesterTrustIdps(
   page: Page,
   aliases: string[],
 ) {
-  const select = getOid4vciAttesterTrustIdpsSelect(page);
   for (const alias of aliases) {
-    await select.click();
+    await focusOid4vciAttesterTrustIdpsSelect(page);
     await page.getByRole("option", { name: alias, exact: true }).click();
   }
 }

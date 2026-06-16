@@ -224,32 +224,30 @@ test.describe.serial("OpenID for Verifiable Credentials", () => {
       await expect(attesterTrustIdpsSelect).toBeHidden();
     });
 
-    test(
-      "should persist OID4VCI Attester Trust IdPs values",
-      { tag: "@hello" },
-      async ({ page }) => {
-        const aliases = ["trust-idp-alias-1", "trust-idp-alias-2"];
-        for (const alias of aliases) {
-          const jwksUrl = `https://jwks.io/v1/${uuidv4()}`;
-          await createDefaultTrustProvider(page, alias, jwksUrl);
-        }
+    test("should persist OID4VCI Attester Trust IdPs values", async ({
+      page,
+    }) => {
+      const aliases = ["trust-idp-alias-1", "trust-idp-alias-2"];
+      for (const alias of aliases) {
+        const jwksUrl = `https://jwks.io/v1/${uuidv4()}`;
+        await createDefaultTrustProvider(page, alias, jwksUrl);
+      }
 
-        await goToClients(page);
-        await clickTableRowItem(page, clientIdOpenIdConnect);
-        await goToAdvancedTab(page);
+      await goToClients(page);
+      await clickTableRowItem(page, clientIdOpenIdConnect);
+      await goToAdvancedTab(page);
 
-        await switchOid4vciEnabled(page, true);
-        await selectOid4vciAttesterTrustIdps(page, aliases);
-        await saveOid4vci(page);
+      await switchOid4vciEnabled(page, true);
+      await selectOid4vciAttesterTrustIdps(page, aliases);
+      await saveOid4vci(page);
 
-        // Verify chips for the selected aliases are persisted
-        expect(await getOid4vciAttesterTrustIdpsValues(page)).toEqual(aliases);
+      // Verify chips for the selected aliases are persisted
+      expect(await getOid4vciAttesterTrustIdpsValues(page)).toEqual(aliases);
 
-        // Change the value and revert
-        await selectOid4vciAttesterTrustIdps(page, [aliases[0]]);
-        await revertOid4vci(page);
-        expect(await getOid4vciAttesterTrustIdpsValues(page)).toEqual(aliases);
-      },
-    );
+      // Change the value and test reverting
+      await selectOid4vciAttesterTrustIdps(page, [aliases[0]]);
+      await revertOid4vci(page);
+      expect(await getOid4vciAttesterTrustIdpsValues(page)).toEqual(aliases);
+    });
   });
 });
