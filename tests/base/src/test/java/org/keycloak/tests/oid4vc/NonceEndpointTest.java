@@ -10,6 +10,7 @@ import jakarta.ws.rs.core.Response;
 
 import org.keycloak.OAuth2Constants;
 import org.keycloak.TokenVerifier;
+import org.keycloak.common.VerificationException;
 import org.keycloak.crypto.Algorithm;
 import org.keycloak.events.EventType;
 import org.keycloak.jose.jws.JWSHeader;
@@ -77,6 +78,31 @@ public class NonceEndpointTest extends OID4VCIssuerTestBase {
                     List.of(OID4VCIssuerWellKnownProvider.getCredentialsEndpoint(keycloakContext)),
                     Map.of(JwtCNonceHandler.SOURCE_ENDPOINT,
                             OID4VCIssuerWellKnownProvider.getNonceEndpoint(keycloakContext)));
+        });
+    }
+
+    @Test
+    public void testCNonceCanOnlyBeVerifiedOnce() throws Exception {
+        Oid4vcNonceResponse response = oauth.oid4vc().nonceRequest().send();
+        Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatusCode(),
+                "Nonce endpoint should return 200 OK");
+
+        String cNonce = response.getNonce();
+        Assertions.assertNotNull(cNonce);
+
+        runOnServer.run(session -> {
+            CNonceHandler cNonceHandler = session.getProvider(CNonceHandler.class);
+            var keycloakContext = session.getContext();
+
+            cNonceHandler.verifyCNonce(cNonce,
+                    List.of(OID4VCIssuerWellKnownProvider.getCredentialsEndpoint(keycloakContext)),
+                    Map.of(JwtCNonceHandler.SOURCE_ENDPOINT,
+                            OID4VCIssuerWellKnownProvider.getNonceEndpoint(keycloakContext)));
+            cNonceHandler.consumeCNonce(cNonce);
+
+            VerificationException exception = Assertions.assertThrows(VerificationException.class,
+                    () -> cNonceHandler.consumeCNonce(cNonce));
+            Assertions.assertEquals("c_nonce has already been used", exception.getMessage());
         });
     }
 

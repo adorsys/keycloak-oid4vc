@@ -52,6 +52,15 @@ public interface CNonceHandler extends Provider {
      */
     public void verifyCNonce(String cNonce, List<String> audiences, @Nullable Map<String, Object> additionalDetails) throws VerificationException;
 
+    /**
+     * Marks a verified cNonce value as consumed.
+     *
+     * @param cNonce the cNonce to consume
+     */
+    public default void consumeCNonce(String cNonce) throws VerificationException {
+        throw new VerificationException("c_nonce consumption is not supported");
+    }
+
     @Override
     default void close() {
         // do nothing

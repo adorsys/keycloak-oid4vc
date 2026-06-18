@@ -28,10 +28,12 @@ import java.util.Arrays;
 import java.util.Base64;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import jakarta.ws.rs.BadRequestException;
@@ -65,6 +67,8 @@ import org.keycloak.jose.jwe.JWEException;
 import org.keycloak.jose.jwe.JWEHeader;
 import org.keycloak.jose.jwk.JWK;
 import org.keycloak.jose.jwk.JWKParser;
+import org.keycloak.jose.jws.JWSInput;
+import org.keycloak.jose.jws.JWSInputException;
 import org.keycloak.models.AuthenticatedClientSessionModel;
 import org.keycloak.models.ClientModel;
 import org.keycloak.models.ClientScopeModel;
@@ -102,6 +106,7 @@ import org.keycloak.protocol.oid4vc.model.CredentialsOffer;
 import org.keycloak.protocol.oid4vc.model.ErrorResponse;
 import org.keycloak.protocol.oid4vc.model.ErrorType;
 import org.keycloak.protocol.oid4vc.model.JwtProof;
+import org.keycloak.protocol.oid4vc.model.KeyAttestationJwtBody;
 import org.keycloak.protocol.oid4vc.model.NonceResponse;
 import org.keycloak.protocol.oid4vc.model.OID4VCAuthorizationDetail;
 import org.keycloak.protocol.oid4vc.model.OfferResponseType;
@@ -1023,6 +1028,8 @@ public class OID4VCIssuerEndpoint {
             credentialRequest.setProofs(originalProofs);
         }
 
+        consumeProofCNonce(credentialRequest);
+
         // Encrypt all responses if encryption parameters are provided, except for error credential responses
         Response response;
         if (encryptionParams != null && !responseVO.getCredentials().isEmpty()) {
@@ -1333,6 +1340,57 @@ public class OID4VCIssuerEndpoint {
 
         // Validation already happened in normalizeProofFields, so we can safely extract proofs
         return proofs.getAllProofs();
+    }
+
+    private void consumeProofCNonce(CredentialRequest credentialRequest) {
+        Proofs proofs = credentialRequest.getProofs();
+        if (proofs == null) {
+            return;
+        }
+
+        Set<String> cNonces = extractProofCNonce(proofs);
+        if (cNonces.isEmpty()) {
+            return;
+        }
+
+        CNonceHandler cNonceHandler = session.getProvider(CNonceHandler.class);
+        if (cNonceHandler == null) {
+            throw new ErrorResponseException(INVALID_PROOF.getValue(), "CNonce handler not configured", Response.Status.BAD_REQUEST);
+        }
+
+        for (String cNonce : cNonces) {
+            try {
+                cNonceHandler.consumeCNonce(cNonce);
+            } catch (VerificationException e) {
+                throw new ErrorResponseException(INVALID_NONCE.getValue(), e.getMessage(), Response.Status.BAD_REQUEST);
+            }
+        }
+    }
+
+    private Set<String> extractProofCNonce(Proofs proofs) {
+        Set<String> cNonces = new LinkedHashSet<>();
+        try {
+            if (proofs.getJwt() != null) {
+                for (String jwtProof : proofs.getJwt()) {
+                    AccessToken proofPayload = new JWSInput(jwtProof).readJsonContent(AccessToken.class);
+                    if (!Strings.isEmpty(proofPayload.getNonce())) {
+                        cNonces.add(proofPayload.getNonce());
+                    }
+                }
+            }
+            if (proofs.getAttestation() != null) {
+                for (String attestationProof : proofs.getAttestation()) {
+                    KeyAttestationJwtBody attestationBody = new JWSInput(attestationProof)
+                            .readJsonContent(KeyAttestationJwtBody.class);
+                    if (!Strings.isEmpty(attestationBody.getNonce())) {
+                        cNonces.add(attestationBody.getNonce());
+                    }
+                }
+            }
+        } catch (JWSInputException e) {
+            throw new ErrorResponseException(INVALID_PROOF.getValue(), "Could not parse provided proof", Response.Status.BAD_REQUEST);
+        }
+        return cNonces;
     }
 
     private void enforceProofContractForCredential(SupportedCredentialConfiguration credentialConfiguration, Proofs proofs) {
