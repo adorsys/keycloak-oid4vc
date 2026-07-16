@@ -223,6 +223,9 @@ public class SupportedCredentialConfiguration {
         if (Objects.equals(format, VCFormat.SD_JWT_VC)) {
             return VerifiableCredentialType.from(vct);
         }
+        if (Objects.equals(format, VCFormat.MSO_MDOC)) {
+            return VerifiableCredentialType.from(docType);
+        }
         return null;
     }
 

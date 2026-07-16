@@ -76,7 +76,7 @@ public abstract class MdocKeyBindingTest {
                 () -> testKeyBinding(() -> KeyUtils.generateEddsaKeyPair(Algorithm.Ed448),
                         keyPair -> JWKBuilder.create().kid(KEY_ID).algorithm(Algorithm.EdDSA)
                                 .okp(keyPair.getPublic(), KeyUse.SIG),
-                        coseKey -> assertEdDSAKey(coseKey, Curve.ED25519)));
+                        coseKey -> {}));
         assertEquals("Unsupported OKP proof key curve for mDoc COSE_Key: Ed448", exception.getMessage());
     }
 

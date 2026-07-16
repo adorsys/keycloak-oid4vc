@@ -96,13 +96,22 @@ final class MdocDeviceKey {
     }
 
     private static EC2COSEKey ecKey(byte[] keyId, COSEAlgorithmIdentifier algorithm, ECPublicKey publicKey) {
-        EC2COSEKey key = algorithm == null ? EC2COSEKey.create(publicKey) : EC2COSEKey.create(publicKey, algorithm);
-        return new EC2COSEKey(keyId, algorithm, null, key.getCurve(), key.getX(), key.getY());
+        try {
+            EC2COSEKey key = algorithm == null ? EC2COSEKey.create(publicKey) : EC2COSEKey.create(publicKey, algorithm);
+            return new EC2COSEKey(keyId, algorithm, null, key.getCurve(), key.getX(), key.getY());
+        } catch (IllegalArgumentException e) {
+            // webauthn4j only maps P256, P384 and P521, so any other EC proof curve is not representable as a COSE_Key.
+            throw new MdocException("Unsupported EC proof key curve for mDoc COSE_Key", e);
+        }
     }
 
     private static RSACOSEKey rsaKey(byte[] keyId, COSEAlgorithmIdentifier algorithm, RSAPublicKey publicKey) {
-        RSACOSEKey key = algorithm == null ? RSACOSEKey.create(publicKey) : RSACOSEKey.create(publicKey, algorithm);
-        return new RSACOSEKey(keyId, algorithm, null, key.getN(), key.getE());
+        try {
+            RSACOSEKey key = algorithm == null ? RSACOSEKey.create(publicKey) : RSACOSEKey.create(publicKey, algorithm);
+            return new RSACOSEKey(keyId, algorithm, null, key.getN(), key.getE());
+        } catch (IllegalArgumentException e) {
+            throw new MdocException("Unsupported RSA proof key for mDoc COSE_Key", e);
+        }
     }
 
     private static EdDSACOSEKey okpKey(byte[] keyId, COSEAlgorithmIdentifier algorithm, JWK jwk) {

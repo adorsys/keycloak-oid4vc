@@ -43,23 +43,29 @@ final class CredentialSigningAlgorithmResolver {
                                                          String format,
                                                          List<String> globalSupportedSigningAlgorithms) {
         if (!VCFormat.MSO_MDOC.equals(format)) {
-            String signingAlgorithm = credentialModel.getSigningAlg();
+            String signingAlgorithm = resolveConfiguredSigningAlgorithm(keycloakSession, credentialModel, null);
             return StringUtil.isBlank(signingAlgorithm)
                     ? List.copyOf(globalSupportedSigningAlgorithms)
                     : List.of(signingAlgorithm);
         }
 
+        // OID4VCI 1.0 Appendix A.2.2 advertises mDoc signing algorithms as COSE values for IssuerAuth.
+        // Only include realm keys that we can map from Keycloak's JOSE algorithm names to COSE identifiers and that
+        // carry an issuer certificate chain, since mDoc IssuerAuth requires one.
+        List<String> availableMdocAlgorithms = resolveAvailableMdocSigningAlgorithms(keycloakSession);
+
+        // resolved with the same precedence as the signing path so that the advertised algorithm matches the
+        // algorithm actually used to sign the credential
         Optional<String> signingAlgorithm = resolveSupportedConfiguredSigningAlgorithm(
                 format,
-                resolveConfiguredMdocMetadataSigningAlgorithm(keycloakSession, credentialModel)
+                resolveConfiguredSigningAlgorithm(keycloakSession, credentialModel, null),
+                availableMdocAlgorithms
         );
         if (signingAlgorithm.isPresent()) {
             return List.of(signingAlgorithm.get());
         }
 
-        // OID4VCI 1.0 Appendix A.2.2 advertises mDoc signing algorithms as COSE values for IssuerAuth.
-        // Only include realm keys that we can map from Keycloak's JOSE algorithm names to COSE identifiers.
-        return resolveAvailableMdocSigningAlgorithms(keycloakSession);
+        return availableMdocAlgorithms;
     }
 
     static String resolveSigningAlgorithm(KeycloakSession keycloakSession,
@@ -70,15 +76,18 @@ final class CredentialSigningAlgorithmResolver {
             return resolveJsonSigningAlgorithm(keycloakSession, credentialModel, defaultSigningAlgorithm);
         }
 
+        List<String> availableMdocAlgorithms = resolveAvailableMdocSigningAlgorithms(keycloakSession);
+
         Optional<String> signingAlgorithm = resolveSupportedConfiguredSigningAlgorithm(
                 format,
-                resolveConfiguredSigningAlgorithm(keycloakSession, credentialModel, null)
+                resolveConfiguredSigningAlgorithm(keycloakSession, credentialModel, null),
+                availableMdocAlgorithms
         );
         if (signingAlgorithm.isPresent()) {
             return signingAlgorithm.get();
         }
 
-        return resolveAvailableMdocSigningAlgorithms(keycloakSession)
+        return availableMdocAlgorithms
                 .stream()
                 .findFirst()
                 .orElse(null);
@@ -88,15 +97,6 @@ final class CredentialSigningAlgorithmResolver {
                                                       CredentialScopeModel credentialModel,
                                                       String defaultSigningAlgorithm) {
         return resolveConfiguredSigningAlgorithm(keycloakSession, credentialModel, defaultSigningAlgorithm);
-    }
-
-    private static String resolveConfiguredMdocMetadataSigningAlgorithm(KeycloakSession keycloakSession,
-                                                                       CredentialScopeModel credentialModel) {
-        if (StringUtil.isNotBlank(credentialModel.getSigningAlg())) {
-            return credentialModel.getSigningAlg();
-        }
-
-        return resolveConfiguredSigningAlgorithm(keycloakSession, credentialModel, null);
     }
 
     private static String resolveConfiguredSigningAlgorithm(KeycloakSession keycloakSession,
@@ -114,7 +114,8 @@ final class CredentialSigningAlgorithmResolver {
         return fallbackSigningAlgorithm;
     }
 
-    private static Optional<String> resolveSupportedConfiguredSigningAlgorithm(String format, String signingAlgorithm) {
+    private static Optional<String> resolveSupportedConfiguredSigningAlgorithm(String format, String signingAlgorithm,
+                                                                              List<String> availableMdocAlgorithms) {
         if (StringUtil.isBlank(signingAlgorithm)) {
             return Optional.empty();
         }
@@ -122,6 +123,14 @@ final class CredentialSigningAlgorithmResolver {
         if (!isSupportedForFormat(format, signingAlgorithm)) {
             LOGGER.warnf("Configured signing algorithm '%s' is unsupported for credential format '%s'.",
                     signingAlgorithm, format);
+            return Optional.empty();
+        }
+
+        // An mDoc scope may be configured with an algorithm whose active signing key has no certificate chain. Such a
+        // credential would advertise successfully and then fail every issuance, so treat it as unavailable here.
+        if (VCFormat.MSO_MDOC.equals(format) && !availableMdocAlgorithms.contains(signingAlgorithm)) {
+            LOGGER.warnf("Configured signing algorithm '%s' has no active signing key with a certificate chain for "
+                    + "credential format '%s'.", signingAlgorithm, format);
             return Optional.empty();
         }
         return Optional.of(signingAlgorithm);
@@ -140,10 +149,17 @@ final class CredentialSigningAlgorithmResolver {
         return keycloakSession.keys().getKeysStream(realm)
                 .filter(key -> key.getStatus().isActive())
                 .filter(key -> KeyUse.SIG.equals(key.getUse()))
+                .filter(CredentialSigningAlgorithmResolver::hasCertificateChain)
                 .map(KeyWrapper::getAlgorithm)
                 .filter(MdocAlgorithm.getSupportedJoseAlgorithms()::contains)
                 .distinct()
                 .collect(Collectors.toList());
+    }
+
+    private static boolean hasCertificateChain(KeyWrapper key) {
+        // Mirror what AsymmetricSignatureSignerContext.getCertificateChain accepts, a populated chain or a single certificate.
+        return (key.getCertificateChain() != null && !key.getCertificateChain().isEmpty())
+                || key.getCertificate() != null;
     }
 
     private static boolean isSupportedForFormat(String format, String signingAlgorithm) {

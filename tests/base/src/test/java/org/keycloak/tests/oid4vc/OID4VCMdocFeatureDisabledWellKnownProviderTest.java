@@ -24,6 +24,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 @KeycloakIntegrationTest(config = OID4VCIssuerTestBase.VCTestServerConfig.class)
 public class OID4VCMdocFeatureDisabledWellKnownProviderTest extends OID4VCMdocTestBase {
@@ -36,5 +37,11 @@ public class OID4VCMdocFeatureDisabledWellKnownProviderTest extends OID4VCMdocTe
         assertNotNull(credentialIssuer);
         assertFalse(credentialIssuer.getCredentialsSupported().containsKey(mdocScope.getCredentialConfigurationId()),
                 "mso_mdoc configuration must not be advertised when the mDoc feature is disabled");
+    }
+
+    @Test
+    void testNaturalPersonMdocScopeNotAutoCreatedWhenFeatureDisabled() {
+        assertNull(getCredentialScope(mdocTypeNaturalPersonScopeName),
+                "the natural person mdoc scope must only be auto created when the mDoc feature is enabled");
     }
 }

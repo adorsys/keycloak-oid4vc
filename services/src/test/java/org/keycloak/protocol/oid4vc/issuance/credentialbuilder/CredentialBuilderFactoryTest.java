@@ -73,7 +73,7 @@ public class CredentialBuilderFactoryTest {
     }
 
     @Test
-    public void testMdocFactoriesDisabledWithoutExperimentalFeature() {
+    public void testMdocFactoriesDisabledWithoutMdocFeature() {
         List<String> builderIds = session.getKeycloakSessionFactory()
                 .getProviderFactoriesStream(CredentialBuilder.class)
                 .map(f -> f.getId())

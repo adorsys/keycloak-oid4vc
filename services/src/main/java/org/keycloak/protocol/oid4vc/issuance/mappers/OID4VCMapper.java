@@ -26,12 +26,17 @@ import java.util.Optional;
 import java.util.stream.Stream;
 
 import org.keycloak.Config;
+import org.keycloak.models.ClientScopeModel;
+import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.KeycloakSessionFactory;
+import org.keycloak.models.ProtocolMapperContainerModel;
 import org.keycloak.models.ProtocolMapperModel;
+import org.keycloak.models.RealmModel;
 import org.keycloak.models.UserSessionModel;
 import org.keycloak.models.oid4vci.CredentialScopeModel;
 import org.keycloak.models.oid4vci.Oid4vcProtocolMapperModel;
 import org.keycloak.protocol.ProtocolMapper;
+import org.keycloak.protocol.ProtocolMapperConfigException;
 import org.keycloak.protocol.oid4vc.OID4VCEnvironmentProviderFactory;
 import org.keycloak.protocol.oid4vc.OID4VCLoginProtocolFactory;
 import org.keycloak.protocol.oid4vc.model.VerifiableCredential;
@@ -105,6 +110,41 @@ public abstract class OID4VCMapper implements ProtocolMapper, OID4VCEnvironmentP
         this.mapperModel = mapperModel;
         this.format = format;
         return this;
+    }
+
+    @Override
+    public void validateConfig(KeycloakSession session, RealmModel realm, ProtocolMapperContainerModel client,
+                              ProtocolMapperModel mapperModel) throws ProtocolMapperConfigException {
+        // OID4VC mappers are configured on the credential client scope, which carries the credential format.
+        if (client instanceof ClientScopeModel clientScope) {
+            validateMdocNamespace(new CredentialScopeModel(clientScope).getFormat(), mapperModel);
+        }
+    }
+
+    /**
+     * Revalidates this mapper's namespace against the given format. Switching a client scope to mso_mdoc through the
+     * format selector does not run {@link #validateConfig}, so issuance uses this to reject an already stored claim
+     * mapper that is missing a namespace before it produces broken claims.
+     */
+    public void validateMdocNamespace(String credentialFormat) throws ProtocolMapperConfigException {
+        validateMdocNamespace(credentialFormat, mapperModel);
+    }
+
+    /**
+     * mDoc claim paths are addressed by namespace, so a namespaced claim mapper without a configured namespace would
+     * produce a non-namespaced path that fails at signing time. Reject such configuration up front.
+     */
+    void validateMdocNamespace(String credentialFormat, ProtocolMapperModel mapperModel) throws ProtocolMapperConfigException {
+        if (!MSO_MDOC.equals(credentialFormat) || !supportsCredentialFormat(credentialFormat)) {
+            return;
+        }
+
+        Map<String, String> config = mapperModel.getConfig();
+        String namespace = config == null ? null : config.get(MDOC_NAMESPACE);
+        if (namespace == null || namespace.isBlank()) {
+            throw new ProtocolMapperConfigException(
+                    String.format("mso_mdoc credential mappers require a non-empty '%s' configuration.", MDOC_NAMESPACE));
+        }
     }
 
     /**
@@ -238,6 +278,12 @@ public abstract class OID4VCMapper implements ProtocolMapper, OID4VCEnvironmentP
      * for mDoc.
      */
     private Object getNestedClaimValue(Map<String, Object> claims, List<String> claimPath) {
+        if (claimPath.isEmpty()) {
+            // No raw lookup path means the mapper produces no subject claim (e.g. type/context mappers), so there
+            // is no value to copy into the prefixed map. Returning the whole claims map here would be incorrect.
+            return null;
+        }
+
         Object current = claims;
         for (String pathElement : claimPath) {
             if (!(current instanceof Map<?, ?> currentMap)) {

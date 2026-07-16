@@ -20,14 +20,19 @@ import java.io.IOException;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.JsonSerializable;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializerProvider;
 import com.fasterxml.jackson.databind.jsontype.TypeSerializer;
+import com.fasterxml.jackson.databind.module.SimpleModule;
+import com.fasterxml.jackson.databind.ser.std.StdSerializer;
+import com.fasterxml.jackson.dataformat.cbor.CBORFactory;
 import com.fasterxml.jackson.dataformat.cbor.CBORGenerator;
 import com.webauthn4j.converter.util.CborConverter;
 import com.webauthn4j.converter.util.ObjectConverter;
@@ -37,9 +42,19 @@ final class CborUtil {
     static final int TAG_TDATE = 0;
     static final int TAG_ENCODED_CBOR = 24;
 
-    private static final ObjectConverter OBJECT_CONVERTER = new ObjectConverter();
+    private static final ObjectConverter OBJECT_CONVERTER = createObjectConverter();
     private static final CborConverter CBOR_CONVERTER = OBJECT_CONVERTER.getCborConverter();
     private static final DateTimeFormatter TDATE_FORMATTER = DateTimeFormatter.ISO_OFFSET_DATE_TIME;
+
+    // ISO mdoc requires definite length CBOR encoding, while Jackson's default Map serializer emits indefinite
+    // length maps. Register a serializer that writes the map header with its size for every encoded map.
+    private static ObjectConverter createObjectConverter() {
+        SimpleModule definiteLengthMaps = new SimpleModule();
+        definiteLengthMaps.addSerializer(new DefiniteLengthMapSerializer());
+        ObjectMapper cborMapper = new ObjectMapper(new CBORFactory());
+        cborMapper.registerModule(definiteLengthMaps);
+        return new ObjectConverter(new ObjectMapper(), cborMapper);
+    }
 
     private CborUtil() {
     }
@@ -69,6 +84,12 @@ final class CborUtil {
     @SuppressWarnings("unchecked")
     static Map<String, Object> asStringKeyMap(Object object, String name) {
         if (object instanceof Map<?, ?>) {
+            Map<?, ?> map = (Map<?, ?>) object;
+            for (Object key : map.keySet()) {
+                if (!(key instanceof String)) {
+                    throw new MdocException("Unexpected non-string map key for " + name);
+                }
+            }
             return (Map<String, Object>) object;
         }
         throw new MdocException("Unexpected map structure for " + name);
@@ -112,7 +133,9 @@ final class CborUtil {
     }
 
     static Tagged tdate(Instant instant) {
-        return new Tagged(TAG_TDATE, TDATE_FORMATTER.format(instant.atOffset(ZoneOffset.UTC)));
+        // ISO mdoc restricts tdate values to RFC 3339 timestamps without fractional seconds
+        Instant truncated = instant.truncatedTo(ChronoUnit.SECONDS);
+        return new Tagged(TAG_TDATE, TDATE_FORMATTER.format(truncated.atOffset(ZoneOffset.UTC)));
     }
 
     static Tagged encodedCbor(Object value) {
@@ -147,6 +170,29 @@ final class CborUtil {
         public void serializeWithType(JsonGenerator generator, SerializerProvider provider, TypeSerializer typeSerializer)
                 throws IOException {
             serialize(generator, provider);
+        }
+    }
+
+    static final class DefiniteLengthMapSerializer extends StdSerializer<Map<?, ?>> {
+
+        DefiniteLengthMapSerializer() {
+            super(Map.class, false);
+        }
+
+        @Override
+        public void serialize(Map<?, ?> value, JsonGenerator generator, SerializerProvider provider) throws IOException {
+            CBORGenerator cborGenerator = (CBORGenerator) generator;
+            cborGenerator.writeStartObject(value.size());
+            for (Map.Entry<?, ?> entry : value.entrySet()) {
+                Object key = entry.getKey();
+                if (key instanceof Number) {
+                    cborGenerator.writeFieldId(((Number) key).longValue());
+                } else {
+                    generator.writeFieldName(String.valueOf(key));
+                }
+                generator.writeObject(entry.getValue());
+            }
+            generator.writeEndObject();
         }
     }
 

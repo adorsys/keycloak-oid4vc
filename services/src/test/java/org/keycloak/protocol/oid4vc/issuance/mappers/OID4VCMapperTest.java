@@ -6,10 +6,12 @@ import java.util.Map;
 
 import org.keycloak.VCFormat;
 import org.keycloak.models.ProtocolMapperModel;
+import org.keycloak.protocol.ProtocolMapperConfigException;
 
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertThrows;
 
 public class OID4VCMapperTest {
 
@@ -83,11 +85,77 @@ public class OID4VCMapperTest {
     }
 
     @Test
+    public void shouldNotPrefixClaimsForMapperWithoutClaimLookupPath() {
+        // The type mapper has a fixed metadata path but writes no subject claim, so it must not copy the whole
+        // claims map into the prefixed map under its metadata key.
+        OID4VCTypeMapper mapper = new OID4VCTypeMapper();
+        ProtocolMapperModel mapperModel = new ProtocolMapperModel();
+        mapperModel.setConfig(new HashMap<>());
+        mapper.setMapperModel(mapperModel, VCFormat.JWT_VC);
+
+        Map<String, Object> claims = new HashMap<>();
+        claims.put("given_name", "John");
+
+        Map<String, Object> prefixedClaims = new HashMap<>();
+        mapper.setClaimWithMetadataPrefix(claims, prefixedClaims);
+
+        assertEquals(Map.of(), prefixedClaims);
+    }
+
+    @Test
     public void shouldPreserveNestedUserAttributeClaimPath() {
         OID4VCUserAttributeMapper mapper = new OID4VCUserAttributeMapper();
         mapper.setMapperModel(createUserAttributeMapperModel("address.street", "address"), VCFormat.JWT_VC);
 
         assertEquals(List.of("credentialSubject", "address", "street"), mapper.getMetadataAttributePath());
+    }
+
+    @Test
+    public void shouldRejectMdocClaimMapperWithoutNamespace() {
+        OID4VCStaticClaimMapper mapper = new OID4VCStaticClaimMapper();
+
+        ProtocolMapperConfigException exception = assertThrows(ProtocolMapperConfigException.class,
+                () -> mapper.validateMdocNamespace(VCFormat.MSO_MDOC, createStaticClaimMapperModel("given_name", "John", null)));
+        assertEquals("mso_mdoc credential mappers require a non-empty 'mdoc.namespace' configuration.",
+                exception.getMessage());
+    }
+
+    @Test
+    public void shouldRejectMdocClaimMapperWithNullConfig() {
+        OID4VCStaticClaimMapper mapper = new OID4VCStaticClaimMapper();
+
+        assertThrows(ProtocolMapperConfigException.class,
+                () -> mapper.validateMdocNamespace(VCFormat.MSO_MDOC, new ProtocolMapperModel()));
+    }
+
+    @Test
+    public void shouldRejectMdocClaimMapperWithBlankNamespace() {
+        OID4VCStaticClaimMapper mapper = new OID4VCStaticClaimMapper();
+
+        assertThrows(ProtocolMapperConfigException.class,
+                () -> mapper.validateMdocNamespace(VCFormat.MSO_MDOC, createStaticClaimMapperModel("given_name", "John", "  ")));
+    }
+
+    @Test
+    public void shouldAcceptMdocClaimMapperWithNamespace() throws ProtocolMapperConfigException {
+        OID4VCStaticClaimMapper mapper = new OID4VCStaticClaimMapper();
+
+        mapper.validateMdocNamespace(VCFormat.MSO_MDOC, createStaticClaimMapperModel("given_name", "John", "org.iso.18013.5.1"));
+    }
+
+    @Test
+    public void shouldNotRequireNamespaceForNonMdocFormat() throws ProtocolMapperConfigException {
+        OID4VCStaticClaimMapper mapper = new OID4VCStaticClaimMapper();
+
+        mapper.validateMdocNamespace(VCFormat.JWT_VC, createStaticClaimMapperModel("given_name", "John", null));
+    }
+
+    @Test
+    public void shouldNotRequireNamespaceForMapperNotSupportingMdoc() throws ProtocolMapperConfigException {
+        // The type mapper does not contribute a namespaced data element to mdoc, so it must not require a namespace.
+        OID4VCTypeMapper mapper = new OID4VCTypeMapper();
+
+        mapper.validateMdocNamespace(VCFormat.MSO_MDOC, createStaticClaimMapperModel("given_name", "John", null));
     }
 
     private static ProtocolMapperModel createStaticClaimMapperModel(String claimName, String claimValue, String mdocNamespace) {

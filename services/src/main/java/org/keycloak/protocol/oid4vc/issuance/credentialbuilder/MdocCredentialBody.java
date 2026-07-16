@@ -34,7 +34,11 @@ public class MdocCredentialBody implements CredentialBody {
     private final MdocCredential credential;
 
     public MdocCredentialBody(String docType, Map<String, Object> claims, MdocValidityInfo validityInfo) {
-        this.credential = new MdocCredential(docType, claims, validityInfo);
+        try {
+            this.credential = new MdocCredential(docType, claims, validityInfo);
+        } catch (MdocException e) {
+            throw new CredentialBuilderException(e.getMessage(), e);
+        }
     }
 
     @Override

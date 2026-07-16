@@ -25,6 +25,7 @@ import org.keycloak.crypto.KeyStatus;
 import org.keycloak.crypto.KeyUse;
 import org.keycloak.mdoc.MdocAlgorithm;
 import org.keycloak.models.oid4vci.CredentialScopeModel;
+import org.keycloak.protocol.oid4vc.issuance.mappers.OID4VCMapper;
 import org.keycloak.protocol.oid4vc.model.CredentialIssuer;
 import org.keycloak.protocol.oid4vc.model.CredentialScopeRepresentation;
 import org.keycloak.protocol.oid4vc.model.ProofType;
@@ -37,6 +38,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import static org.keycloak.OID4VCConstants.CRYPTOGRAPHIC_BINDING_METHOD_COSE_KEY;
+import static org.keycloak.protocol.oid4vc.OID4VCLoginProtocolFactory.NATURAL_PERSON_MDOC_NAMESPACE;
 import static org.keycloak.tests.oid4vc.OID4VCIssuerWellKnownProviderTest.assertHasClaimPath;
 import static org.keycloak.tests.oid4vc.OID4VCIssuerWellKnownProviderTest.getAllAsymmetricAlgorithms;
 
@@ -78,6 +80,31 @@ public class OID4VCMdocIssuerWellKnownProviderTest extends OID4VCMdocTestBase {
         assertHasClaimPath(supportedConfig, List.of("org.iso.18013.5.1", "given_name"));
         assertHasClaimPath(supportedConfig, List.of("org.iso.18013.5.1", "family_name"));
         assertHasClaimPath(supportedConfig, List.of("org.iso.18013.5.1", "id"));
+    }
+
+    @Test
+    void testNaturalPersonMdocScopeIsAutoCreated() {
+        CredentialScopeRepresentation scope = requireExistingCredentialScope(mdocTypeNaturalPersonScopeName);
+        assertEquals(VCFormat.MSO_MDOC, scope.getFormat());
+        assertEquals(NATURAL_PERSON_MDOC_NAMESPACE, scope.getVct());
+        assertFalse(scope.getProtocolMappers().isEmpty());
+        scope.getProtocolMappers().forEach(mapper ->
+                assertEquals(NATURAL_PERSON_MDOC_NAMESPACE, mapper.getConfig().get(OID4VCMapper.MDOC_NAMESPACE),
+                        "mapper '" + mapper.getName() + "' must carry the example mDoc namespace"));
+
+        CredentialIssuer credentialIssuer = oauth.oid4vc().doIssuerMetadataRequest().getMetadata();
+        SupportedCredentialConfiguration supportedConfig =
+                credentialIssuer.getCredentialsSupported().get(mdocTypeNaturalPersonScopeName);
+
+        assertNotNull(supportedConfig, "the auto created natural person configuration must be advertised");
+        assertEquals(VCFormat.MSO_MDOC, supportedConfig.getFormat());
+        assertEquals(NATURAL_PERSON_MDOC_NAMESPACE, supportedConfig.getDocType());
+        assertEquals(List.of(CRYPTOGRAPHIC_BINDING_METHOD_COSE_KEY), supportedConfig.getCryptographicBindingMethodsSupported());
+
+        assertHasClaimPath(supportedConfig, List.of(NATURAL_PERSON_MDOC_NAMESPACE, "id"));
+        assertHasClaimPath(supportedConfig, List.of(NATURAL_PERSON_MDOC_NAMESPACE, "email"));
+        assertHasClaimPath(supportedConfig, List.of(NATURAL_PERSON_MDOC_NAMESPACE, "firstName"));
+        assertHasClaimPath(supportedConfig, List.of(NATURAL_PERSON_MDOC_NAMESPACE, "familyName"));
     }
 
     @Test

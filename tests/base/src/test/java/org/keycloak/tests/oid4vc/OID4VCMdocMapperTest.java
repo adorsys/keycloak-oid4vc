@@ -49,7 +49,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class OID4VCMdocMapperTest extends OID4VCMdocTestBase {
 
     @Test
-    public void testUserAttributeMapperUsesNamespaceAndNestedPathForMdoc() {
+    public void testUserAttributeMapperUsesNamespaceAndNestedPath() {
         ensureEcSigningKeyProvider("mdoc-mapper-issuer-key", "P-256", "ES256", 200);
 
         ProtocolMapperRepresentation mapper =
@@ -102,7 +102,7 @@ public class OID4VCMdocMapperTest extends OID4VCMdocTestBase {
     }
 
     @Test
-    public void testVcLevelMappersAreIgnoredForMdoc() {
+    public void testVcLevelMappersAreIgnored() {
         ensureEcSigningKeyProvider("mdoc-vc-level-mapper-issuer-key", "P-256", "ES256", 200);
 
         ProtocolMapperRepresentation nameMapper =
@@ -181,5 +181,65 @@ public class OID4VCMdocMapperTest extends OID4VCMdocTestBase {
         assertFalse(namespaceClaims.containsKey("iat"));
         assertFalse(namespaceClaims.containsKey("context"));
         assertFalse(namespaceClaims.containsKey("type"));
+    }
+
+    @Test
+    public void testSameElementIdentifierInDistinctNamespacesKeepsSeparateValues() {
+        ensureEcSigningKeyProvider("mdoc-namespace-collision-issuer-key", "P-256", "ES256", 200);
+
+        String namespaceA = "org.iso.18013.5.1";
+        String namespaceB = "org.iso.18013.5.1.aamva";
+
+        // Two mappers emit the same mDoc element identifier into different namespaces from distinct user attributes.
+        ProtocolMapperRepresentation givenNameInA =
+                ProtocolMapperUtils.getUserAttributeMapper("given_name", "firstName", namespaceA);
+        givenNameInA.getConfig().put(CredentialScopeModel.VC_INCLUDE_IN_METADATA, "true");
+        ProtocolMapperRepresentation givenNameInB =
+                ProtocolMapperUtils.getUserAttributeMapper("given_name", "lastName", namespaceB);
+        givenNameInB.getConfig().put(CredentialScopeModel.VC_INCLUDE_IN_METADATA, "true");
+
+        CredentialScopeRepresentation scope = createCustomMdocCredentialScope(
+                "mdoc-namespace-collision-scope",
+                "mdoc-namespace-collision-config",
+                List.of(givenNameInA, givenNameInB));
+
+        CredentialIssuer credentialIssuer = oauth.oid4vc().doIssuerMetadataRequest().getMetadata();
+        SupportedCredentialConfiguration supportedConfig = credentialIssuer.getCredentialsSupported().get(scope.getCredentialConfigurationId());
+        assertNotNull(supportedConfig);
+
+        OID4VCTestContext ctx = new OID4VCTestContext(client, scope);
+        OID4VCAuthorizationDetail authDetail = new OID4VCAuthorizationDetail();
+        authDetail.setType(OPENID_CREDENTIAL);
+        authDetail.setCredentialConfigurationId(ctx.getCredentialConfigurationId());
+        authDetail.setLocations(List.of(credentialIssuer.getCredentialIssuer()));
+
+        AuthorizationEndpointResponse authResponse = wallet.authorizationRequest()
+                .scope(ctx.getScope())
+                .authorizationDetails(authDetail)
+                .send(TEST_USER, TEST_PASSWORD);
+        assertNotNull(authResponse.getCode());
+
+        AccessTokenResponse tokenResponse = oauth.accessTokenRequest(authResponse.getCode())
+                .authorizationDetails(List.of(authDetail))
+                .send();
+        assertEquals(200, tokenResponse.getStatusCode());
+
+        String credentialIdentifier = tokenResponse.getOID4VCAuthorizationDetails().get(0).getCredentialIdentifiers().get(0);
+        Oid4vcCredentialResponse credentialResponse = oauth.oid4vc().credentialRequest()
+                .credentialIdentifier(credentialIdentifier)
+                .proofs(wallet.generateJwtProof(ctx))
+                .bearerToken(tokenResponse.getAccessToken())
+                .send();
+        assertEquals(200, credentialResponse.getStatusCode());
+
+        Object credential = credentialResponse.getCredentialResponse().getCredentials().get(0).getCredential();
+        String encodedIssuerSigned = assertInstanceOf(String.class, credential);
+        Map<String, Object> nameSpaces = getMdocNamespaces(encodedIssuerSigned);
+
+        // Each namespace must retain its own value rather than both collapsing to the last mapper's claim.
+        Map<?, ?> claimsA = assertInstanceOf(Map.class, nameSpaces.get(namespaceA));
+        Map<?, ?> claimsB = assertInstanceOf(Map.class, nameSpaces.get(namespaceB));
+        assertEquals("John", claimsA.get("given_name"));
+        assertEquals("Doe", claimsB.get("given_name"));
     }
 }
